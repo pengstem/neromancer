@@ -15,73 +15,65 @@ import (
 func (a *App) renderDashboardView(c *ui.Context) {
 	pal := a.Palette()
 	phone := a.isPhoneLayout(c)
+	_, _, bottomSafe, _ := c.SafeArea()
 
-	sc := ui.Scroll(c).Key("space_dashboard").TrackScroll(&a.DashboardScroll).Fill().Background(pal.Canvas).
-		HandleInput(func(ev ui.InputEvent) bool {
-			// Scrolling down past the bottom of the Dashboard enters the Inspiration Archive Vault.
-			if ev.Kind == ui.InputScroll && ev.DY > 18 && a.DashboardScroll.Y >= a.DashboardScroll.MaxY-8 {
-				a.enterArchiveWithTag("")
-				return true
-			}
-			return false
-		})
-
-	if sc.PullToRefresh(&a.DashboardRefresh) {
-		mygo.Haptics.Light()
-		a.RunAsync("正在刷新灵感看板…", func(ctx context.Context) error {
-			defer a.Dispatch(func() { a.DashboardRefresh.Refreshing = false })
-			if a.Deps.AI != nil && a.Deps.AI.Configured() {
-				if spark, err := a.Deps.Incubate.SuggestShowcaseSpark(ctx); err == nil && spark != "" {
-					a.Dispatch(func() { a.ShowcaseSpark = spark })
+	ui.Box(c).Key("space_dashboard_root").Fill().Background(pal.Canvas).Children(func() {
+		sc := ui.Scroll(c).Key("space_dashboard").TrackScroll(&a.DashboardScroll).Fill().Background(pal.Canvas).
+			HandleInput(func(ev ui.InputEvent) bool {
+				// Scrolling down past the bottom of the Dashboard enters the Inspiration Archive Vault.
+				if ev.Kind == ui.InputScroll && ev.DY > 18 && a.DashboardScroll.Y >= a.DashboardScroll.MaxY-8 {
+					a.enterArchiveWithTag("")
+					return true
 				}
-			}
-			return nil
-		})
-	}
+				return false
+			})
 
-	viewH := sc.Bounds().H
-	if viewH <= 0 {
-		_, viewH = c.Size()
-	}
-
-	sc.Children(func() {
-		padX := float32(16)
-		padTop := float32(14)
-		if !phone {
-			padX = 28
-			padTop = 20
-		}
-
-		inner := func() {
-			col := ui.Column(c).FillWidth().Padding(padTop, padX, 18, padX).Gap(12)
-			if viewH > 0 {
-				col.MinHeight(viewH)
-			}
-			col.Children(func() {
-				a.renderDashboardHeader(c, pal)
-
-				if a.DashboardSearchOpen || strings.TrimSpace(a.SearchQuery) != "" {
-					a.renderDashboardSearchCard(c, pal)
+		if sc.PullToRefresh(&a.DashboardRefresh) {
+			mygo.Haptics.Light()
+			a.RunAsync("正在刷新灵感看板…", func(ctx context.Context) error {
+				defer a.Dispatch(func() { a.DashboardRefresh.Refreshing = false })
+				if a.Deps.AI != nil && a.Deps.AI.Configured() {
+					if spark, err := a.Deps.Incubate.SuggestShowcaseSpark(ctx); err == nil && spark != "" {
+						a.Dispatch(func() { a.ShowcaseSpark = spark })
+					}
 				}
-
-				a.renderDashboardHeroRow(c, pal, phone)
-				a.renderDashboardKeywordMatrix(c, pal)
-				a.renderDashboardCluesCard(c, pal)
-				a.renderDashboardCaptureTiles(c, pal)
-
-				ui.Spacer(c).Grow(1)
-
-				a.renderDashboardArchivePortal(c, pal)
+				return nil
 			})
 		}
 
-		if phone {
-			inner()
-			return
-		}
-		ui.Column(c).FillWidth().AlignItems(ui.Center).Children(func() {
-			ui.Box(c).FillWidth().MaxWidth(760).Children(inner)
+		sc.Children(func() {
+			padX := float32(16)
+			padTop := float32(14)
+			if !phone {
+				padX = 28
+				padTop = 20
+			}
+
+			inner := func() {
+				ui.Column(c).FillWidth().Padding(padTop, padX, 96+bottomSafe, padX).Gap(12).Children(func() {
+					a.renderDashboardHeader(c, pal)
+
+					if a.DashboardSearchOpen || strings.TrimSpace(a.SearchQuery) != "" {
+						a.renderDashboardSearchCard(c, pal)
+					}
+
+					a.renderDashboardHeroRow(c, pal, phone)
+					a.renderDashboardKeywordMatrix(c, pal)
+					a.renderDashboardCluesCard(c, pal)
+					a.renderDashboardArchivePortal(c, pal)
+				})
+			}
+
+			if phone {
+				inner()
+				return
+			}
+			ui.Column(c).FillWidth().AlignItems(ui.Center).Children(func() {
+				ui.Box(c).FillWidth().MaxWidth(760).Children(inner)
+			})
 		})
+
+		a.renderDashboardCaptureSpeedDial(c, pal, bottomSafe, phone)
 	})
 }
 
@@ -89,10 +81,8 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette) {
 	winW, _ := c.Size()
 	compact := winW > 0 && winW < 380
 	gap := float32(6)
-	btnPadH := float32(11)
 	if compact {
 		gap = 5
-		btnPadH = 9
 	}
 
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(gap).Children(func() {
@@ -111,6 +101,7 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette) {
 			}
 
 			if IconAction(c, "dash_search_btn", IconSearch, "搜索灵感", a.DashboardSearchOpen).Tooltip("搜索灵感").Clicked() {
+				a.CaptureDialOpen = false
 				a.DashboardSearchOpen = !a.DashboardSearchOpen
 				if !a.DashboardSearchOpen && strings.TrimSpace(a.SearchQuery) == "" {
 					a.RecallHits = nil
@@ -119,6 +110,7 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette) {
 
 			ui.Box(c).Key("dash_sleep_wrap").Size(32, 32).Shrink(0).Children(func() {
 				if IconAction(c, "dash_sleep_btn", IconMoon, "灵感串联", a.SleepModalOpen).Tooltip("灵感串联").Clicked() {
+					a.CaptureDialOpen = false
 					a.SleepModalOpen = true
 				}
 				if len(a.SleepInsights) > 0 {
@@ -130,25 +122,13 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette) {
 			configured := a.Deps.AI != nil && a.Deps.AI.Configured()
 			ui.Box(c).Key("dash_settings_wrap").Size(32, 32).Shrink(0).Children(func() {
 				if IconAction(c, "dash_settings_btn", IconSliders, "DeepSeek 设置", a.SettingsModalOpen).Tooltip("DeepSeek 设置").Clicked() {
+					a.CaptureDialOpen = false
 					a.SettingsModalOpen = true
 				}
 				if configured {
 					ui.Box(c).Absolute().Top(4).Right(4).Size(6, 6).Radius(3).
 						Background(ColorSuccessInk).PassThrough()
 				}
-			})
-
-			addBtn := ui.ButtonBase(c).Key("dash_quick_add").
-				Padding(7, btnPadH).Gap(4).Radius(9).AlignItems(ui.Center).Shrink(0).
-				Background(pal.Ink).TextColor(pal.Card).Cursor(ui.CursorPointer).Label("记一笔")
-			mobile.Ink(addBtn)
-			addBtn.OnClick(func() {
-				mygo.Haptics.Light()
-				a.CaptureModalityIdx = 1
-				a.CaptureModalOpen = true
-			}).Children(func() {
-				ui.Icon(c, IconPlus).Size(13.5, 13.5).TextColor(pal.Card)
-				ui.Text(c, "记一笔").FontSize(12.5).Bold().TextColor(pal.Card).SingleLine()
 			})
 		})
 	})
@@ -458,54 +438,6 @@ func (a *App) renderDashboardCluesCard(c *ui.Context, pal SurfacePalette) {
 				})
 			})
 		}
-	})
-}
-
-func (a *App) renderDashboardCaptureTiles(c *ui.Context, pal SurfacePalette) {
-	ui.Row(c).FillWidth().Gap(10).Children(func() {
-		voiceTile := ui.ButtonBase(c).Key("dash_voice_capture").
-			Grow(1).Basis(0).Padding(13, 14).Radius(14).
-			Background(pal.Ink).Cursor(ui.CursorPointer).Label("语音速记")
-		mobile.Ink(voiceTile)
-		voiceTile.OnClick(func() {
-			mygo.Haptics.Light()
-			a.CaptureModalityIdx = 0
-			a.CaptureModalOpen = true
-		}).Children(func() {
-			ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(32, 32).Radius(16).Shrink(0).Center().
-					Background(ui.RGBA(255, 255, 255, 0.14)).
-					Children(func() {
-						ui.Icon(c, IconMic).Size(16, 16).TextColor(pal.Card)
-					})
-				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-					ui.Text(c, "语音速记").FontSize(13.5).Bold().TextColor(pal.Card).SingleLine()
-					ui.Text(c, "点按即录 · 自动转写").FontSize(10.5).TextColor(ui.Hex("#A3A8B4")).SingleLine()
-				})
-			})
-		})
-
-		mediaTile := ui.ButtonBase(c).Key("dash_text_image_capture").
-			Grow(1).Basis(0).Padding(13, 14).Radius(14).
-			Background(pal.Card).Border(1, pal.Border).Cursor(ui.CursorPointer).Label("图文落稿")
-		mobile.Ink(mediaTile)
-		mediaTile.OnClick(func() {
-			mygo.Haptics.Light()
-			a.CaptureModalityIdx = 2
-			a.CaptureModalOpen = true
-		}).Children(func() {
-			ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(32, 32).Radius(16).Shrink(0).Center().
-					Background(pal.SoftPanel).
-					Children(func() {
-						ui.Icon(c, IconImage).Size(16, 16).TextColor(pal.Ink)
-					})
-				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-					ui.Text(c, "图文落稿").FontSize(13.5).Bold().TextColor(pal.Ink).SingleLine()
-					ui.Text(c, "自动匹配图标归档").FontSize(10.5).TextColor(pal.InkMuted).SingleLine()
-				})
-			})
-		})
 	})
 }
 

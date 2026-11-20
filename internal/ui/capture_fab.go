@@ -15,6 +15,133 @@ import (
 	"github.com/pengstem/neromancer/internal/service"
 )
 
+func (a *App) renderDashboardCaptureSpeedDial(c *ui.Context, pal SurfacePalette, bottomSafe float32, phone bool) {
+	if a.DetailSheetOpen || a.CaptureModalOpen || a.EvidenceModalOpen || a.SettingsModalOpen || a.SleepModalOpen || a.ShareModalOpen {
+		return
+	}
+
+	ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).Height(68 + bottomSafe).PassThrough().
+		LinearGradient(ui.LinearGradient{
+			From:  pal.Canvas.Alpha(0.0),
+			To:    pal.Canvas,
+			Angle: 180,
+			Oklab: true,
+		})
+
+	if a.CaptureDialOpen {
+		backdrop := ui.ButtonBase(c).Key("capture_dial_backdrop").
+			Absolute().Fill().
+			Background(ui.RGBA(242, 243, 246, 0.56)).
+			Cursor(ui.CursorDefault).
+			Label("收起速记菜单")
+		backdrop.OnClick(func() {
+			mygo.Haptics.Selection()
+			a.CaptureDialOpen = false
+		})
+	}
+
+	rightPad := float32(18)
+	bottomPad := float32(20)
+	if !phone {
+		rightPad = 28
+		bottomPad = 26
+	}
+
+	ui.Column(c).Key("dash_capture_speed_dial").
+		Absolute().Right(rightPad).Bottom(bottomPad + bottomSafe).
+		AlignItems(ui.End).Gap(10).
+		Children(func() {
+			if a.CaptureDialOpen {
+				dialItems := []struct {
+					key         string
+					label       string
+					icon        *ui.SVG
+					theme       domain.OrbTheme
+					modalityIdx int
+				}{
+					{"dash_dial_image", "图文", IconImage, domain.ThemeAmber, 2},
+					{"dash_dial_text", "文字", IconQuill, domain.ThemeSky, 1},
+					{"dash_dial_voice", "语音", IconMic, domain.ThemeMint, 0},
+				}
+
+				for _, item := range dialItems {
+					idx := item.modalityIdx
+					orbPal := ColorsForTheme(item.theme)
+					pill := ui.ButtonBase(c).Key(item.key)
+					pressTarget := float32(1.0)
+					if pill.Pressed() {
+						pressTarget = 0.96
+					}
+					scale := pill.Spring("press", pressTarget)
+
+					pill.Padding(6, 7, 6, 13).Radius(999).
+						Background(pal.Card).Border(1, pal.Border).
+						Shadow(0, 4, 14, 0, ui.RGBA(20, 21, 25, 0.10)).
+						Scale(scale, scale).
+						Cursor(ui.CursorPointer).Label(item.label)
+					mobile.Ink(pill)
+					pill.OnClick(func() {
+						mygo.Haptics.Light()
+						a.CaptureDialOpen = false
+						a.CaptureModalityIdx = idx
+						a.CaptureModalOpen = true
+					}).Children(func() {
+						ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, item.label).FontSize(12.5).Bold().TextColor(pal.Ink).SingleLine()
+							ui.Box(c).Size(28, 28).Radius(14).Center().
+								Background(orbPal.BadgeBg).
+								Children(func() {
+									ui.Icon(c, item.icon).Size(14, 14).TextColor(orbPal.BadgeText)
+								})
+						})
+					})
+				}
+			}
+
+			sealBtn := ui.ButtonBase(c).Key("dash_capture_fab")
+			bg := ColorVermilion
+			if sealBtn.Pressed() {
+				bg = ui.Hex("#A63922")
+			} else if sealBtn.Hovered() {
+				bg = ui.Hex("#B8422A")
+			}
+
+			pressTarget := float32(1.0)
+			if sealBtn.Pressed() {
+				pressTarget = 0.94
+			}
+			pressScale := sealBtn.Spring("press", pressTarget)
+
+			rotTarget := float32(0)
+			if a.CaptureDialOpen {
+				rotTarget = 45
+			}
+			iconAngle := sealBtn.Spring("dial_rot", rotTarget)
+
+			sealLabel := "记一笔"
+			if a.CaptureDialOpen {
+				sealLabel = "收起"
+			}
+
+			sealBtn.Size(54, 54).Radius(27).Center().
+				Background(bg).
+				Border(1, ui.RGBA(255, 255, 255, 0.18)).
+				Shadow(0, 8, 22, 0, ui.RGBA(200, 75, 49, 0.34)).
+				Scale(pressScale, pressScale).
+				Cursor(ui.CursorPointer).Label(sealLabel)
+			if !a.CaptureDialOpen {
+				sealBtn.Tooltip("记一笔")
+			}
+			mobile.Ink(sealBtn)
+			sealBtn.OnClick(func() {
+				mygo.Haptics.Light()
+				a.CaptureDialOpen = !a.CaptureDialOpen
+			}).Children(func() {
+				ui.Icon(c, IconPlus).Size(22, 22).TextColor(ui.Hex("#FFFFFF")).Rotate(iconAngle)
+			})
+		})
+}
+
 func (a *App) renderCaptureModal(c *ui.Context) {
 	pal := a.Palette()
 

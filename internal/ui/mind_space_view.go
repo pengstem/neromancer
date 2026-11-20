@@ -16,7 +16,7 @@ func (a *App) renderArchiveView(c *ui.Context) {
 	phone := a.isPhoneLayout(c)
 
 	if !phone && a.ArchiveMode != ArchiveRoam {
-		// Wide Desktop: Master-Detail Split with Archive Capture CTA inside left Master column.
+		// Wide Desktop: Master-Detail Split.
 		ui.Row(c).Key("space_archive_split").Fill().Background(pal.Canvas).Children(func() {
 			ui.Box(c).Width(420).FillHeight().Background(pal.Canvas).
 				BorderWidth(0, 1, 0, 0).BorderColor(pal.Border).
@@ -26,7 +26,6 @@ func (a *App) renderArchiveView(c *ui.Context) {
 						a.renderArchiveTitleAndTabs(c, pal)
 						a.renderArchiveBody(c, pal, false)
 					})
-					a.renderArchiveFloatingCapture(c, pal, 0)
 				})
 
 			ui.Box(c).Grow(1).FillHeight().Background(pal.Card).Children(func() {
@@ -36,7 +35,6 @@ func (a *App) renderArchiveView(c *ui.Context) {
 		return
 	}
 
-	_, _, bottomSafe, _ := c.SafeArea()
 	ui.Box(c).Key("space_archive").Fill().Background(pal.Canvas).Children(func() {
 		ui.Column(c).Fill().Children(func() {
 			if !phone && a.ArchiveMode == ArchiveRoam {
@@ -53,40 +51,6 @@ func (a *App) renderArchiveView(c *ui.Context) {
 				a.renderArchiveTitleAndTabs(c, pal)
 			}
 			a.renderArchiveBody(c, pal, phone)
-		})
-
-		a.renderArchiveFloatingCapture(c, pal, bottomSafe)
-	})
-}
-
-func (a *App) renderArchiveFloatingCapture(c *ui.Context, pal SurfacePalette, bottomSafe float32) {
-	if a.DetailSheetOpen || a.CaptureModalOpen || a.EvidenceModalOpen || a.SettingsModalOpen || a.SleepModalOpen || a.ShareModalOpen {
-		return
-	}
-
-	ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).Height(58 + bottomSafe).PassThrough().
-		LinearGradient(ui.LinearGradient{
-			From:  pal.Canvas.Alpha(0.0),
-			To:    pal.Canvas,
-			Angle: 180,
-			Oklab: true,
-		})
-
-	fab := ui.ButtonBase(c).Key("archive_capture_fab").
-		Absolute().Right(18).Bottom(16 + bottomSafe).
-		Padding(10, 15).Gap(6).Radius(999).
-		Background(pal.Ink).TextColor(pal.Card).
-		Shadow(0, 6, 18, 0, ui.RGBA(20, 21, 25, 0.22)).
-		Cursor(ui.CursorPointer).Label("记灵感")
-	mobile.Ink(fab)
-	fab.OnClick(func() {
-		mygo.Haptics.Light()
-		a.CaptureModalityIdx = 0
-		a.CaptureModalOpen = true
-	}).Children(func() {
-		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, IconMic).Size(15, 15).TextColor(pal.Card)
-			ui.Text(c, "记灵感").FontSize(12.5).Bold().TextColor(pal.Card).SingleLine()
 		})
 	})
 }
@@ -267,7 +231,7 @@ func (a *App) renderArchiveCards(c *ui.Context, pal SurfacePalette, phone bool) 
 			return false
 		}).
 		Children(func() {
-			ui.Column(c).FillWidth().Padding(12, 16, 92, 16).Gap(11).Children(func() {
+			ui.Column(c).FillWidth().Padding(12, 16, 28, 16).Gap(11).Children(func() {
 				if len(filtered) == 0 {
 					ui.Column(c).FillWidth().Padding(28, 16).Center().Gap(10).Radius(15).
 						Background(pal.Card).Border(1, pal.Border).Children(func() {
@@ -358,7 +322,7 @@ func (a *App) renderArchiveCards(c *ui.Context, pal SurfacePalette, phone bool) 
 func (a *App) renderArchiveOutline(c *ui.Context, pal SurfacePalette, phone bool) {
 	a.OutlineChoice = a.SelectedID
 	if len(a.Roots) == 0 {
-		ui.Column(c).Grow(1).FillWidth().Center().Padding(24, 24, 92, 24).Gap(6).Children(func() {
+		ui.Column(c).Grow(1).FillWidth().Center().Padding(24, 24, 28, 24).Gap(6).Children(func() {
 			ui.Icon(c, IconOutline).FontSize(26).TextColor(pal.InkMuted)
 			ui.Text(c, "还没有灵感记录").FontSize(14).FontWeight(600).TextColor(pal.InkSecondary)
 		})
@@ -416,7 +380,7 @@ func (a *App) renderArchiveOutline(c *ui.Context, pal SurfacePalette, phone bool
 				ui.Icon(c, IconChevronRight).FontSize(14).TextColor(chevronCol).Shrink(0)
 			})
 		})
-	}).Padding(8, 16, 92, 16).Gap(2).Grow(1).FillWidth()
+	}).Padding(8, 16, 28, 16).Gap(2).Grow(1).FillWidth()
 
 	if el.Changed() {
 		if row := a.OutlineState.List.Selected; row != nil && *row >= 0 && *row < a.OutlineState.Rows() {

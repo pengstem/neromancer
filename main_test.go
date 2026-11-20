@@ -83,11 +83,17 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	// Test at Android phone portrait dimensions (412x892 DIPs)
 	tt := ui.NewTester(app.RootView, 412, 892)
 
-	// 1. Homepage Dashboard renders Option B Bento sections & has NO bottom navigation bar.
-	for _, want := range []string{"AI 灵感画像", "本周积累", "AI 提炼关键词矩阵", "串联与待深化追问", "语音速记", "图文落稿"} {
+	// 1. Homepage Dashboard renders Option B Bento sections + unified bottom-right capture seal & has NO bottom navigation bar.
+	for _, want := range []string{"AI 灵感画像", "本周积累", "AI 提炼关键词矩阵", "串联与待深化追问"} {
 		if !tt.HasText(want) {
 			t.Fatalf("expected Bento Dashboard text %q, texts=%v", want, tt.Texts())
 		}
+	}
+	if tt.HasText("语音速记") || tt.HasText("图文落稿") {
+		t.Fatalf("expected duplicate dashboard capture tiles to be removed, texts=%v", tt.Texts())
+	}
+	if _, ok := tt.Find("记一笔"); !ok {
+		t.Fatalf("expected unified bottom-right capture seal \"记一笔\", texts=%v", tt.Texts())
 	}
 	if _, ok := tt.Find("进入灵感档案室"); !ok {
 		t.Fatalf("expected bottom portal labeled \"进入灵感档案室\", texts=%v", tt.Texts())
@@ -100,11 +106,21 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	}
 	assertNoEmojis(t, "dashboard", tt.Texts())
 
-	// 2. Tap "记一笔" -> open Capture bottom sheet, type a thought, and save locally ("记下来").
+	// 2. Tap "记一笔" -> expand Speed-Dial, choose "文字", type a thought, and save locally ("记下来").
 	if err := tt.Click("记一笔"); err != nil {
-		t.Fatalf("click quick capture header CTA: %v", err)
+		t.Fatalf("click bottom-right capture seal: %v", err)
 	}
 	settleSheet(tt)
+	if !app.CaptureDialOpen || !tt.HasText("语音") || !tt.HasText("文字") || !tt.HasText("图文") {
+		t.Fatalf("expected speed-dial to expand with modality pills, open=%v texts=%v", app.CaptureDialOpen, tt.Texts())
+	}
+	if err := tt.Click("文字"); err != nil {
+		t.Fatalf("click text dial pill: %v", err)
+	}
+	settleSheet(tt)
+	if app.CaptureDialOpen || !app.CaptureModalOpen {
+		t.Fatalf("expected dial closed and capture sheet open, dial=%v modal=%v", app.CaptureDialOpen, app.CaptureModalOpen)
+	}
 	if !tt.HasText("记一条灵感") || !tt.HasText("记下来") {
 		t.Fatalf("expected capture sheet to open, texts=%v", tt.Texts())
 	}

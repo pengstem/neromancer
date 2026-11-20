@@ -95,6 +95,7 @@ type App struct {
 
 	// Mobile & Desktop Sheets / Drawers
 	DetailSheetOpen     bool
+	CaptureDialOpen     bool
 	CaptureModalOpen    bool
 	EvidenceModalOpen   bool
 	SettingsModalOpen   bool
@@ -256,6 +257,7 @@ func (a *App) ReloadVault() error {
 
 // enterArchiveWithTag transitions smoothly from Dashboard into the Archive Vault with an optional tag filter.
 func (a *App) enterArchiveWithTag(tag string) {
+	a.CaptureDialOpen = false
 	a.ActiveTag = strings.TrimSpace(tag)
 	a.ActiveSpace = SpaceArchive
 	a.ArchiveMode = ArchiveCards
@@ -264,6 +266,7 @@ func (a *App) enterArchiveWithTag(tag string) {
 
 // openNodeDetail opens the selected node in Detail Sheet (phone) or Archive Master-Detail split (desktop).
 func (a *App) openNodeDetail(c *ui.Context, id string) {
+	a.CaptureDialOpen = false
 	a.SelectNode(id)
 	phone := true
 	if c != nil {
