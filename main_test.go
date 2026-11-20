@@ -81,11 +81,11 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	// Test at Android phone portrait dimensions (412x892 DIPs)
 	tt := ui.NewTester(app.RootView, 412, 892)
 
-	// 1. Showcase renders seeded Memory Orbs & zero-emoji Frosted Dock ("星海", "思维空间", "漫游分享", "记灵感", "语音速记").
+	// 1. Showcase renders seeded Memory Orbs & zero-emoji Frosted Dock ("灵感", "整理", "漫游", "记灵感", "语音速记").
 	if !tt.HasText("用一个蓝色花瓶养一株郁金香") {
 		t.Fatalf("expected seeded tulip orb in showcase, texts=%v", tt.Texts())
 	}
-	for _, want := range []string{"星海", "思维空间", "漫游分享", "记灵感"} {
+	for _, want := range []string{"灵感", "整理", "漫游", "记灵感"} {
 		if !tt.HasText(want) {
 			t.Fatalf("expected dock label %q in showcase, texts=%v", want, tt.Texts())
 		}
@@ -93,59 +93,48 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	if _, ok := tt.Find("语音速记"); !ok {
 		t.Fatalf("expected voice quick capture dock button labeled \"语音速记\"")
 	}
-	assertNoEmojis(t, "showcase_day", tt.Texts())
+	if _, ok := tt.Find("夜间模式"); ok {
+		t.Fatalf("expected dark mode toggle \"夜间模式\" to be removed")
+	}
+	assertNoEmojis(t, "showcase", tt.Texts())
 
-	// Verify Night Observatory mode toggles cleanly without emojis.
-	if err := tt.Click("夜间模式"); err != nil {
-		t.Fatalf("click night mode toggle: %v", err)
-	}
-	settleSheet(tt)
-	if !app.DarkMode {
-		t.Fatalf("expected app.DarkMode to be true after clicking 夜间模式")
-	}
-	assertNoEmojis(t, "showcase_night", tt.Texts())
-	if err := tt.Click("夜间模式"); err != nil {
-		t.Fatalf("restore day mode: %v", err)
-	}
-	settleSheet(tt)
-
-	// 2. Tap "记灵感" -> open Capture bottom sheet, type a thought, and save locally ("收入星海").
+	// 2. Tap "记灵感" -> open Capture bottom sheet, type a thought, and save locally ("记下来").
 	if err := tt.Click("记灵感"); err != nil {
 		t.Fatalf("click quick capture FAB: %v", err)
 	}
 	settleSheet(tt)
-	if !tt.HasText("记下此刻") {
-		t.Fatalf("expected capture sheet \"记下此刻\" to open, texts=%v", tt.Texts())
+	if !tt.HasText("记一条灵感") {
+		t.Fatalf("expected capture sheet \"记一条灵感\" to open, texts=%v", tt.Texts())
 	}
-	if !tt.HasText("收入星海") {
-		t.Fatalf("expected primary capture CTA \"收入星海\", texts=%v", tt.Texts())
+	if !tt.HasText("记下来") {
+		t.Fatalf("expected primary capture CTA \"记下来\", texts=%v", tt.Texts())
 	}
 	assertNoEmojis(t, "capture_modal", tt.Texts())
 
 	tt.Type("在阳台装一个自动虹吸滴灌棉线")
-	if err := tt.Click("收入星海"); err != nil {
-		t.Fatalf("click 收入星海: %v", err)
+	if err := tt.Click("记下来"); err != nil {
+		t.Fatalf("click 记下来: %v", err)
 	}
 	settleSheet(tt)
 	if !tt.HasText("在阳台装一个自动虹吸滴灌棉线") {
 		t.Fatalf("expected newly captured orb to appear in showcase")
 	}
 
-	// 3. Switch to Mind Space via BottomBar -> FAB morphs to "切换组织视图".
-	if err := tt.Click("思维空间"); err != nil {
+	// 3. Switch to Mind Space via BottomBar -> FAB morphs to "切换视图".
+	if err := tt.Click("整理"); err != nil {
 		t.Fatalf("tap Mind Space bottom tab: %v", err)
 	}
 	settleSheet(tt)
 	if app.ActiveSpace != appui.SpaceMind {
 		t.Fatalf("expected SpaceMind, got %v", app.ActiveSpace)
 	}
-	if _, ok := tt.Find("切换组织视图"); !ok {
-		t.Fatalf("expected morphed organize button labeled \"切换组织视图\" in Mind Space, texts=%v", tt.Texts())
+	if _, ok := tt.Find("切换视图"); !ok {
+		t.Fatalf("expected morphed organize button labeled \"切换视图\" in Mind Space, texts=%v", tt.Texts())
 	}
 	assertNoEmojis(t, "mind_outline", tt.Texts())
 
 	// Cycle organization mode via morphed FAB: Outline -> Graph -> Cards -> Outline.
-	if err := tt.Click("切换组织视图"); err != nil {
+	if err := tt.Click("切换视图"); err != nil {
 		t.Fatalf("cycle org mode 1: %v", err)
 	}
 	settleSheet(tt)
@@ -154,7 +143,7 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	}
 	assertNoEmojis(t, "mind_graph", tt.Texts())
 
-	if err := tt.Click("切换组织视图"); err != nil {
+	if err := tt.Click("切换视图"); err != nil {
 		t.Fatalf("cycle org mode 2: %v", err)
 	}
 	settleSheet(tt)
@@ -163,7 +152,7 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	}
 	assertNoEmojis(t, "mind_cards", tt.Texts())
 
-	if err := tt.Click("切换组织视图"); err != nil {
+	if err := tt.Click("切换视图"); err != nil {
 		t.Fatalf("cycle org mode 3: %v", err)
 	}
 	settleSheet(tt)
@@ -171,7 +160,7 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 		t.Fatalf("expected OrgOutline after third click, got %v", app.MindOrgMode)
 	}
 
-	// 4. Tap Tulip node in Outline -> Detail Sheet slides up -> verify "AI 帮忙" & "原始证据".
+	// 4. Tap Tulip node in Outline -> Detail Sheet slides up -> verify "AI 帮忙" & "原始记录".
 	if err := tt.Click("用一个蓝色花瓶养一株郁金香"); err != nil {
 		t.Fatalf("click tulip node in mind space: %v", err)
 	}
@@ -184,7 +173,7 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	}
 	assertNoEmojis(t, "detail_sheet", tt.Texts())
 
-	if err := tt.Click("原始证据"); err != nil {
+	if err := tt.Click("原始记录"); err != nil {
 		t.Fatalf("click raw evidence button: %v", err)
 	}
 	settleSheet(tt)
@@ -194,8 +183,8 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	if !tt.HasText("播放原声") || !tt.HasText("关闭") {
 		t.Fatalf("raw evidence sheet missing audio/close controls, texts=%v", tt.Texts())
 	}
-	if r, ok := tt.Find("追加"); !ok || r.Y+r.H > 892 {
-		t.Fatalf("raw evidence append composer \"追加\" clipped/off-screen: ok=%v rect=%+v", ok, r)
+	if r, ok := tt.Find("补充"); !ok || r.Y+r.H > 892 {
+		t.Fatalf("raw evidence append composer \"补充\" clipped/off-screen: ok=%v rect=%+v", ok, r)
 	}
 	assertNoEmojis(t, "raw_evidence_sheet", tt.Texts())
 
@@ -207,15 +196,15 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	settleSheet(tt)
 
 	// 5. Switch to Roam & Cool Share tab, verify read-only roaming slices & export high-DPI PNG card.
-	if err := tt.Click("漫游分享"); err != nil {
+	if err := tt.Click("漫游"); err != nil {
 		t.Fatalf("switch to roam & share tab: %v", err)
 	}
 	settleSheet(tt)
 	if !tt.HasText("把游戏引擎 FrameGraph 渲染管线类比成厨房出菜台") {
 		t.Fatalf("expected seeded roam slice in roam view")
 	}
-	if !tt.HasText("选择记忆球") {
-		t.Fatalf("expected \"选择记忆球\" label in roam poster studio, texts=%v", tt.Texts())
+	if !tt.HasText("选一条灵感") {
+		t.Fatalf("expected \"选一条灵感\" label in roam poster studio, texts=%v", tt.Texts())
 	}
 	if _, ok := tt.Find("分享海报"); !ok {
 		t.Fatalf("expected dock button \"分享海报\" in roam space, texts=%v", tt.Texts())
@@ -276,7 +265,7 @@ func TestFloatingOrbWindowWidget(t *testing.T) {
 	}
 	ft.SetSize(360, 250)
 	ft.Frame()
-	if !ft.HasText("悬浮速记") || !ft.HasText("收入星海") {
+	if !ft.HasText("随手记") || !ft.HasText("记下来") {
 		t.Fatalf("expected expanded floating orb UI, texts=%v", ft.Texts())
 	}
 	assertNoEmojis(t, "floating_orb_expanded", ft.Texts())

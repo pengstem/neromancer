@@ -52,7 +52,7 @@ func (s *CaptureService) CaptureQuick(ctx context.Context, in QuickCaptureInput)
 	now := time.Now()
 	text := strings.TrimSpace(in.RawText)
 	if text == "" && strings.TrimSpace(in.AudioSrcPath) == "" && strings.TrimSpace(in.ImageSrcPath) == "" {
-		return nil, fmt.Errorf("说句话、写个词或配张图都能记下来，先别交白卷呀")
+		return nil, fmt.Errorf("先说句话、写几个字，或者选张图吧")
 	}
 
 	var managedAudio, managedImage string
@@ -123,7 +123,7 @@ func (s *CaptureService) CaptureQuick(ctx context.Context, in QuickCaptureInput)
 			Theme:                 pickThemeByTime(now),
 			Visual: domain.VisualMotif{
 				MotifType: "constellation",
-				Caption:   "刚落下的灵感原石",
+				Caption:   "",
 				Energy:    0.72,
 			},
 			Weight:    0.62,
@@ -242,7 +242,7 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 				Stage:     target.Stage,
 				Title:     target.Title,
 				Summary:   target.ConversationalSummary,
-				Note:      "DeepSeek 自动去重归并并保留原始证据",
+				Note:      "AI 自动合并了相近的想法",
 				CreatedAt: now,
 			})
 			return target, target.ID, nil
@@ -287,7 +287,7 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 		Stage:     node.Stage,
 		Title:     node.Title,
 		Summary:   node.ConversationalSummary,
-		Note:      "DeepSeek 初次整理与视觉赋色",
+		Note:      "AI 完成了初次整理",
 		CreatedAt: now,
 	})
 	return node, "", nil
@@ -313,12 +313,12 @@ func deriveQuickTitle(text, modality string) string {
 	runes := []rune(strings.TrimSpace(text))
 	if len(runes) == 0 {
 		if modality == "voice" {
-			return "待转写的语音记忆球"
+			return "一段语音记录"
 		}
 		if modality == "image" {
-			return "随手拍下的一瞬灵感"
+			return "一张随手拍的图片"
 		}
-		return "未命名闪念"
+		return "随手一记"
 	}
 	if len(runes) > 18 {
 		return string(runes[:18]) + "…"
@@ -331,9 +331,9 @@ func defaultSummary(text, modality string) string {
 		return text
 	}
 	if modality == "voice" {
-		return "已原样保留你的原始录音，配置 DeepSeek API 后可一键转写并融入思维目录。"
+		return "录音已保存好，填好 DeepSeek Key 后就能自动转成文字。"
 	}
-	return "已原样保留原始视觉材料，随时可以补一句感想或让 DeepSeek 帮你解析。"
+	return "图片已保存好，随时可以补两句想法或让 AI 帮你看看。"
 }
 
 func modalityTag(modality string) string {

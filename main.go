@@ -94,7 +94,7 @@ func main() {
 		// On phones (Android/iOS), MyGo automatically fills the screen inside safe areas.
 		// On desktops (mygo dev), open a 412x892 Android phone portrait preview window.
 		mainWin = mygo.NewWindow(mygo.WindowOptions{
-			Title:           "Neromancer — 灵感记忆球",
+			Title:           "Neromancer",
 			Width:           412,
 			Height:          892,
 			MinWidth:        360,
@@ -185,8 +185,8 @@ func main() {
 		tray, trayErr = mygo.NewTray(mygo.TrayOptions{
 			ID:      "neromancer-tray",
 			Icon:    buildTrayIconPNG(),
-			Title:   "Orb",
-			ToolTip: "Neromancer — 灵感记忆球",
+			Title:   "Neromancer",
+			ToolTip: "Neromancer",
 			Menu:    menu,
 		})
 		if trayErr != nil {

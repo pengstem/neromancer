@@ -64,7 +64,6 @@ type App struct {
 	MindOrgMode       OrgMode
 	ActiveTag         string
 	SearchQuery       string
-	DarkMode          bool
 	FocusedShowcaseID string
 	GraphOffset       ui.Point
 	AnimOrigin        time.Time
@@ -159,7 +158,7 @@ func NewApp(deps Deps) (*App, error) {
 		SettingsBaseURL:    deps.Config.DeepSeekBaseURL,
 		SettingsAPIKey:     deps.Config.DeepSeekAPIKey,
 		SettingsModel:      deps.Config.DeepSeekModel,
-		ShowcaseSpark:      "试着把刚路过看到的色彩，和你正在学的一个抽象概念放进同一个比喻里。",
+		ShowcaseSpark:      "随手记下今天让你觉得有意思的一个小念头吧。",
 	}
 
 	if deps.Share != nil {
@@ -189,9 +188,9 @@ func NewApp(deps Deps) (*App, error) {
 	return a, nil
 }
 
-// Palette returns the active Day Paper or Night Observatory surface palette.
+// Palette returns the Warm Atelier Paper surface palette.
 func (a *App) Palette() SurfacePalette {
-	return PaletteForMode(a.DarkMode)
+	return DefaultPalette()
 }
 
 // Phase returns the elapsed shader animation phase in seconds, respecting ReduceMotion
@@ -358,7 +357,7 @@ func (a *App) RootView(c *ui.Context) {
 	pal := a.Palette()
 	phase := a.Phase(c)
 
-	ui.Themed(c, NeromancerThemeFor(a.DarkMode)).Fill().Children(func() {
+	ui.Themed(c, NeromancerTheme()).Fill().Children(func() {
 		ui.Column(c).Fill().Background(pal.Canvas).Children(func() {
 			a.renderTopBar(c, pal, phase)
 			a.renderBanner(c, pal)
@@ -410,16 +409,7 @@ func (a *App) renderTopBar(c *ui.Context, pal SurfacePalette, phase float32) {
 				ui.Spinner(c).Size(14, 14)
 			}
 
-			darkIcon := IconMoon
-			if a.DarkMode {
-				darkIcon = IconSun
-			}
-			if IconAction(c, "top_dark", darkIcon, "夜间模式", a.DarkMode).Tooltip("切换夜间模式").Clicked() {
-				mygo.Haptics.Selection()
-				a.DarkMode = !a.DarkMode
-			}
-
-			if IconAction(c, "top_float", IconFloat, "悬浮速记", a.QuickOrbOverlayOpen).Tooltip("悬浮速记").Clicked() {
+			if IconAction(c, "top_float", IconFloat, "随手记", a.QuickOrbOverlayOpen).Tooltip("随手记").Clicked() {
 				if a.FloatOnToggle != nil {
 					a.FloatOnToggle()
 				} else {
@@ -428,7 +418,7 @@ func (a *App) renderTopBar(c *ui.Context, pal SurfacePalette, phase float32) {
 			}
 
 			ui.Box(c).Key("top_sleep_wrap").Size(34, 34).Shrink(0).Children(func() {
-				if IconAction(c, "top_sleep", IconSpark, "睡眠孵化", a.SleepModalOpen).Tooltip("睡眠孵化").Clicked() {
+				if IconAction(c, "top_sleep", IconSpark, "灵感串联", a.SleepModalOpen).Tooltip("灵感串联").Clicked() {
 					a.SleepModalOpen = true
 				}
 				if len(a.SleepInsights) > 0 {
@@ -472,9 +462,9 @@ func (a *App) renderSpaceDockCapsule(c *ui.Context, pal SurfacePalette) {
 		icon  *ui.SVG
 		label string
 	}{
-		{SpaceShowcase, IconOrb, "星海"},
-		{SpaceMind, IconMind, "思维空间"},
-		{SpaceRoam, IconRoam, "漫游分享"},
+		{SpaceShowcase, IconOrb, "灵感"},
+		{SpaceMind, IconMind, "整理"},
+		{SpaceRoam, IconRoam, "漫游"},
 	}
 
 	ui.Row(c).Key("dock_capsule").Padding(4).Gap(2).Radius(999).AlignItems(ui.Center).Shrink(0).
@@ -541,7 +531,7 @@ func (a *App) renderBanner(c *ui.Context, pal SurfacePalette) {
 		Children(func() {
 			ui.Text(c, a.BannerText).FontSize(12).TextColor(fg).Grow(1)
 			if a.BannerShowAI {
-				if PillAction(c, "banner_ai_cfg", IconSliders, "配置接口", true).Clicked() {
+				if PillAction(c, "banner_ai_cfg", IconSliders, "去设置", true).Clicked() {
 					a.SettingsModalOpen = true
 				}
 			}
@@ -559,8 +549,8 @@ func (a *App) renderInAppQuickOrbBar(c *ui.Context, pal SurfacePalette, phase fl
 			ui.Box(c).Size(24, 24).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 				DrawAnimatedMemoryOrb(p, r, domain.ThemeCoral, 0.9, phase, 0.35, "petals", true)
 			})
-			ui.TextInput(c, &a.FloatQuickText).Placeholder("记下此刻闪念…").Grow(1)
-			if PillAction(c, "quick_orb_submit", IconPlus, "收入星海", true).Clicked() && strings.TrimSpace(a.FloatQuickText) != "" {
+			ui.TextInput(c, &a.FloatQuickText).Placeholder("随手记一句…").Grow(1)
+			if PillAction(c, "quick_orb_submit", IconPlus, "记下来", true).Clicked() && strings.TrimSpace(a.FloatQuickText) != "" {
 				a.submitFloatingCapture("")
 				a.QuickOrbOverlayOpen = false
 			}

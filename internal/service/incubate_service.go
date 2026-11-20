@@ -81,7 +81,7 @@ func (s *IncubateService) GenerateActionPlan(ctx context.Context, nodeID string)
 		Stage:     node.Stage,
 		Title:     node.Title,
 		Summary:   node.ConversationalSummary,
-		Note:      "DeepSeek「AI 帮忙」生成可执行方案",
+		Note:      "生成了一份行动方案",
 		CreatedAt: time.Now(),
 	})
 	return node, nil
@@ -130,7 +130,7 @@ func (s *IncubateService) CollideWithRoam(ctx context.Context, myNodeID string, 
 		Theme:                 domain.NormalizeTheme(res.Theme),
 		Visual: domain.VisualMotif{
 			MotifType: "constellation",
-			Caption:   "跨界碰撞出的新星",
+			Caption:   "",
 			Energy:    0.88,
 		},
 		Weight:       0.80,
@@ -150,11 +150,11 @@ func (s *IncubateService) CollideWithRoam(ctx context.Context, myNodeID string, 
 		ID:       fmt.Sprintf("ev_col_%d", now.UnixNano()),
 		NodeID:   hybrid.ID,
 		Modality: "text",
-		RawText:  fmt.Sprintf("灵感碰撞来源：我的《%s》 × 「%s」的切片《%s》", mine.Title, roam.AuthorAlias, roam.Title),
+		RawText:  fmt.Sprintf("灵感碰撞：我的《%s》 × %s 的《%s》", mine.Title, roam.AuthorAlias, roam.Title),
 		Scene: domain.SceneContext{
 			TimeOfDay:   timeOfDayLabel(now),
-			Location:    "Neromancer 漫游碰撞室",
-			MoodWeather: "跨界连线",
+			Location:    "灵感漫游",
+			MoodWeather: "灵感碰撞",
 		},
 		CapturedAt: now,
 	})
@@ -164,7 +164,7 @@ func (s *IncubateService) CollideWithRoam(ctx context.Context, myNodeID string, 
 		Stage:     hybrid.Stage,
 		Title:     hybrid.Title,
 		Summary:   hybrid.ConversationalSummary,
-		Note:      "与漫游切片碰撞诞生",
+		Note:      "和别人的想法碰撞生成",
 		CreatedAt: now,
 	})
 	return hybrid, res, nil

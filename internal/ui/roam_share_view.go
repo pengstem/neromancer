@@ -43,8 +43,8 @@ func (a *App) renderPosterStudioSection(c *ui.Context, pal SurfacePalette, phase
 
 	ui.Column(c).FillWidth().Gap(12).Children(func() {
 		ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "记忆胶囊与海报").FontSize(18).Bold().TextColor(pal.Ink).Grow(1).MinWidth(0)
-			if PillAction(c, "roam_import_capsule", IconUpload, "导入胶囊", false).Clicked() {
+			ui.Text(c, "分享卡片").FontSize(18).Bold().TextColor(pal.Ink).Grow(1).MinWidth(0)
+			if PillAction(c, "roam_import_capsule", IconUpload, "导入备份", false).Clicked() {
 				mygo.Haptics.Light()
 				a.importCapsuleAsync()
 			}
@@ -54,8 +54,8 @@ func (a *App) renderPosterStudioSection(c *ui.Context, pal SurfacePalette, phase
 			ui.Column(c).FillWidth().Padding(24).Center().Gap(8).Radius(16).
 				Background(pal.Card).Border(1, pal.Border).
 				Children(func() {
-					ui.Text(c, "暂无可展出的记忆球").FontSize(14).Bold().TextColor(pal.Ink)
-					ui.Text(c, "记下一条灵感或导入他人分享的胶囊即可生成海报。").
+					ui.Text(c, "还没有可分享的灵感").FontSize(14).Bold().TextColor(pal.Ink)
+					ui.Text(c, "先记下一条灵感，就能生成分享海报了。").
 						FontSize(12).TextColor(pal.InkSecondary).TextAlign(ui.Center)
 				})
 			return
@@ -65,15 +65,15 @@ func (a *App) renderPosterStudioSection(c *ui.Context, pal SurfacePalette, phase
 			opts := nodeSelectOptions(a.Nodes)
 			selectedID := targetNode.ID
 			ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "选择记忆球").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary).Shrink(0)
-				if atelierSelect(c, pal, "roam_poster_node_select", "选择记忆球", &selectedID, opts) {
+				ui.Text(c, "选一条灵感").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary).Shrink(0)
+				if atelierSelect(c, pal, "roam_poster_node_select", "选一条灵感", &selectedID, opts) {
 					a.ShareNodeID = selectedID
 				}
 			})
 		}
 
 		orbPal := ColorsForTheme(targetNode.Theme)
-		softTint, badgeBg, badgeText := mindOrbSurface(pal, a.DarkMode, targetNode.Theme)
+		softTint, badgeBg, badgeText := mindOrbSurface(pal, targetNode.Theme)
 
 		// Framed Live Poster Preview card
 		ui.Column(c).FillWidth().Padding(14).Radius(18).
@@ -90,7 +90,7 @@ func (a *App) renderPosterStudioSection(c *ui.Context, pal SurfacePalette, phase
 					}).
 					Children(func() {
 						ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Children(func() {
-							ui.Text(c, "NEROMANCER  /  MEMORY ORB").
+							ui.Text(c, "NEROMANCER").
 								FontSize(9.5).FontWeight(600).LetterSpacing(1.4).
 								TextColor(badgeText).SingleLine().MinWidth(0)
 							ui.Text(c, targetNode.Stage.Label()).
@@ -132,7 +132,7 @@ func (a *App) renderPosterStudioSection(c *ui.Context, pal SurfacePalette, phase
 
 						dateStr := formatPosterDate(targetNode.UpdatedAt)
 						ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Gap(8).Children(func() {
-							ui.Textf(c, "%d 份原始证据", evCount).FontSize(10.5).TextColor(pal.InkMuted)
+							ui.Textf(c, "%d 条原记录", evCount).FontSize(10.5).TextColor(pal.InkMuted)
 							ui.Text(c, dateStr).FontSize(10.5).FontFeatures("tnum").TextColor(pal.InkMuted)
 						})
 					})
@@ -145,7 +145,7 @@ func (a *App) renderPosterStudioSection(c *ui.Context, pal SurfacePalette, phase
 			if PillAction(c, "roam_system_share", IconShare, "系统分享", false).Clicked() {
 				a.exportAndMaybeSharePNG(targetNode, true)
 			}
-			if PillAction(c, "roam_export_capsule", IconArchive, "导出胶囊", false).Clicked() {
+			if PillAction(c, "roam_export_capsule", IconArchive, "导出备份", false).Clicked() {
 				a.exportOrbCapsule(targetNode.ID)
 			}
 		})
@@ -165,9 +165,7 @@ func (a *App) renderPosterStudioSection(c *ui.Context, pal SurfacePalette, phase
 func (a *App) renderRoamSlicesSection(c *ui.Context, pal SurfacePalette, phase float32, phone bool) {
 	ui.Column(c).FillWidth().Gap(12).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, "他人灵感切片").FontSize(17).Bold().TextColor(pal.Ink)
-			ui.Text(c, "只读").FontSize(10.5).FontWeight(600).Padding(2, 8).Radius(999).
-				Background(pal.SoftPanel).TextColor(pal.InkSecondary).Shrink(0)
+			ui.Text(c, "逛逛别人的想法").FontSize(17).Bold().TextColor(pal.Ink)
 		})
 
 		if len(a.Nodes) > 0 {
@@ -177,8 +175,8 @@ func (a *App) renderRoamSlicesSection(c *ui.Context, pal SurfacePalette, phase f
 				targetID = a.Nodes[0].ID
 			}
 			ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "碰撞对象").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary).Shrink(0)
-				if atelierSelect(c, pal, "roam_collision_select", "选择碰撞对象", &targetID, opts) {
+				ui.Text(c, "和我的这条碰撞").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary).Shrink(0)
+				if atelierSelect(c, pal, "roam_collision_select", "选择一条自己的灵感", &targetID, opts) {
 					a.CollisionTargetID = targetID
 				}
 			})
@@ -188,7 +186,7 @@ func (a *App) renderRoamSlicesSection(c *ui.Context, pal SurfacePalette, phase f
 			ui.Column(c).FillWidth().Padding(24).Center().Gap(6).Radius(16).
 				Background(pal.Card).Border(1, pal.Border).
 				Children(func() {
-					ui.Text(c, "暂无可漫游切片").FontSize(14).Bold().TextColor(pal.Ink)
+					ui.Text(c, "暂时没有新的灵感卡片").FontSize(14).Bold().TextColor(pal.Ink)
 				})
 			return
 		}
@@ -197,7 +195,7 @@ func (a *App) renderRoamSlicesSection(c *ui.Context, pal SurfacePalette, phase f
 			for idx, rs := range a.RoamSlices {
 				item := rs
 				orbPal := ColorsForTheme(item.Theme)
-				_, badgeBg, badgeText := mindOrbSurface(pal, a.DarkMode, item.Theme)
+				_, badgeBg, badgeText := mindOrbSurface(pal, item.Theme)
 
 				card := ui.Column(c).Key("roam_"+item.ID).Padding(16).Gap(10).Radius(16).
 					Background(pal.Card).Border(1, pal.Border)
@@ -257,12 +255,12 @@ func (a *App) triggerRoamCollision(item domain.RoamSlice, isPhone bool) {
 		targetID = a.Nodes[0].ID
 	}
 	if targetID == "" {
-		a.setErrorBanner("先记下一颗自己的记忆球再发起碰撞")
+		a.setErrorBanner("先记下一条自己的灵感，再来碰撞吧")
 		return
 	}
 	mygo.Haptics.Medium()
 	roamCopy := item
-	a.RunAsync("正在将两条灵感碰撞融合…", func(ctx context.Context) error {
+	a.RunAsync("正在把两条想法放在一起碰撞…", func(ctx context.Context) error {
 		hybrid, _, err := a.Deps.Incubate.CollideWithRoam(ctx, targetID, roamCopy)
 		if err != nil {
 			return err
@@ -274,7 +272,7 @@ func (a *App) triggerRoamCollision(item domain.RoamSlice, isPhone bool) {
 			} else {
 				a.ActiveSpace = SpaceMind
 			}
-			a.setBanner(fmt.Sprintf("碰撞生成新记忆球：《%s》", hybrid.Title))
+			a.setBanner(fmt.Sprintf("碰撞出了新想法：《%s》", hybrid.Title))
 		})
 		return nil
 	})
@@ -288,7 +286,7 @@ func (a *App) exportOrbCapsule(nodeID string) {
 	}
 	mygo.Haptics.Success()
 	a.LastExportedPath = p
-	a.setBanner("已导出便携灵感胶囊（含原始证据）：" + p)
+	a.setBanner("已导出灵感备份：" + p)
 }
 
 func (a *App) exportAndMaybeSharePNG(node domain.IdeaNode, openShareSheet bool) {
@@ -301,14 +299,14 @@ func (a *App) exportAndMaybeSharePNG(node domain.IdeaNode, openShareSheet bool) 
 	a.LastExportedPath = p
 	if openShareSheet {
 		if err := mygo.Share(mygo.ShareOptions{
-			Text:  fmt.Sprintf("Neromancer 记忆球：《%s》", node.Title),
+			Text:  fmt.Sprintf("分享一条灵感：《%s》", node.Title),
 			Files: []string{p},
 		}); err != nil {
-			a.setBanner("海报已保存至本地：" + p)
+			a.setBanner("海报已保存到本地：" + p)
 			return
 		}
 	}
-	a.setBanner("已导出记忆球海报：" + p)
+	a.setBanner("已导出分享海报：" + p)
 }
 
 func (a *App) renderShareModal(c *ui.Context) {
@@ -324,19 +322,19 @@ func (a *App) renderShareModal(c *ui.Context) {
 	mobile.Sheet(c, &a.ShareModalOpen, mobile.SheetOptions{
 		Detents:    []float32{0.68, 0.90},
 		Background: &sheetBg,
-		Label:      "记忆胶囊与海报",
+		Label:      "分享海报",
 	}, func() {
 		if !ok {
 			return
 		}
 		orbPal := ColorsForTheme(node.Theme)
-		softTint, badgeBg, badgeText := mindOrbSurface(pal, a.DarkMode, node.Theme)
+		softTint, badgeBg, badgeText := mindOrbSurface(pal, node.Theme)
 		evCount := a.EvCounts[node.ID]
 
 		ui.Scroll(c).Fill().Children(func() {
 			ui.Column(c).FillWidth().Padding(18).Gap(14).Children(func() {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, "记忆球展签").FontSize(17).Bold().TextColor(pal.Ink).Grow(1).MinWidth(0)
+					ui.Text(c, "分享海报").FontSize(17).Bold().TextColor(pal.Ink).Grow(1).MinWidth(0)
 					if PillAction(c, "share_modal_close", IconClose, "关闭", false).Clicked() {
 						a.ShareModalOpen = false
 					}
@@ -353,7 +351,7 @@ func (a *App) renderShareModal(c *ui.Context) {
 					Center().
 					Children(func() {
 						ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-							ui.Text(c, "NEROMANCER  /  MEMORY ORB").
+							ui.Text(c, "NEROMANCER").
 								FontSize(9.5).FontWeight(600).LetterSpacing(1.2).TextColor(badgeText)
 							ui.Text(c, node.Stage.Label()).FontSize(10).FontWeight(600).
 								Padding(2, 8).Radius(999).Background(badgeBg).TextColor(badgeText)
@@ -367,12 +365,12 @@ func (a *App) renderShareModal(c *ui.Context) {
 						if capText := strings.TrimSpace(node.Visual.Caption); capText != "" {
 							ui.Text(c, capText).FontSize(11).Italic().TextColor(pal.InkMuted).TextAlign(ui.Center)
 						}
-						ui.Textf(c, "%d 份原始证据 · %s", evCount, formatPosterDate(node.UpdatedAt)).
+						ui.Textf(c, "%d 条原记录 · %s", evCount, formatPosterDate(node.UpdatedAt)).
 							FontSize(10.5).FontFeatures("tnum").TextColor(pal.InkMuted)
 					})
 
 				ui.Row(c).FillWidth().Wrap().Justify(ui.End).Gap(8).Children(func() {
-					if PillAction(c, "share_modal_capsule", IconArchive, "导出胶囊", false).Clicked() {
+					if PillAction(c, "share_modal_capsule", IconArchive, "导出备份", false).Clicked() {
 						a.ShareModalOpen = false
 						a.exportOrbCapsule(node.ID)
 					}
@@ -390,8 +388,8 @@ func (a *App) importCapsuleAsync() {
 	go func() {
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 			Parent:  a.MainWin,
-			Title:   "导入 .orb.json 灵感胶囊",
-			Filters: []mygo.FileFilter{{Name: "Orb Capsule", Extensions: []string{"json"}}},
+			Title:   "选择灵感备份文件 (.orb.json)",
+			Filters: []mygo.FileFilter{{Name: "Orb Backup", Extensions: []string{"json"}}},
 		})
 		if err != nil || len(paths) == 0 {
 			return
@@ -406,20 +404,20 @@ func (a *App) importCapsuleAsync() {
 			a.SelectNode(node.ID)
 			a.ActiveSpace = SpaceMind
 			a.DetailSheetOpen = true
-			a.setBanner("已导入灵感胶囊并保留原始证据：《" + node.Title + "》")
+			a.setBanner("已导入灵感：《" + node.Title + "》")
 		})
 	}()
 }
 
 // RenderSharePoster renders a 600x820 @ 2x (1200x1640) museum-grade archival PNG exhibition poster.
 func RenderSharePoster(node domain.IdeaNode, evCount int) *image.RGBA {
-	paperPal := PaletteForMode(false)
+	paperPal := DefaultPalette()
 	orbPal := ColorsForTheme(node.Theme)
 	frameRule := ui.Hex("#D4CBB9")
 	bottomWash := ui.Hex("#FCF9F4").MixOklab(orbPal.CardTint, 0.88)
 
 	return ui.Render(func(c *ui.Context) {
-		ui.Themed(c, NeromancerThemeFor(false)).Fill().Children(func() {
+		ui.Themed(c, NeromancerTheme()).Fill().Children(func() {
 			ui.Column(c).Fill().Padding(20).
 				LinearGradient(ui.LinearGradient{
 					From:  ui.Hex("#FCF9F4"),
@@ -431,7 +429,7 @@ func RenderSharePoster(node domain.IdeaNode, evCount int) *image.RGBA {
 					ui.Column(c).Fill().Border(1, frameRule).Padding(28, 34, 24, 34).
 						Gap(14).AlignItems(ui.Center).
 						Children(func() {
-							ui.Text(c, "NEROMANCER  /  MEMORY ORB").
+							ui.Text(c, "NEROMANCER").
 								FontSize(10.5).FontWeight(600).LetterSpacing(2.2).
 								TextColor(orbPal.BadgeText).SingleLine()
 
@@ -468,7 +466,7 @@ func RenderSharePoster(node domain.IdeaNode, evCount int) *image.RGBA {
 
 							ui.Box(c).FillWidth().Height(1).Background(frameRule.Alpha(0.85))
 
-							ui.Textf(c, "%s  ·  %d 份原始证据  ·  %s",
+							ui.Textf(c, "%s  ·  %d 条原记录  ·  %s",
 								node.Stage.Label(), evCount, formatPosterDate(node.UpdatedAt)).
 								FontSize(11).FontFeatures("tnum").LetterSpacing(0.6).
 								TextColor(paperPal.InkMuted).TextAlign(ui.Center)

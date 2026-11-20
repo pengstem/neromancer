@@ -42,20 +42,20 @@ func (a *App) renderDetailContent(c *ui.Context) {
 			ui.Box(c).Size(44, 44).Draw(func(p *ui.Painter, r ui.Rect) {
 				DrawAnimatedMemoryOrb(p, r, domain.ThemeSky, 0.72, phase, 0.5, "orbit", false)
 			})
-			ui.Text(c, "轻触记忆球展开详情").FontSize(16).Bold().TextColor(pal.Ink)
-			ui.Text(c, "口语整理、阶段演化与原始记录会留在这里。").
+			ui.Text(c, "点选一条灵感查看详情").FontSize(16).Bold().TextColor(pal.Ink)
+			ui.Text(c, "整理后的摘要、追问和最初的原记录都在这里。").
 				FontSize(13).TextColor(pal.InkSecondary).TextAlign(ui.Center)
 		})
 		return
 	}
 
 	orbPal := ColorsForTheme(node.Theme)
-	softTint, badgeBg, badgeText := mindOrbSurface(pal, a.DarkMode, node.Theme)
+	softTint, badgeBg, badgeText := mindOrbSurface(pal, node.Theme)
 	evCount := len(a.SelectedEvidences)
 
 	ui.Scroll(c).TrackScroll(&a.DetailScroll).Grow(1).Basis(0).MinHeight(0).FillWidth().Children(func() {
 		ui.Column(c).FillWidth().Padding(16, 18, 112, 18).Gap(18).Children(func() {
-			// Top Identity Hero: 56px animated shader orb + 20px Bold Title + weight/stage caption
+			// Top Identity Hero: 56px animated shader orb + 20px Bold Title + stage/records caption
 			ui.Row(c).FillWidth().Gap(14).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(56, 56).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 					DrawAnimatedMemoryOrb(p, r, node.Theme, node.Weight, phase, float32(node.Visual.Energy), node.Visual.MotifType, true)
@@ -66,23 +66,23 @@ func (a *App) renderDetailContent(c *ui.Context) {
 						ui.Box(c).Size(6, 6).Radius(99).Background(orbPal.Rim).Shrink(0)
 						ui.Text(c, node.Stage.Label()).FontSize(12).FontWeight(600).TextColor(badgeText)
 						ui.Text(c, "·").FontSize(12).TextColor(pal.InkMuted)
-						ui.Textf(c, "权重 %.0f%%", node.Weight*100).FontSize(12).TextColor(pal.InkMuted)
+						ui.Textf(c, "%d 条原记录", evCount).FontSize(12).TextColor(pal.InkMuted)
 					})
 				})
 			})
 
-			// Crisp Top Action Bar: "原始证据" (with count pill) & "分享"
+			// Crisp Top Action Bar: "原始记录" (with count pill) & "分享"
 			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 				evBtn := ui.ButtonBase(c).Key("detail_raw_ev").
 					Padding(8, 13).Radius(999).Gap(7).AlignItems(ui.Center).Shrink(0).
-					Background(pal.Accent).Cursor(ui.CursorPointer).Label("原始证据")
+					Background(pal.Accent).Cursor(ui.CursorPointer).Label("原始记录")
 				mobile.Ink(evBtn)
 				evBtn.OnClick(func() {
 					mygo.Haptics.Selection()
 					a.EvidenceModalOpen = true
 				}).Children(func() {
 					ui.Icon(c, IconArchive).FontSize(14).TextColor(pal.AccentText)
-					ui.Text(c, "原始证据").FontSize(13).FontWeight(600).TextColor(pal.AccentText).SingleLine()
+					ui.Text(c, "原始记录").FontSize(13).FontWeight(600).TextColor(pal.AccentText).SingleLine()
 					ui.Textf(c, "%d", evCount).FontSize(11).FontWeight(700).
 						Padding(1, 6).Radius(999).
 						Background(pal.AccentText.Alpha(0.18)).TextColor(pal.AccentText).SingleLine()
@@ -161,11 +161,11 @@ func (a *App) renderStageStepper(c *ui.Context, pal SurfacePalette, orbPal OrbCo
 						return
 					}
 					mygo.Haptics.Selection()
-					_, _, err := a.Deps.Organize.AdvanceStage(node.ID, stage, "手动推进生命周期")
+					_, _, err := a.Deps.Organize.AdvanceStage(node.ID, stage, "手动切换阶段")
 					if err != nil {
 						a.setErrorBanner(err.Error())
 					} else {
-						a.setBanner(fmt.Sprintf("已推进至「%s」并留存阶段快照", lbl))
+						a.setBanner(fmt.Sprintf("已切换到「%s」阶段", lbl))
 						_ = a.ReloadVault()
 					}
 				}).Children(func() {
@@ -237,7 +237,7 @@ func (a *App) renderGuidingQuestionsSection(c *ui.Context, pal SurfacePalette, a
 			ui.Text(c, "再想一步").FontSize(14).Bold().TextColor(pal.Ink).Grow(1)
 			if PillAction(c, "detail_refresh_q", IconRefresh, "换个角度", false).Shrink(0).Clicked() {
 				nodeID := node.ID
-				a.RunAsync("DeepSeek 正在构思追问…", func(ctx context.Context) error {
+				a.RunAsync("正在想几个新角度…", func(ctx context.Context) error {
 					_, err := a.Deps.Incubate.RefreshGuidingQuestions(ctx, nodeID)
 					return err
 				})
@@ -245,7 +245,7 @@ func (a *App) renderGuidingQuestionsSection(c *ui.Context, pal SurfacePalette, a
 		})
 
 		if len(node.GuidingQuestions) == 0 {
-			ui.Text(c, "尚未生成追问，轻触右上角可顺着你的切入点发散。").
+			ui.Text(c, "还没有追问，点右上角「换个角度」让 AI 陪你往下想。").
 				FontSize(13).LineHeight(1.5).TextColor(pal.InkSecondary).
 				Padding(12, 14).Radius(12).Background(pal.SoftPanel.Alpha(0.55))
 			return
@@ -277,7 +277,7 @@ func (a *App) renderActionPlanSection(c *ui.Context, pal SurfacePalette, node do
 				})
 				if PillAction(c, "detail_ai_plan", IconSpark, "AI 帮忙", true).Shrink(0).Clicked() {
 					nodeID := node.ID
-					a.RunAsync("DeepSeek 正在拆解可执行方案…", func(ctx context.Context) error {
+					a.RunAsync("正在帮你整理行动步骤…", func(ctx context.Context) error {
 						_, err := a.Deps.Incubate.GenerateActionPlan(ctx, nodeID)
 						return err
 					})
@@ -294,13 +294,13 @@ func (a *App) renderActionPlanSection(c *ui.Context, pal SurfacePalette, node do
 func (a *App) renderStageTimeline(c *ui.Context, pal SurfacePalette, badgeBg, badgeText ui.Color, orbPal OrbColorSet) {
 	ui.Column(c).FillWidth().Gap(10).Children(func() {
 		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "演进轨迹").FontSize(14).Bold().TextColor(pal.Ink)
+			ui.Text(c, "变化记录").FontSize(14).Bold().TextColor(pal.Ink)
 			ui.Textf(c, "%d", len(a.SelectedSnapshots)).FontSize(11).FontWeight(600).
 				Padding(1, 7).Radius(999).Background(pal.SoftPanel).TextColor(pal.InkSecondary)
 		})
 
 		if len(a.SelectedSnapshots) == 0 {
-			ui.Text(c, "推进阶段或归并记录时会自动留存快照。").
+			ui.Text(c, "每次合并新想法或切换阶段，都会记在这里。").
 				FontSize(12).TextColor(pal.InkMuted)
 			return
 		}
@@ -354,18 +354,18 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 	mobile.Sheet(c, &a.EvidenceModalOpen, mobile.SheetOptions{
 		Detents:    []float32{0.94, 0.78},
 		Background: &sheetBg,
-		Label:      "原始证据档案",
+		Label:      "原始记录",
 	}, func() {
 		if !ok {
 			return
 		}
 		ui.Column(c).Grow(1).Basis(0).MinHeight(0).FillWidth().Padding(14, 18, 16, 18).Gap(10).Children(func() {
-			// Header: "原始证据" + count + "关闭"
+			// Header: "原始记录" + count + "关闭"
 			ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 						ui.Icon(c, IconArchive).FontSize(16).TextColor(pal.Accent)
-						ui.Text(c, "原始证据").FontSize(18).Bold().TextColor(pal.Ink)
+						ui.Text(c, "原始记录").FontSize(18).Bold().TextColor(pal.Ink)
 						ui.Textf(c, "%d 条", len(a.SelectedEvidences)).FontSize(11).FontWeight(600).
 							Padding(2, 8).Radius(999).Background(pal.SoftPanel).TextColor(pal.InkSecondary)
 					})
@@ -432,7 +432,7 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 												if err := a.Deps.Media.PlayAudio(item.AudioPath); err != nil {
 													a.setErrorBanner(err.Error())
 												} else {
-													a.setBanner("正在播放当时录下的原始声音片段")
+													a.setBanner("正在播放当时的录音")
 												}
 											}
 
@@ -470,8 +470,8 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 			// Append-only composer row
 			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.TextInput(c, &a.AppendEvidenceText).
-					Placeholder("补充一条原始证据到本灵感…").Grow(1)
-				if PillAction(c, "ev_append", IconPlus, "追加", true).Shrink(0).Clicked() && strings.TrimSpace(a.AppendEvidenceText) != "" {
+					Placeholder("再补一句当时的想法…").Grow(1)
+				if PillAction(c, "ev_append", IconPlus, "补充", true).Shrink(0).Clicked() && strings.TrimSpace(a.AppendEvidenceText) != "" {
 					text := a.AppendEvidenceText
 					a.AppendEvidenceText = ""
 					_, err := a.Deps.Capture.CaptureQuick(context.Background(), service.QuickCaptureInput{
@@ -484,7 +484,7 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 					} else {
 						mygo.Haptics.Success()
 						_ = a.ReloadVault()
-						a.setBanner("已追加并原样留存一条新的原始证据")
+						a.setBanner("已补上一条新记录")
 					}
 				}
 			})
@@ -497,11 +497,11 @@ func detailModalityMeta(modality string) (*ui.SVG, string) {
 	case "voice":
 		return IconMic, "语音"
 	case "image":
-		return IconImage, "图像"
+		return IconImage, "图片"
 	case "sketch":
 		return IconQuill, "涂鸦"
 	default:
-		return IconArchive, "速记"
+		return IconArchive, "文字"
 	}
 }
 

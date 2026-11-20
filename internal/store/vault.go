@@ -345,7 +345,7 @@ func (s *Store) SearchAssociativeRecall(query string, limit int) ([]domain.Recal
 			evs, _ := s.ListEvidencesByNode(node.ID)
 			for _, ev := range evs {
 				if containsAnyToken(ev.RawText, tokens) || containsAnyToken(ev.Scene.Location, tokens) {
-					reason = "关联原始证据"
+					reason = "原记录里提过"
 					matchedText = ev.RawText
 					break
 				}
@@ -547,7 +547,7 @@ func containsAnyToken(text string, tokens []string) bool {
 
 func matchNode(node domain.IdeaNode, tokens []string) (reason, excerpt string) {
 	if containsAnyToken(node.Title, tokens) {
-		return "标题关联", node.Title
+		return "标题提到", node.Title
 	}
 	for _, tag := range node.Tags {
 		if containsAnyToken(tag, tokens) {
@@ -555,7 +555,7 @@ func matchNode(node domain.IdeaNode, tokens []string) (reason, excerpt string) {
 		}
 	}
 	if containsAnyToken(node.ConversationalSummary, tokens) {
-		return "摘要呼应", node.ConversationalSummary
+		return "内容提到", node.ConversationalSummary
 	}
 	return "", ""
 }

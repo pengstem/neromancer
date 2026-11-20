@@ -198,7 +198,7 @@ func (s *Store) SeedIfEmpty() error {
 			Stage:     domain.StageSpark,
 			Title:     "买一盆郁金香放在阳台上养",
 			Summary:   "散步经过花店时的第一句随口语音。",
-			Note:      "初次捕捉：语音录入",
+			Note:      "最初记下的一段语音",
 			CreatedAt: now.Add(-48 * time.Hour),
 		},
 		{
@@ -206,8 +206,8 @@ func (s *Store) SeedIfEmpty() error {
 			NodeID:    "orb_tulip",
 			Stage:     domain.StageSprouting,
 			Title:     "用一个蓝色花瓶养一株郁金香",
-			Summary:   "Agent 识别与半小时前的花瓶配色闪念同源，自动去重归并为一条完整生活灵感，同时保留两条原始证据。",
-			Note:      "AI 自动去重归并（2 条原始证据）",
+			Summary:   "和半小时前关于花瓶颜色的想法合在了一起，两条最初的记录都原样留着。",
+			Note:      "AI 自动合并了 2 条相关记录",
 			CreatedAt: now.Add(-47 * time.Hour),
 		},
 	}

@@ -98,11 +98,11 @@ func (s *ShareService) ExportCapsule(nodeID string) (string, error) {
 func (s *ShareService) ImportCapsuleFile(path string) (domain.IdeaNode, error) {
 	raw, err := os.ReadFile(strings.TrimSpace(path))
 	if err != nil {
-		return domain.IdeaNode{}, fmt.Errorf("读取灵感胶囊失败: %w", err)
+		return domain.IdeaNode{}, fmt.Errorf("读取备份文件失败: %w", err)
 	}
 	var capsule domain.OrbCapsule
 	if err := json.Unmarshal(raw, &capsule); err != nil {
-		return domain.IdeaNode{}, fmt.Errorf("解析 .orb.json 胶囊失败: %w", err)
+		return domain.IdeaNode{}, fmt.Errorf("备份文件格式不正确: %w", err)
 	}
 	return s.store.ImportOrbCapsule(capsule)
 }

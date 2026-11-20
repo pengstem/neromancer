@@ -109,8 +109,8 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	tt := ui.NewTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
-	// 1. Showcase Day + Orb Field + Frosted Dock
-	for _, want := range []string{"星海", "思维空间", "漫游分享", "记灵感"} {
+	// 1. Showcase + Orb Field + Frosted Dock
+	for _, want := range []string{"灵感", "整理", "漫游", "记灵感"} {
 		if !tt.HasText(want) {
 			t.Fatalf("showcase missing dock label %q", want)
 		}
@@ -118,27 +118,13 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if _, ok := tt.Find("语音速记"); !ok {
 		t.Fatalf("showcase missing dock voice button labeled \"语音速记\"")
 	}
-	assertAuditNoEmojis(t, "showcase_day", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_showcase_day.png")
-
-	// 2. Showcase Night Observatory via DarkMode toggle
-	if err := tt.Click("夜间模式"); err != nil {
-		t.Fatalf("click night mode: %v", err)
+	if _, ok := tt.Find("夜间模式"); ok {
+		t.Fatalf("expected dark mode toggle \"夜间模式\" to be removed")
 	}
-	settleAudit(tt)
-	if !app.DarkMode {
-		t.Fatalf("expected DarkMode=true after toggle")
-	}
-	assertAuditNoEmojis(t, "showcase_night", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_showcase_night.png")
+	assertAuditNoEmojis(t, "showcase", tt.Texts())
+	saveAuditPNG(t, auditDir, tt.Image(), "ui_showcase.png")
 
-	// Restore Day Mode for daylight atelier screenshots.
-	if err := tt.Click("夜间模式"); err != nil {
-		t.Fatalf("restore day mode: %v", err)
-	}
-	settleAudit(tt)
-
-	// 3. Voice-First Capture Sheet open via dock "语音速记"
+	// 2. Voice-First Capture Sheet open via dock "语音速记"
 	if err := tt.Click("语音速记"); err != nil {
 		t.Fatalf("click voice capture dock button: %v", err)
 	}
@@ -146,7 +132,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if !app.CaptureModalOpen || app.CaptureModalityIdx != 0 {
 		t.Fatalf("expected CaptureModalOpen=true and CaptureModalityIdx=0, got open=%v idx=%d", app.CaptureModalOpen, app.CaptureModalityIdx)
 	}
-	if !tt.HasText("记下此刻") || !tt.HasText("收入星海") || !tt.HasText("轻触说话") {
+	if !tt.HasText("记一条灵感") || !tt.HasText("记下来") || !tt.HasText("点一下开始说话") {
 		t.Fatalf("capture voice sheet missing expected labels, texts=%v", tt.Texts())
 	}
 	assertAuditNoEmojis(t, "capture_voice", tt.Texts())
@@ -158,7 +144,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	}
 	settleAudit(tt)
 	assertAuditNoEmojis(t, "capture_text", tt.Texts())
-	if err := tt.Click("画面"); err != nil {
+	if err := tt.Click("图片"); err != nil {
 		t.Fatalf("switch capture tab to image: %v", err)
 	}
 	settleAudit(tt)
@@ -169,7 +155,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	settleAudit(tt)
 
 	// 4. Mind Space Outline view
-	if err := tt.Click("思维空间"); err != nil {
+	if err := tt.Click("整理"); err != nil {
 		t.Fatalf("switch to mind space: %v", err)
 	}
 	settleAudit(tt)
@@ -179,8 +165,8 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	assertAuditNoEmojis(t, "mind_outline", tt.Texts())
 	saveAuditPNG(t, auditDir, tt.Image(), "ui_mind_outline.png")
 
-	// 5. Mind Space Constellation Graph view via "切换组织视图"
-	if err := tt.Click("切换组织视图"); err != nil {
+	// 5. Mind Space Constellation Graph view via "切换视图"
+	if err := tt.Click("切换视图"); err != nil {
 		t.Fatalf("cycle mind org mode to graph: %v", err)
 	}
 	settleAudit(tt)
@@ -191,7 +177,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	saveAuditPNG(t, auditDir, tt.Image(), "ui_mind_constellation.png")
 
 	// Cycle to Scene Cards to verify zero emojis there as well, then back to Outline.
-	if err := tt.Click("切换组织视图"); err != nil {
+	if err := tt.Click("切换视图"); err != nil {
 		t.Fatalf("cycle mind org mode to cards: %v", err)
 	}
 	settleAudit(tt)
@@ -199,7 +185,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		t.Fatalf("expected OrgCards, got %v", app.MindOrgMode)
 	}
 	assertAuditNoEmojis(t, "mind_cards", tt.Texts())
-	if err := tt.Click("切换组织视图"); err != nil {
+	if err := tt.Click("切换视图"); err != nil {
 		t.Fatalf("cycle mind org mode back to outline: %v", err)
 	}
 	settleAudit(tt)
@@ -212,14 +198,14 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if !app.DetailSheetOpen || app.SelectedID != "orb_tulip" {
 		t.Fatalf("expected tulip detail sheet open, open=%v id=%s", app.DetailSheetOpen, app.SelectedID)
 	}
-	if !tt.HasText("原始证据") || !tt.HasText("AI 帮忙") {
+	if !tt.HasText("原始记录") || !tt.HasText("AI 帮忙") {
 		t.Fatalf("detail sheet missing expected action labels, texts=%v", tt.Texts())
 	}
 	assertAuditNoEmojis(t, "detail_sheet", tt.Texts())
 	saveAuditPNG(t, auditDir, tt.Image(), "ui_detail_sheet.png")
 
 	// 7. Raw Evidence tape with audio waveform bars & immutable tulip quotes
-	if err := tt.Click("原始证据"); err != nil {
+	if err := tt.Click("原始记录"); err != nil {
 		t.Fatalf("click raw evidence button: %v", err)
 	}
 	settleAudit(tt)
@@ -232,8 +218,8 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if !tt.HasText("播放原声") || !tt.HasText("关闭") {
 		t.Fatalf("raw evidence sheet missing audio/close controls, texts=%v", tt.Texts())
 	}
-	if r, ok := tt.Find("追加"); !ok || r.Y+r.H > 892 {
-		t.Fatalf("raw evidence append composer \"追加\" clipped/off-screen: ok=%v rect=%+v", ok, r)
+	if r, ok := tt.Find("补充"); !ok || r.Y+r.H > 892 {
+		t.Fatalf("raw evidence append composer \"补充\" clipped/off-screen: ok=%v rect=%+v", ok, r)
 	}
 	assertAuditNoEmojis(t, "raw_evidence", tt.Texts())
 	saveAuditPNG(t, auditDir, tt.Image(), "ui_raw_evidence.png")
@@ -246,7 +232,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	settleAudit(tt)
 
 	// Verify Sleep & Settings modals also contain zero emojis.
-	if err := tt.Click("睡眠孵化"); err != nil {
+	if err := tt.Click("灵感串联"); err != nil {
 		t.Fatalf("open sleep modal: %v", err)
 	}
 	settleAudit(tt)
@@ -267,15 +253,15 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	settleAudit(tt)
 
 	// 8. Roam & Poster Studio view
-	if err := tt.Click("漫游分享"); err != nil {
+	if err := tt.Click("漫游"); err != nil {
 		t.Fatalf("switch to roam view: %v", err)
 	}
 	settleAudit(tt)
 	if app.ActiveSpace != SpaceRoam {
 		t.Fatalf("expected SpaceRoam, got %v", app.ActiveSpace)
 	}
-	if !tt.HasText("选择记忆球") {
-		t.Fatalf("expected \"选择记忆球\" selector label, texts=%v", tt.Texts())
+	if !tt.HasText("选一条灵感") {
+		t.Fatalf("expected \"选一条灵感\" selector label, texts=%v", tt.Texts())
 	}
 	if _, ok := tt.Find("分享海报"); !ok {
 		t.Fatalf("expected dock action \"分享海报\" in roam view, texts=%v", tt.Texts())

@@ -27,7 +27,7 @@ const maxASRBytes = 8 * 1024 * 1024 // DeepSeek /v1/tools/asr max 8 MiB
 
 var (
 	// ErrMissingAPIKey indicates the user has not configured a DeepSeek API key yet.
-	ErrMissingAPIKey = errors.New("尚未配置 DeepSeek API Key，请先在右上角「⚙️ DeepSeek 设置」中填入")
+	ErrMissingAPIKey = errors.New("还没填写 DeepSeek API Key，点右上角「DeepSeek 设置」填一下就能用了")
 )
 
 // NodeDigest gives the organizer compact context of existing orbs without inflating token usage.
@@ -144,11 +144,7 @@ func (c *Client) TestConnection(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("解析 DeepSeek 模型列表失败: %w", err)
 	}
 
-	var ids []string
-	for _, m := range list.Data {
-		ids = append(ids, m.ID)
-	}
-	return fmt.Sprintf("连接成功！当前选用模型：%s（可用模型：%s）", model, strings.Join(ids, ", ")), nil
+	return fmt.Sprintf("连接成功！当前模型：%s", model), nil
 }
 
 // TranscribeAudio calls POST /v1/tools/asr with a 16-bit PCM WAV or Ogg Opus file (<= 8 MiB).
@@ -159,15 +155,15 @@ func (c *Client) TranscribeAudio(ctx context.Context, audioPath string) (*ASRRes
 	}
 	info, err := os.Stat(audioPath)
 	if err != nil {
-		return nil, fmt.Errorf("读取音频文件失败: %w", err)
+		return nil, fmt.Errorf("读取录音文件失败: %w", err)
 	}
 	if info.Size() > maxASRBytes {
-		return nil, fmt.Errorf("音频文件超过 DeepSeek ASR 8 MiB 限制（当前 %.2f MiB）", float64(info.Size())/(1024*1024))
+		return nil, fmt.Errorf("录音文件太大了（%.1f MB），请控制在 8 MB 以内", float64(info.Size())/(1024*1024))
 	}
 
 	f, err := os.Open(audioPath)
 	if err != nil {
-		return nil, fmt.Errorf("打开音频文件失败: %w", err)
+		return nil, fmt.Errorf("打开录音文件失败: %w", err)
 	}
 	defer f.Close()
 
@@ -193,7 +189,7 @@ func (c *Client) TranscribeAudio(ctx context.Context, audioPath string) (*ASRRes
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("请求 DeepSeek ASR 失败: %w", err)
+		return nil, fmt.Errorf("语音转文字失败: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -204,7 +200,7 @@ func (c *Client) TranscribeAudio(ctx context.Context, audioPath string) (*ASRRes
 
 	var out ASRResult
 	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("解析 DeepSeek ASR 响应失败: %w", err)
+		return nil, fmt.Errorf("读取语音转写结果失败: %w", err)
 	}
 	out.Text = strings.TrimSpace(out.Text)
 	return &out, nil
@@ -235,7 +231,7 @@ func (c *Client) IngestAndOrganize(ctx context.Context, ev domain.RawEvidence, c
 
 	var decision OrganizeDecision
 	if err := decodeJSONFlexible(raw, &decision); err != nil {
-		return nil, fmt.Errorf("解析 DeepSeek 组织决策 JSON 失败: %w", err)
+		return nil, fmt.Errorf("整理结果读取失败，请再试一次: %w", err)
 	}
 	if decision.Title == "" {
 		decision.Title = summarizeFallbackTitle(ev.RawText)
@@ -414,16 +410,16 @@ func (c *Client) chatJSON(ctx context.Context, systemPrompt string, userContent 
 
 	var parsed chatResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", fmt.Errorf("解析 DeepSeek 响应失败: %w", err)
+		return "", fmt.Errorf("读取 AI 回复失败: %w", err)
 	}
 	if len(parsed.Choices) == 0 {
-		return "", errors.New("DeepSeek 返回空 choices")
+		return "", errors.New("AI 这次没有返回内容，请再试一次")
 	}
 
 	content := strings.TrimSpace(parsed.Choices[0].Message.Content)
 	if content == "" {
 		// DeepSeek JSON mode caveat: invalid JSON output may be replaced with whitespace.
-		return "", fmt.Errorf("DeepSeek 返回了空白 JSON 内容（finish_reason=%s），请重试", parsed.Choices[0].FinishReason)
+		return "", errors.New("AI 这次返回了空内容，请再试一次")
 	}
 	return content, nil
 }

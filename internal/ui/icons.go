@@ -37,7 +37,6 @@ var (
 	IconCollide       = mustIconSVG(`<path d="M13 3 5 14h6l-1 7 9-11h-6V3Z"/>`)
 	IconSearch        = mustIconSVG(`<circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.2" y2="16.2"/>`)
 	IconMoon          = mustIconSVG(`<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/>`)
-	IconSun           = mustIconSVG(`<circle cx="12" cy="12" r="4"/><line x1="12" y1="2.5" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="21.5"/><line x1="4.9" y1="4.9" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.1" y2="19.1"/><line x1="2.5" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="21.5" y2="12"/><line x1="4.9" y1="19.1" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.1" y2="4.9"/>`)
 	IconSliders       = mustIconSVG(`<line x1="4" y1="7" x2="7" y2="7"/><line x1="11.5" y1="7" x2="20" y2="7"/><circle cx="9.25" cy="7" r="2.25"/><line x1="4" y1="17" x2="12.5" y2="17"/><line x1="17" y1="17" x2="20" y2="17"/><circle cx="14.75" cy="17" r="2.25"/>`)
 	IconFloat         = mustIconSVG(`<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="15.5" cy="13.5" r="3"/>`)
 	IconChevronDown   = mustIconSVG(`<polyline points="6 9 12 15 18 9"/>`)
@@ -61,10 +60,7 @@ func IconAction(c *ui.Context, key string, ic *ui.SVG, label string, active bool
 	border := t.Border
 	fg := t.TextMuted
 	if active {
-		alpha := float32(0.14)
-		if t.Dark {
-			alpha = 0.22
-		}
+		const alpha = float32(0.14)
 		bg = t.Accent.Alpha(alpha)
 		hover = t.Accent.Alpha(alpha + 0.06)
 		pressed = t.Accent.Alpha(alpha + 0.12)

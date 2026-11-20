@@ -43,7 +43,7 @@ func (a *App) renderMindSubBar(c *ui.Context, pal SurfacePalette, phone bool) {
 	ui.Row(c).FillWidth().Padding(8, 12).Gap(8).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(pal.Border.Alpha(0.55)).
 		Children(func() {
-			if PillAction(c, "mind_back_showcase", IconChevronUp, "星海", false).Shrink(0).Clicked() {
+			if PillAction(c, "mind_back_showcase", IconChevronUp, "返回", false).Shrink(0).Clicked() {
 				mygo.Haptics.Selection()
 				a.ActiveSpace = SpaceShowcase
 			}
@@ -56,8 +56,8 @@ func (a *App) renderMindSubBar(c *ui.Context, pal SurfacePalette, phone bool) {
 				Border(1, pal.Border.Alpha(0.6)).
 				Children(func() {
 					a.renderMindLensPill(c, pal, "lens_outline", IconOutline, "目录", OrgOutline)
-					a.renderMindLensPill(c, pal, "lens_graph", IconConstellation, "星图", OrgGraph)
-					a.renderMindLensPill(c, pal, "lens_cards", IconFilmstrip, "场景", OrgCards)
+					a.renderMindLensPill(c, pal, "lens_graph", IconConstellation, "关系图", OrgGraph)
+					a.renderMindLensPill(c, pal, "lens_cards", IconFilmstrip, "按场景", OrgCards)
 				})
 
 			if phone {
@@ -128,7 +128,7 @@ func (a *App) renderOutlineTree(c *ui.Context) {
 	if len(a.Roots) == 0 {
 		ui.Column(c).Fill().Center().Padding(24, 24, 112, 24).Gap(6).Children(func() {
 			ui.Icon(c, IconOutline).FontSize(26).TextColor(pal.InkMuted)
-			ui.Text(c, "暂无记忆条目").FontSize(14).FontWeight(600).TextColor(pal.InkSecondary)
+			ui.Text(c, "还没有灵感记录").FontSize(14).FontWeight(600).TextColor(pal.InkSecondary)
 		})
 		return
 	}
@@ -145,7 +145,7 @@ func (a *App) renderOutlineTree(c *ui.Context) {
 			return
 		}
 		orbPal := ColorsForTheme(n.Theme)
-		selTint, _, _ := mindOrbSurface(pal, a.DarkMode, n.Theme)
+		selTint, _, _ := mindOrbSurface(pal, n.Theme)
 		evCount := a.EvCounts[n.ID]
 		isSel := n.ID == a.SelectedID
 
@@ -174,7 +174,7 @@ func (a *App) renderOutlineTree(c *ui.Context) {
 						ui.Box(c).Size(6, 6).Radius(99).Background(orbPal.Rim).Shrink(0)
 						ui.Text(c, n.Stage.Label()).FontSize(12).TextColor(pal.InkSecondary)
 						ui.Text(c, "·").FontSize(12).TextColor(pal.InkMuted)
-						ui.Textf(c, "%d 段原记录", evCount).FontSize(12).TextColor(pal.InkMuted)
+						ui.Textf(c, "%d 条原记录", evCount).FontSize(12).TextColor(pal.InkMuted)
 					})
 				})
 				chevronCol := pal.InkMuted
@@ -333,11 +333,7 @@ func (a *App) drawConstellationBackdropAndEdges(p *ui.Painter, r ui.Rect, pal Su
 	}, glowR)
 
 	// Concentric orbital reference rings
-	ringAlpha := float32(0.55)
-	if a.DarkMode {
-		ringAlpha = 0.75
-	}
-	ringColor := pal.Border.Alpha(ringAlpha)
+	ringColor := pal.Border.Alpha(0.55)
 	for _, ratio := range []float32{0.24, 0.39, 0.54} {
 		rad := minDim * ratio
 		var ring ui.Path
@@ -455,7 +451,7 @@ func (a *App) renderSceneLightCards(c *ui.Context) {
 			if len(a.Nodes) == 0 {
 				ui.Column(c).FillWidth().Padding(32, 16).Center().Gap(6).Children(func() {
 					ui.Icon(c, IconFilmstrip).FontSize(26).TextColor(pal.InkMuted)
-					ui.Text(c, "暂无场景记录").FontSize(14).FontWeight(600).TextColor(pal.InkSecondary)
+					ui.Text(c, "还没有灵感记录").FontSize(14).FontWeight(600).TextColor(pal.InkSecondary)
 				})
 				return
 			}
@@ -463,7 +459,7 @@ func (a *App) renderSceneLightCards(c *ui.Context) {
 			for _, node := range a.Nodes {
 				n := node
 				orbPal := ColorsForTheme(n.Theme)
-				_, badgeBg, badgeText := mindOrbSurface(pal, a.DarkMode, n.Theme)
+				_, badgeBg, badgeText := mindOrbSurface(pal, n.Theme)
 				isSel := n.ID == a.SelectedID
 
 				evs, _ := a.Deps.Store.ListEvidencesByNode(n.ID)
@@ -489,12 +485,8 @@ func (a *App) renderSceneLightCards(c *ui.Context) {
 				card := ui.ButtonBase(c).Key("scene_card_"+n.ID).FillWidth().
 					Padding(15, 16).Radius(16).
 					Background(pal.Card).Border(borderW, border).
+					Shadow(0, 3, 12, 0, ui.RGBA(0, 0, 0, 0.04)).
 					Cursor(ui.CursorPointer)
-				if !a.DarkMode {
-					card.Shadow(0, 3, 12, 0, ui.RGBA(0, 0, 0, 0.04))
-				} else {
-					card.InsetShadow(0, 1, 0, 0, pal.GlassBorder)
-				}
 				mobile.Ink(card)
 
 				card.OnClick(func() {
@@ -512,7 +504,7 @@ func (a *App) renderSceneLightCards(c *ui.Context) {
 							ui.Text(c, "·").FontSize(11).TextColor(pal.InkMuted).Shrink(0)
 							ui.Icon(c, IconMapPin).FontSize(12).TextColor(orbPal.Rim).Shrink(0)
 							ui.Text(c, sceneText).FontSize(11).TextColor(pal.InkSecondary).Grow(1).MinWidth(0).SingleLine()
-							ui.Textf(c, "%d 段原记录", evCount).FontSize(11).TextColor(pal.InkMuted).Shrink(0)
+							ui.Textf(c, "%d 条原记录", evCount).FontSize(11).TextColor(pal.InkMuted).Shrink(0)
 						})
 
 						// Title + Animated Orb + Stage
@@ -539,14 +531,8 @@ func (a *App) renderSceneLightCards(c *ui.Context) {
 	})
 }
 
-func mindOrbSurface(pal SurfacePalette, dark bool, theme domain.OrbTheme) (tintBg, badgeBg, badgeText ui.Color) {
+func mindOrbSurface(pal SurfacePalette, theme domain.OrbTheme) (tintBg, badgeBg, badgeText ui.Color) {
 	orbPal := ColorsForTheme(theme)
-	if dark {
-		tintBg = pal.Card.MixOklab(orbPal.Mid, 0.14)
-		badgeBg = orbPal.Mid.Alpha(0.16)
-		badgeText = orbPal.Core.MixOklab(pal.Ink, 0.25)
-		return tintBg, badgeBg, badgeText
-	}
 	tintBg = pal.Card.MixOklab(orbPal.Mid, 0.08)
 	badgeBg = orbPal.Rim.Alpha(0.11)
 	badgeText = orbPal.BadgeText

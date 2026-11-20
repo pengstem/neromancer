@@ -26,7 +26,7 @@ func (a *App) renderShowcaseView(c *ui.Context) {
 
 	if sc.PullToRefresh(&a.ShowcaseRefresh) {
 		mygo.Haptics.Light()
-		a.RunAsync("向 DeepSeek 索取一条新的交叉火花…", func(ctx context.Context) error {
+		a.RunAsync("正在换一条新启发…", func(ctx context.Context) error {
 			defer a.Dispatch(func() { a.ShowcaseRefresh.Refreshing = false })
 			if a.Deps.AI != nil && a.Deps.AI.Configured() {
 				if spark, err := a.Deps.Incubate.SuggestShowcaseSpark(ctx); err == nil && spark != "" {
@@ -62,11 +62,11 @@ func (a *App) renderShowcaseHeaderAndRecall(c *ui.Context) {
 		Children(func() {
 			ui.Icon(c, IconSearch).Size(16, 16).TextColor(pal.InkMuted).Shrink(0)
 			if ui.TextInputBase(c, &a.SearchQuery).
-				Placeholder("搜记忆或提个词…").
+				Placeholder("搜搜以前记过的想法…").
 				PlaceholderColor(pal.InkMuted).
 				TextColor(pal.Ink).
 				FontSize(14).
-				Label("回访联想搜索").
+				Label("搜索灵感").
 				Search().
 				Grow(1).MinWidth(0).
 				Changed() {
@@ -107,7 +107,7 @@ func (a *App) renderRecallResults(c *ui.Context) {
 		Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 				ui.Icon(c, IconSearch).Size(14, 14).TextColor(pal.Accent).Shrink(0)
-				ui.Textf(c, "回访联想 · %d 条", len(a.RecallHits)).
+				ui.Textf(c, "找到 %d 条相关记录", len(a.RecallHits)).
 					FontSize(12.5).Bold().TextColor(pal.Accent).Grow(1)
 				if PillAction(c, "recall_clear", IconClose, "清除", false).Clicked() {
 					a.SearchQuery = ""
@@ -116,7 +116,7 @@ func (a *App) renderRecallResults(c *ui.Context) {
 			})
 
 			if len(a.RecallHits) == 0 {
-				ui.Text(c, "还没有关于这个词的记忆，记下一条吧。").
+				ui.Text(c, "还没有关于这个词的记录，随手记一条吧。").
 					FontSize(12).TextColor(pal.InkSecondary)
 				return
 			}
@@ -132,7 +132,7 @@ func (a *App) renderRecallResults(c *ui.Context) {
 					})
 					ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
 						ui.Text(c, h.Node.Title).FontSize(13).Bold().TextColor(pal.Ink).MaxLines(1)
-						ui.Textf(c, "%s · %d 段原记录", h.MatchReason, h.EvidenceCount).
+						ui.Textf(c, "%s · %d 条原记录", h.MatchReason, h.EvidenceCount).
 							FontSize(11).TextColor(pal.InkMuted).MaxLines(1)
 					})
 					if PillAction(c, "recall_open_"+h.Node.ID, IconChevronRight, "打开", true).Clicked() {
@@ -335,7 +335,7 @@ func (a *App) renderMemoryOrbField(c *ui.Context) {
 					Size(orbDim, orbDim).
 					Radius(orbDim / 2).
 					Cursor(ui.CursorPointer).
-					Label("聚焦记忆球 " + n.Title).
+					Label("查看灵感 " + n.Title).
 					Tooltip(n.Title)
 
 				pose := ui.Pose{}
@@ -419,7 +419,7 @@ func (a *App) renderMemoryOrbField(c *ui.Context) {
 					}
 				})
 
-				if PillAction(c, "whisper_detail_"+focusedNode.ID, IconChevronRight, "展开详情", false).Clicked() {
+				if PillAction(c, "whisper_detail_"+focusedNode.ID, IconChevronRight, "查看详情", false).Clicked() {
 					mygo.Haptics.Selection()
 					a.openNodeDetail(c, focusedNode.ID)
 				}
@@ -464,7 +464,7 @@ func (a *App) renderShowcaseSparkBanner(c *ui.Context) {
 			})
 			ui.Row(c).Gap(6).Shrink(0).AlignItems(ui.Center).Children(func() {
 				if PillAction(c, "spark_refresh", IconRefresh, "换一条", false).Clicked() {
-					a.RunAsync("正在翻阅标签库寻找新火花…", func(ctx context.Context) error {
+					a.RunAsync("正在换一条新启发…", func(ctx context.Context) error {
 						spark, err := a.Deps.Incubate.SuggestShowcaseSpark(ctx)
 						if err != nil {
 							return err
@@ -488,8 +488,8 @@ func (a *App) renderMemoryOrbsGrid(c *ui.Context) {
 	if len(filtered) == 0 {
 		ui.Column(c).FillWidth().Padding(28).Center().Gap(8).Radius(16).
 			Background(pal.Card).Border(1, pal.Border).Children(func() {
-			ui.Text(c, "这里还没有匹配的记忆球").FontSize(15).Bold().TextColor(pal.Ink)
-			ui.Text(c, "轻触右下角记灵感，说一句或写一句话就会凝成一颗新球。").
+			ui.Text(c, "还没有匹配的灵感记录").FontSize(15).Bold().TextColor(pal.Ink)
+			ui.Text(c, "点右下角「记灵感」，随口说一句或写几个字就行。").
 				FontSize(12.5).TextColor(pal.InkSecondary).TextAlign(ui.Center)
 		})
 		return
@@ -547,7 +547,7 @@ func (a *App) renderShowcaseOrbCard(c *ui.Context, n domain.IdeaNode, fullWidth 
 						ui.Box(c).Size(6, 6).Radius(3).Background(orbPal.Mid).Shrink(0)
 						ui.Text(c, n.Stage.Label()).FontSize(11).Bold().TextColor(pal.InkSecondary)
 						ui.Spacer(c).Grow(1)
-						ui.Textf(c, "%d 段原记录", evCount).FontSize(11).TextColor(pal.InkMuted)
+						ui.Textf(c, "%d 条原记录", evCount).FontSize(11).TextColor(pal.InkMuted)
 					})
 					ui.Text(c, n.Title).FontSize(15).Bold().TextColor(pal.Ink).MaxLines(2)
 				})
@@ -573,9 +573,9 @@ func (a *App) renderPullDownToMindSpace(c *ui.Context) {
 	ui.Column(c).FillWidth().Center().Padding(8, 0, 4, 0).Gap(8).Children(func() {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, IconChevronDown).Size(14, 14).TextColor(pal.InkMuted)
-			ui.Text(c, "继续上滑进入思维空间").FontSize(12).TextColor(pal.InkMuted)
+			ui.Text(c, "继续上滑进入整理视图").FontSize(12).TextColor(pal.InkMuted)
 		})
-		if PillAction(c, "showcase_to_mind", IconMind, "思维空间", false).Clicked() {
+		if PillAction(c, "showcase_to_mind", IconMind, "去整理", false).Clicked() {
 			mygo.Haptics.Selection()
 			a.ActiveSpace = SpaceMind
 		}

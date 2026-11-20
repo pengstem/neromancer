@@ -9,7 +9,7 @@ import (
 	"github.com/pengstem/neromancer/internal/domain"
 )
 
-// Warm Atelier Paper palette tokens (Day mode defaults).
+// Warm Atelier Paper palette tokens.
 var (
 	ColorCanvasBg      = ui.Hex("#F6F2EA")
 	ColorCardBg        = ui.Hex("#FCF9F4")
@@ -29,7 +29,7 @@ var (
 	ColorSuccessInk    = ui.Hex("#246A46")
 )
 
-// SurfacePalette defines the active surface, ink, and frosted-glass color tokens for Day or Night mode.
+// SurfacePalette defines the surface, ink, and frosted-glass color tokens.
 type SurfacePalette struct {
 	Canvas       ui.Color
 	Card         ui.Color
@@ -44,23 +44,8 @@ type SurfacePalette struct {
 	GlassBorder  ui.Color
 }
 
-// PaletteForMode returns the Warm Atelier Paper (day) or Night Observatory (dark) surface palette.
-func PaletteForMode(dark bool) SurfacePalette {
-	if dark {
-		return SurfacePalette{
-			Canvas:       ui.Hex("#111318"),
-			Card:         ui.Hex("#1A1D25"),
-			SoftPanel:    ui.Hex("#222632"),
-			Border:       ui.Hex("#292E3B"),
-			Ink:          ui.Hex("#F3EFE6"),
-			InkSecondary: ui.Hex("#9CA3B5"),
-			InkMuted:     ui.Hex("#687082"),
-			Accent:       ui.Hex("#7AA2F7"),
-			AccentText:   ui.Hex("#0B101B"),
-			GlassTint:    ui.Hex("#1A1D25").Alpha(0.76),
-			GlassBorder:  ui.Hex("#FFFFFF").Alpha(0.14),
-		}
-	}
+// DefaultPalette returns the Warm Atelier Paper surface palette.
+func DefaultPalette() SurfacePalette {
 	return SurfacePalette{
 		Canvas:       ColorCanvasBg,
 		Card:         ColorCardBg,
@@ -143,34 +128,17 @@ func ColorsForTheme(t domain.OrbTheme) OrbColorSet {
 	}
 }
 
-// NeromancerTheme builds the Warm Atelier Paper day theme for MyGo native widgets.
+// NeromancerTheme builds the Warm Atelier Paper theme for MyGo native widgets.
 func NeromancerTheme() *ui.Theme {
-	return NeromancerThemeFor(false)
-}
-
-// NeromancerThemeFor builds either the Warm Atelier Paper (dark=false) or Night Observatory (dark=true) theme.
-func NeromancerThemeFor(dark bool) *ui.Theme {
-	pal := PaletteForMode(dark)
-	var t *ui.Theme
-	if dark {
-		t = ui.DarkTheme()
-		t.SurfacePressed = ui.Hex("#2A2F3D")
-		t.AccentHover = ui.Hex("#8FB3FA")
-		t.AccentPressed = ui.Hex("#648CE0")
-		t.Danger = ui.Hex("#F06458")
-		t.Success = ui.Hex("#58B886")
-		t.Warning = ui.Hex("#E8AC4A")
-	} else {
-		t = ui.LightTheme()
-		t.SurfacePressed = ui.Hex("#E4DDD0")
-		t.AccentHover = ColorBrandHover
-		t.AccentPressed = ColorBrandPressed
-		t.Danger = ColorVermilion
-		t.Success = ColorSuccessInk
-		t.Warning = ui.Hex("#B97414")
-	}
-
-	t.Dark = dark
+	pal := DefaultPalette()
+	t := ui.LightTheme()
+	t.SurfacePressed = ui.Hex("#E4DDD0")
+	t.AccentHover = ColorBrandHover
+	t.AccentPressed = ColorBrandPressed
+	t.Danger = ColorVermilion
+	t.Success = ColorSuccessInk
+	t.Warning = ui.Hex("#B97414")
+	t.Dark = false
 	t.Background = pal.Canvas
 	t.Surface = pal.Card
 	t.SurfaceHover = pal.SoftPanel

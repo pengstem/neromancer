@@ -25,7 +25,7 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 	mobile.Sheet(c, &a.SettingsModalOpen, mobile.SheetOptions{
 		Detents:    []float32{0.76, 0.94},
 		Background: &sheetBg,
-		Label:      "DeepSeek 接口",
+		Label:      "DeepSeek 设置",
 	}, func() {
 		ui.Scroll(c).Fill().Children(func() {
 			ui.Column(c).FillWidth().Padding(18).Gap(14).Children(func() {
@@ -33,10 +33,10 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 					ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
 						ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
 							ui.Icon(c, IconSliders).Size(17, 17).TextColor(pal.Accent).Shrink(0)
-							ui.Text(c, "DeepSeek 接口").FontSize(18).Bold().TextColor(pal.Ink)
+							ui.Text(c, "DeepSeek 设置").FontSize(18).Bold().TextColor(pal.Ink)
 							a.renderConnectionBadge(c, pal, configured)
 						})
-						ui.Text(c, "直连 /v1/chat/completions 与 /v1/tools/asr").
+						ui.Text(c, "填好 API Key 即可使用语音转文字、自动整理与追问").
 							FontSize(11.5).TextColor(pal.InkSecondary)
 					})
 					if PillAction(c, "settings_close", IconClose, "关闭", false).Clicked() {
@@ -47,16 +47,16 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 				ui.Box(c).FillWidth().Height(1).Background(pal.Border)
 
 				ui.Column(c).FillWidth().Gap(6).Children(func() {
-					ui.Text(c, "接口地址 (Base URL)").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary)
+					ui.Text(c, "服务地址").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary)
 					ui.TextInput(c, &a.SettingsBaseURL).
 						Placeholder("https://api.deepseek.com").
-						Label("Base URL").
+						Label("服务地址").
 						Background(pal.SoftPanel).
 						FillWidth()
 				})
 
 				ui.Column(c).FillWidth().Gap(6).Children(func() {
-					ui.Text(c, "API 密钥").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary)
+					ui.Text(c, "API Key").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary)
 					ui.TextInput(c, &a.SettingsAPIKey).
 						Password().
 						Placeholder("sk-...").
@@ -66,7 +66,7 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 				})
 
 				ui.Column(c).FillWidth().Gap(6).Children(func() {
-					ui.Text(c, "推理与多模态模型").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary)
+					ui.Text(c, "选用模型").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary)
 					modelOpts := make([]selectOption, 0, len(deepSeekModelChoices))
 					for _, m := range deepSeekModelChoices {
 						lbl := m
@@ -76,7 +76,7 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 						modelOpts = append(modelOpts, selectOption{Value: m, Label: lbl})
 					}
 					ui.Row(c).FillWidth().Children(func() {
-						atelierSelect(c, pal, "settings_model_select", "选择 DeepSeek 模型", &a.SettingsModel, modelOpts)
+						atelierSelect(c, pal, "settings_model_select", "选用模型", &a.SettingsModel, modelOpts)
 					})
 				})
 
@@ -98,10 +98,10 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 				}
 
 				ui.Row(c).FillWidth().Wrap().Justify(ui.End).Gap(8).AlignItems(ui.Center).Children(func() {
-					if PillAction(c, "settings_test", IconRefresh, "连接测试", false).Clicked() {
+					if PillAction(c, "settings_test", IconRefresh, "测试连接", false).Clicked() {
 						a.persistDeepSeekSettings()
-						a.SettingsTestStatus = "正在请求 GET /v1/models …"
-						a.RunAsync("正在测试 DeepSeek 连接…", func(ctx context.Context) error {
+						a.SettingsTestStatus = "正在测试连接…"
+						a.RunAsync("正在测试连接…", func(ctx context.Context) error {
 							msg, err := a.Deps.AI.TestConnection(ctx)
 							a.Dispatch(func() {
 								if err != nil {
@@ -113,11 +113,11 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 							return err
 						})
 					}
-					if PillAction(c, "settings_save", IconCheck, "保存配置", true).Clicked() {
+					if PillAction(c, "settings_save", IconCheck, "保存", true).Clicked() {
 						mygo.Haptics.Success()
 						a.persistDeepSeekSettings()
 						a.SettingsModalOpen = false
-						a.setBanner("已保存 DeepSeek 接口配置（模型：" + a.SettingsModel + "）")
+						a.setBanner("设置已保存")
 					}
 				})
 			})
@@ -129,12 +129,12 @@ func (a *App) renderConnectionBadge(c *ui.Context, pal SurfacePalette, configure
 	dotCol := pal.InkMuted
 	bg := pal.SoftPanel
 	fg := pal.InkSecondary
-	text := "未配置密钥"
+	text := "未填写 Key"
 	if configured {
 		dotCol = c.Theme().Success
 		bg = c.Theme().Success.Alpha(0.14)
 		fg = c.Theme().Success
-		text = "已配置密钥"
+		text = "已就绪"
 	}
 	ui.Row(c).Padding(3, 8).Gap(5).Radius(999).AlignItems(ui.Center).Shrink(0).
 		Background(bg).Children(func() {
@@ -161,13 +161,13 @@ func (a *App) renderSleepModal(c *ui.Context) {
 	mobile.Sheet(c, &a.SleepModalOpen, mobile.SheetOptions{
 		Detents:    []float32{0.76, 0.94},
 		Background: &sheetBg,
-		Label:      "睡眠孵化",
+		Label:      "灵感串联",
 	}, func() {
 		ui.Column(c).Grow(1).Basis(0).MinHeight(0).FillWidth().Padding(18).Gap(14).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
 				ui.Row(c).Grow(1).MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, IconMoon).Size(17, 17).TextColor(pal.Accent).Shrink(0)
-					ui.Text(c, "睡眠孵化").FontSize(18).Bold().TextColor(pal.Ink)
+					ui.Text(c, "灵感串联").FontSize(18).Bold().TextColor(pal.Ink)
 					if len(a.SleepInsights) > 0 {
 						ui.Text(c, fmt.Sprintf("%d", len(a.SleepInsights))).
 							FontSize(11).FontWeight(600).Padding(2, 7).Radius(999).
@@ -179,8 +179,8 @@ func (a *App) renderSleepModal(c *ui.Context) {
 				}
 			})
 
-			if PillAction(c, "sleep_wake", IconSpark, "唤醒分析", true).FillWidth().Clicked() {
-				a.RunAsync("正在分析跨界关联…", func(ctx context.Context) error {
+			if PillAction(c, "sleep_wake", IconSpark, "找找灵感之间的联系", true).FillWidth().Clicked() {
+				a.RunAsync("正在翻看你的灵感，寻找有趣的联系…", func(ctx context.Context) error {
 					_, err := a.Deps.Incubate.RunSleepIncubation(ctx)
 					return err
 				})
@@ -195,7 +195,7 @@ func (a *App) renderSleepModal(c *ui.Context) {
 							Background(pal.SoftPanel).Border(1, pal.Border).
 							Children(func() {
 								ui.Icon(c, IconMoon).Size(20, 20).TextColor(pal.InkMuted)
-								ui.Text(c, "暂无待处理的跨界发现").
+								ui.Text(c, "暂时还没有新的串联发现，点上方按钮试试看").
 									FontSize(13).TextColor(pal.InkSecondary).TextAlign(ui.Center)
 							})
 						return
@@ -221,7 +221,7 @@ func (a *App) renderSleepModal(c *ui.Context) {
 								ui.Row(c).FillWidth().Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
 									if len(item.ConnectedNodeIDs) > 0 {
 										firstID := item.ConnectedNodeIDs[0]
-										if PillAction(c, "jump_"+item.ID, IconChevronRight, "查看关联球", false).Clicked() {
+										if PillAction(c, "jump_"+item.ID, IconChevronRight, "去看这条灵感", false).Clicked() {
 											a.SleepModalOpen = false
 											a.openNodeDetail(c, firstID)
 										}

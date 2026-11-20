@@ -22,7 +22,7 @@ import (
 )
 
 // ErrNoMicBackend is returned on desktop when neither ffmpeg nor sox/rec is present on PATH.
-var ErrNoMicBackend = errors.New("桌面预览模式未检测到 ffmpeg/sox 录音工具；可导入 .wav/.ogg 文件，或在安卓打包版中直接用原生麦克风录音")
+var ErrNoMicBackend = errors.New("当前电脑没装录音工具（ffmpeg 或 sox），可以先导入录音文件，或在手机上直接录音")
 
 // Manager owns managed local copies of raw audio & image evidence files.
 type Manager struct {
