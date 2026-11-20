@@ -1,0 +1,17 @@
+{
+  "name": "Neromancer",
+  "slug": "neromancer",
+  "identifier": "run.neromancer.app",
+  "version": "0.1.0",
+  "icon": "resources/icon.png",
+  "urlSchemes": ["neromancer"],
+  "android": {
+    "minSdk": 26,
+    "permissions": ["RECORD_AUDIO"],
+    "splash": "#FAF7F2",
+    "adaptiveIcon": {
+      "foreground": "resources/icon-foreground.png",
+      "background": "#FAF7F2"
+    }
+  }
+}

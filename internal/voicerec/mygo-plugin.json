@@ -1,0 +1,10 @@
+{
+  "mobile": {
+    "id": "voicerec",
+    "android": {
+      "sources": ["android/*.kt"],
+      "class": "VoiceRecorderPlugin",
+      "permissions": ["RECORD_AUDIO"]
+    }
+  }
+}

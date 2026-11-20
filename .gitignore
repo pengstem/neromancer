@@ -1,0 +1,22 @@
+# Binaries & build outputs
+bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+*.app
+.mygo/
+
+# Local environment & runtime data
+.env
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# OS & IDE files
+.DS_Store
+.idea/
+.vscode/
+*.swp
