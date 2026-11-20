@@ -6,27 +6,29 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/pengstem/neromancer/internal/domain"
 	"github.com/pengstem/neromancer/internal/service"
 )
 
-// FloatingOrbView renders the frameless Always-On-Top desktop companion orb window.
+// FloatingOrbView renders the frameless Always-On-Top desktop quick-capture companion window.
 func (a *App) FloatingOrbView(c *ui.Context) {
 	a.FlushPending()
 	pal := a.Palette()
-	phase := a.Phase(c)
 
 	ui.Themed(c, NeromancerTheme()).Fill().Children(func() {
 		if !a.FloatExpanded {
 			ui.Column(c).Fill().Center().Padding(8).
 				Background(ui.Transparent).
 				Children(func() {
-					ui.ButtonBase(c).Size(76, 76).Radius(38).DragWindow().
+					ui.ButtonBase(c).Size(68, 68).Radius(34).DragWindow().
+						Center().
+						Background(pal.Ink).
+						Border(1, ui.RGBA(255, 255, 255, 0.16)).
+						Shadow(0, 8, 20, 0, ui.RGBA(20, 21, 25, 0.25)).
 						Tooltip("拖动移位 · 点一下随手记").
 						Label("随手记").
 						Cursor(ui.CursorPointer).
-						Draw(func(p *ui.Painter, r ui.Rect) {
-							DrawAnimatedMemoryOrb(p, r, domain.ThemeCoral, 0.92, phase, 0.85, "petals", true)
+						Children(func() {
+							ui.Icon(c, IconSpark).Size(24, 24).TextColor(pal.Card)
 						}).
 						OnClick(func() {
 							a.FloatExpanded = true
@@ -42,15 +44,15 @@ func (a *App) FloatingOrbView(c *ui.Context) {
 			Background(pal.Card).Border(1, pal.Border).
 			Children(func() {
 				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).DragWindow().Children(func() {
-					ui.Box(c).Size(22, 22).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
-						DrawAnimatedMemoryOrb(p, r, domain.ThemeCoral, 0.9, phase, 0.78, "petals", false)
+					ui.Box(c).Size(24, 24).Radius(7).Shrink(0).Center().Background(pal.Ink).Children(func() {
+						ui.Icon(c, IconSpark).Size(13, 13).TextColor(pal.Card)
 					})
 					ui.Text(c, "随手记").FontSize(13).Bold().TextColor(pal.Ink).Grow(1)
-					if PillAction(c, "float_main_win", IconOrb, "主界面", false).Clicked() && a.MainWin != nil {
+					if PillAction(c, "float_main_win", IconArchiveFolder, "主界面", false).Clicked() && a.MainWin != nil {
 						a.MainWin.Show()
 						a.MainWin.Focus()
 					}
-					if PillAction(c, "float_collapse", IconChevronDown, "收起", false).Clicked() {
+					if GhostIconAction(c, "float_collapse", IconChevronDown, "收起", false).Clicked() {
 						a.FloatExpanded = false
 						if a.FloatWin != nil {
 							a.FloatWin.SetSize(96, 96)
@@ -59,7 +61,7 @@ func (a *App) FloatingOrbView(c *ui.Context) {
 				})
 
 				ui.Box(c).FillWidth().Grow(1).Padding(10, 12).Radius(12).
-					Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.75)).
+					Background(pal.SoftPanel).Border(1, pal.Border).
 					Children(func() {
 						ui.TextAreaBase(c, &a.FloatQuickText).
 							Placeholder("想到什么直接记下…").
@@ -126,7 +128,6 @@ func (a *App) submitFloatingCapture(audioPath string) {
 	a.Dispatch(func() {
 		_ = a.ReloadVault()
 		a.SelectNode(localOut.Node.ID)
-		a.FocusedShowcaseID = localOut.Node.ID
 		a.setBanner(fmt.Sprintf("已记下：《%s》", localOut.Node.Title))
 	})
 
@@ -140,7 +141,6 @@ func (a *App) submitFloatingCapture(audioPath string) {
 			}
 			a.Dispatch(func() {
 				a.SelectNode(organized.ID)
-				a.FocusedShowcaseID = organized.ID
 				a.setBanner(fmt.Sprintf("已整理好：《%s》", organized.Title))
 			})
 			return nil

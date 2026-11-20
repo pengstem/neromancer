@@ -9,24 +9,24 @@ import (
 	"github.com/pengstem/neromancer/internal/domain"
 )
 
-// Warm Atelier Paper palette tokens.
+// Option B Bento Studio palette tokens.
 var (
-	ColorCanvasBg      = ui.Hex("#F6F2EA")
-	ColorCardBg        = ui.Hex("#FCF9F4")
-	ColorSoftPanel     = ui.Hex("#EDE7DB")
-	ColorBorderSoft    = ui.Hex("#DDD5C5")
-	ColorInkPrimary    = ui.Hex("#1C1A17")
-	ColorInkSecondary  = ui.Hex("#5C574F")
-	ColorInkMuted      = ui.Hex("#948D82")
-	ColorBrandAccent   = ui.Hex("#2B4C7E")
-	ColorBrandHover    = ui.Hex("#213B63")
-	ColorBrandPressed  = ui.Hex("#182C4B")
-	ColorVermilion     = ui.Hex("#D9483B")
-	ColorWarmHighlight = ui.Hex("#F5E9D0")
-	ColorDangerSoft    = ui.Hex("#FBE4E1")
-	ColorDangerInk     = ui.Hex("#B83227")
-	ColorSuccessSoft   = ui.Hex("#E3EFE7")
-	ColorSuccessInk    = ui.Hex("#246A46")
+	ColorCanvasBg      = ui.Hex("#F2F3F6")
+	ColorCardBg        = ui.Hex("#FFFFFF")
+	ColorSoftPanel     = ui.Hex("#F7F8FA")
+	ColorBorderSoft    = ui.Hex("#E3E5EB")
+	ColorInkPrimary    = ui.Hex("#141519")
+	ColorInkSecondary  = ui.Hex("#585C66")
+	ColorInkMuted      = ui.Hex("#8B909C")
+	ColorBrandAccent   = ui.Hex("#141519")
+	ColorBrandHover    = ui.Hex("#262932")
+	ColorBrandPressed  = ui.Hex("#0B0C0E")
+	ColorVermilion     = ui.Hex("#C84B31")
+	ColorWarmHighlight = ui.Hex("#FEF5E6")
+	ColorDangerSoft    = ui.Hex("#FDEEEB")
+	ColorDangerInk     = ui.Hex("#C84B31")
+	ColorSuccessSoft   = ui.Hex("#E8F6F0")
+	ColorSuccessInk    = ui.Hex("#18795B")
 )
 
 // SurfacePalette defines the surface, ink, and frosted-glass color tokens.
@@ -44,7 +44,7 @@ type SurfacePalette struct {
 	GlassBorder  ui.Color
 }
 
-// DefaultPalette returns the Warm Atelier Paper surface palette.
+// DefaultPalette returns the Option B Bento Studio surface palette.
 func DefaultPalette() SurfacePalette {
 	return SurfacePalette{
 		Canvas:       ColorCanvasBg,
@@ -56,12 +56,12 @@ func DefaultPalette() SurfacePalette {
 		InkMuted:     ColorInkMuted,
 		Accent:       ColorBrandAccent,
 		AccentText:   ui.Hex("#FFFFFF"),
-		GlassTint:    ColorCardBg.Alpha(0.78),
-		GlassBorder:  ui.Hex("#FFFFFF").Alpha(0.65),
+		GlassTint:    ColorCardBg.Alpha(0.86),
+		GlassBorder:  ColorBorderSoft,
 	}
 }
 
-// OrbColorSet defines harmonious mineral glass colorway tokens for an OrbTheme.
+// OrbColorSet defines harmonious mineral colorway tokens for an OrbTheme.
 type OrbColorSet struct {
 	Core      ui.Color
 	Mid       ui.Color
@@ -72,72 +72,72 @@ type OrbColorSet struct {
 	BadgeText ui.Color
 }
 
-// ColorsForTheme returns the mineral glass color palette for a Memory Orb theme.
+// ColorsForTheme returns the crisp mineral accent palette for an idea theme.
 func ColorsForTheme(t domain.OrbTheme) OrbColorSet {
 	switch t {
 	case domain.ThemeSky:
 		return OrbColorSet{
-			Core:      ui.Hex("#E6F1FC"),
-			Mid:       ui.Hex("#4A90D9"),
-			Rim:       ui.Hex("#1E5CA8"),
-			Aura:      ui.Hex("#7CB3EC").Alpha(0.34),
-			CardTint:  ui.Hex("#F1F6FC"),
-			BadgeBg:   ui.Hex("#E3EEFA"),
-			BadgeText: ui.Hex("#1E4D8C"),
+			Core:      ui.Hex("#EBF2FE"),
+			Mid:       ui.Hex("#2563EB"),
+			Rim:       ui.Hex("#1D4ED8"),
+			Aura:      ui.Hex("#60A5FA").Alpha(0.30),
+			CardTint:  ui.Hex("#F4F8FF"),
+			BadgeBg:   ui.Hex("#EBF2FE"),
+			BadgeText: ui.Hex("#2563EB"),
 		}
 	case domain.ThemeAmber:
 		return OrbColorSet{
-			Core:      ui.Hex("#FDF3D7"),
-			Mid:       ui.Hex("#E5A93B"),
-			Rim:       ui.Hex("#B97414"),
-			Aura:      ui.Hex("#F0C66E").Alpha(0.36),
-			CardTint:  ui.Hex("#FCF7EA"),
-			BadgeBg:   ui.Hex("#F9ECCB"),
-			BadgeText: ui.Hex("#8F570B"),
+			Core:      ui.Hex("#FEF5E6"),
+			Mid:       ui.Hex("#D97706"),
+			Rim:       ui.Hex("#B45309"),
+			Aura:      ui.Hex("#FBBF24").Alpha(0.30),
+			CardTint:  ui.Hex("#FFFBF2"),
+			BadgeBg:   ui.Hex("#FEF5E6"),
+			BadgeText: ui.Hex("#B45309"),
 		}
 	case domain.ThemeMint:
 		return OrbColorSet{
-			Core:      ui.Hex("#E0F5EE"),
-			Mid:       ui.Hex("#3BB296"),
-			Rim:       ui.Hex("#177E67"),
-			Aura:      ui.Hex("#79D0BA").Alpha(0.34),
-			CardTint:  ui.Hex("#EFF9F5"),
-			BadgeBg:   ui.Hex("#DCF2EA"),
-			BadgeText: ui.Hex("#126351"),
+			Core:      ui.Hex("#E8F6F0"),
+			Mid:       ui.Hex("#18795B"),
+			Rim:       ui.Hex("#115E46"),
+			Aura:      ui.Hex("#34D399").Alpha(0.28),
+			CardTint:  ui.Hex("#F2FAF6"),
+			BadgeBg:   ui.Hex("#E8F6F0"),
+			BadgeText: ui.Hex("#18795B"),
 		}
 	case domain.ThemeLavender:
 		return OrbColorSet{
-			Core:      ui.Hex("#EFEAFB"),
-			Mid:       ui.Hex("#8B74D6"),
-			Rim:       ui.Hex("#5A44AA"),
-			Aura:      ui.Hex("#B4A4E8").Alpha(0.34),
-			CardTint:  ui.Hex("#F5F2FC"),
-			BadgeBg:   ui.Hex("#EAE3FA"),
-			BadgeText: ui.Hex("#4A3691"),
+			Core:      ui.Hex("#F3EEFD"),
+			Mid:       ui.Hex("#6D28D9"),
+			Rim:       ui.Hex("#5B21B6"),
+			Aura:      ui.Hex("#A78BFA").Alpha(0.30),
+			CardTint:  ui.Hex("#F8F5FE"),
+			BadgeBg:   ui.Hex("#F3EEFD"),
+			BadgeText: ui.Hex("#6D28D9"),
 		}
 	default: // ThemeCoral
 		return OrbColorSet{
-			Core:      ui.Hex("#FFEAE6"),
-			Mid:       ui.Hex("#EA6A5E"),
-			Rim:       ui.Hex("#C93B2E"),
-			Aura:      ui.Hex("#F28A7E").Alpha(0.34),
-			CardTint:  ui.Hex("#FDF2EF"),
-			BadgeBg:   ui.Hex("#FCE4DF"),
-			BadgeText: ui.Hex("#A62C21"),
+			Core:      ui.Hex("#FDEEEB"),
+			Mid:       ui.Hex("#C84B31"),
+			Rim:       ui.Hex("#A63922"),
+			Aura:      ui.Hex("#F87171").Alpha(0.28),
+			CardTint:  ui.Hex("#FFF6F4"),
+			BadgeBg:   ui.Hex("#FDEEEB"),
+			BadgeText: ui.Hex("#C84B31"),
 		}
 	}
 }
 
-// NeromancerTheme builds the Warm Atelier Paper theme for MyGo native widgets.
+// NeromancerTheme builds the Option B Bento Studio theme for MyGo native widgets.
 func NeromancerTheme() *ui.Theme {
 	pal := DefaultPalette()
 	t := ui.LightTheme()
-	t.SurfacePressed = ui.Hex("#E4DDD0")
+	t.SurfacePressed = ui.Hex("#E8EBF0")
 	t.AccentHover = ColorBrandHover
 	t.AccentPressed = ColorBrandPressed
-	t.Danger = ColorVermilion
+	t.Danger = ColorDangerInk
 	t.Success = ColorSuccessInk
-	t.Warning = ui.Hex("#B97414")
+	t.Warning = ui.Hex("#D97706")
 	t.Dark = false
 	t.Background = pal.Canvas
 	t.Surface = pal.Card
@@ -148,8 +148,8 @@ func NeromancerTheme() *ui.Theme {
 	t.Accent = pal.Accent
 	t.AccentText = pal.AccentText
 	t.InactiveAccent = pal.Accent.Alpha(0.72)
-	t.Selection = pal.Accent.Alpha(0.24)
-	t.Focus = pal.Accent.Alpha(0.55)
+	t.Selection = pal.Accent.Alpha(0.16)
+	t.Focus = pal.Accent.Alpha(0.45)
 	t.Radius = 12
 	t.Spacing = 4
 	t.FontSize = 14

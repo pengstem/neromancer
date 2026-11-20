@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -14,89 +15,11 @@ import (
 	"github.com/pengstem/neromancer/internal/service"
 )
 
-// renderMorphingFAB renders the inline right-hand controls inside the unified Floating Bottom Dock Row.
-func (a *App) renderMorphingFAB(c *ui.Context) {
-	if a.CaptureModalOpen || a.EvidenceModalOpen || a.DetailSheetOpen || a.SettingsModalOpen || a.SleepModalOpen || a.ShareModalOpen {
-		return
-	}
-
-	pal := a.Palette()
-
-	capsule := ui.Row(c).Key("morphing_dock_fab").Shrink(0).Padding(4).Gap(4).
-		AlignItems(ui.Center).Radius(999).
-		Shadow(0, 8, 22, 0, ui.RGBA(0, 0, 0, 0.14)).
-		Draw(func(p *ui.Painter, r ui.Rect) {
-			DrawFrostSurface(p, r, pal.GlassTint, pal.GlassBorder, min(r.W, r.H)/2, 16)
-		}).
-		Clip()
-
-	capsule.Children(func() {
-		switch a.ActiveSpace {
-		case SpaceMind:
-			if IconAction(c, "dock_mind_plus", IconPlus, "记灵感", false).Radius(999).Clicked() {
-				mygo.Haptics.Light()
-				a.CaptureModalityIdx = 1
-				a.CaptureModalOpen = true
-			}
-			if PillAction(c, "dock_mind_org", a.currentOrgModeIcon(), a.currentOrgModeLabel(), true).
-				Label("切换视图").Clicked() {
-				mygo.Haptics.Selection()
-				a.MindOrgMode = (a.MindOrgMode + 1) % 3
-			}
-		case SpaceRoam:
-			if PillAction(c, "dock_roam_share", IconShare, "分享海报", true).Clicked() {
-				mygo.Haptics.Light()
-				if a.ShareNodeID == "" {
-					if a.SelectedID != "" {
-						a.ShareNodeID = a.SelectedID
-					} else if len(a.Nodes) > 0 {
-						a.ShareNodeID = a.Nodes[0].ID
-					}
-				}
-				a.ShareModalOpen = true
-			}
-		default: // SpaceShowcase
-			if IconAction(c, "dock_voice_capture", IconMic, "语音速记", false).Radius(999).Clicked() {
-				mygo.Haptics.Light()
-				a.CaptureModalityIdx = 0
-				a.CaptureModalOpen = true
-			}
-			if PillAction(c, "dock_quick_capture", IconQuill, "记灵感", true).Clicked() {
-				mygo.Haptics.Light()
-				a.CaptureModalityIdx = 1
-				a.CaptureModalOpen = true
-			}
-		}
-	})
-}
-
-func (a *App) currentOrgModeLabel() string {
-	switch a.MindOrgMode {
-	case OrgGraph:
-		return "关系图"
-	case OrgCards:
-		return "按场景"
-	default:
-		return "目录"
-	}
-}
-
-func (a *App) currentOrgModeIcon() *ui.SVG {
-	switch a.MindOrgMode {
-	case OrgGraph:
-		return IconConstellation
-	case OrgCards:
-		return IconFilmstrip
-	default:
-		return IconOutline
-	}
-}
-
 func (a *App) renderCaptureModal(c *ui.Context) {
 	pal := a.Palette()
 
 	mobile.Sheet(c, &a.CaptureModalOpen, mobile.SheetOptions{
-		Detents:    []float32{0.76, 0.94},
+		Detents:    []float32{0.78, 0.94},
 		Background: &pal.Card,
 		Label:      "记一条灵感",
 	}, func() {
@@ -104,7 +27,7 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 			ui.Column(c).FillWidth().Padding(14, 18, 28, 18).Gap(14).Children(func() {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 					ui.Text(c, "记一条灵感").FontSize(18).Bold().TextColor(pal.Ink).Grow(1)
-					if PillAction(c, "capture_close", IconClose, "收起", false).Clicked() {
+					if GhostIconAction(c, "capture_close", IconClose, "收起", false).Clicked() {
 						a.CaptureModalOpen = false
 					}
 				})
@@ -120,14 +43,18 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 				}
 
 				ui.Box(c).FillWidth().Padding(12, 14).Radius(14).
-					Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.75)).
+					Background(pal.SoftPanel).Border(1, pal.Border).
 					Children(func() {
-						if ui.TextAreaBase(c, &a.CaptureText).
+						ta := ui.TextAreaBase(c, &a.CaptureText).
 							Placeholder("想到什么直接记下来…").
 							PlaceholderColor(pal.InkMuted).
 							TextColor(pal.Ink).
 							Label("灵感内容").
-							Height(96).FillWidth().AutoFocus().Changed() {
+							Height(96).FillWidth()
+						if a.CaptureModalityIdx == 1 {
+							ta.AutoFocus()
+						}
+						if ta.Changed() {
 							if hits, err := a.Deps.Organize.SearchRecall(a.CaptureText, 2); err == nil {
 								a.CaptureRecallHits = hits
 							}
@@ -137,8 +64,12 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 				if len(a.CaptureRecallHits) > 0 && strings.TrimSpace(a.CaptureText) != "" {
 					hit := a.CaptureRecallHits[0]
 					ui.Row(c).FillWidth().Padding(10, 12).Gap(10).AlignItems(ui.Center).Radius(12).
-						Background(pal.SoftPanel).Border(1, pal.Accent.Alpha(0.35)).Children(func() {
-						ui.Icon(c, IconSpark).Size(15, 15).TextColor(pal.Accent).Shrink(0)
+						Background(pal.SoftPanel).Border(1, pal.Border).Children(func() {
+						IdeaIconBadge(c, domain.ResolveIdeaIconKey(hit.Node), hit.Node.Theme, IconBadgeProps{
+							Size:     26,
+							IconSize: 14,
+							Radius:   7,
+						})
 						ui.Textf(c, "之前记过：《%s》", hit.Node.Title).
 							FontSize(12.5).Bold().TextColor(pal.Ink).Grow(1).MinWidth(0).MaxLines(1)
 						if PillAction(c, "capture_merge_hit", IconCheck, "合并进去", false).Clicked() {
@@ -152,7 +83,7 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 						a.CaptureShowScene = !a.CaptureShowScene
 					}
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						ui.Icon(c, IconSpark).Size(14, 14).TextColor(pal.Accent)
+						ui.Icon(c, IconSpark).Size(14, 14).TextColor(pal.InkSecondary)
 						ui.Text(c, "AI 自动整理").FontSize(12.5).TextColor(pal.InkSecondary)
 						ui.Switch(c, &a.CaptureAutoOrg).Label("AI 自动整理")
 					})
@@ -168,10 +99,18 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 					})
 				}
 
-				ui.Row(c).FillWidth().Justify(ui.End).AlignItems(ui.Center).Gap(10).Children(func() {
-					if PillAction(c, "capture_submit", IconCheck, "记下来", true).Clicked() {
-						a.submitQuickCapture("", a.CaptureAutoOrg)
-					}
+				submitBtn := ui.ButtonBase(c).Key("capture_submit").
+					FillWidth().Padding(12, 16).Radius(12).Center().
+					Background(pal.Ink).TextColor(pal.Card).
+					Cursor(ui.CursorPointer).Label("记下来")
+				mobile.Ink(submitBtn)
+				submitBtn.OnClick(func() {
+					a.submitQuickCapture("", a.CaptureAutoOrg)
+				}).Children(func() {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						ui.Icon(c, IconCheck).Size(15, 15).TextColor(pal.Card)
+						ui.Text(c, "记下来").FontSize(14).Bold().TextColor(pal.Card).SingleLine()
+					})
 				})
 			})
 		})
@@ -216,41 +155,38 @@ func (a *App) renderVoiceCaptureBar(c *ui.Context) {
 	phase := a.Phase(c)
 	recording := a.Deps.Media != nil && a.Deps.Media.IsRecording()
 
-	energy := float32(0.45)
+	energy := float32(0.42)
 	btnLabel := "开始录音"
 	caption := "点一下开始说话"
-	orbTheme := domain.ThemeCoral
+	pulseColor := ColorSuccessInk
+	btnBg := pal.Ink
 	centerIcon := IconMic
 	if recording {
 		energy = 1.0
 		btnLabel = "结束录音"
 		caption = "正在听你说，点一下结束"
-		orbTheme = domain.ThemeAmber
+		pulseColor = ColorDangerInk
+		btnBg = ColorDangerInk
 		centerIcon = IconStop
 	}
 
 	ui.Column(c).FillWidth().Padding(14, 12).Gap(8).Center().Radius(18).
-		Background(pal.SoftPanel.Alpha(0.75)).Children(func() {
-		ui.Box(c).Size(168, 152).Center().
+		Background(pal.SoftPanel).Border(1, pal.Border).Children(func() {
+		ui.Box(c).Size(156, 142).Center().
 			Draw(func(p *ui.Painter, r ui.Rect) {
-				DrawVoicePulse(p, r, phase, energy, pal.Accent)
+				DrawVoicePulse(p, r, phase, energy, pulseColor)
 			}).
 			Children(func() {
-				orbBtn := ui.ButtonBase(c).Key("voice_centerpiece_btn").Size(96, 96).Radius(48).
-					Center().Cursor(ui.CursorPointer).Label(btnLabel)
-				mobile.Ink(orbBtn)
-				orbBtn.Draw(func(p *ui.Painter, r ui.Rect) {
-					DrawAnimatedMemoryOrb(p, r, orbTheme, 0.92, phase, energy, "wave", recording)
-				})
-				orbBtn.Children(func() {
-					ui.Box(c).Size(38, 38).Radius(19).Center().
-						Background(ui.RGBA(18, 20, 28, 0.28)).
-						Children(func() {
-							ui.Icon(c, centerIcon).Size(20, 20).TextColor(ui.Hex("#FFFFFF"))
-						})
+				micBtn := ui.ButtonBase(c).Key("voice_centerpiece_btn").Size(84, 84).Radius(42).
+					Center().Background(btnBg).
+					Shadow(0, 8, 20, 0, ui.RGBA(20, 21, 25, 0.18)).
+					Cursor(ui.CursorPointer).Label(btnLabel)
+				mobile.Ink(micBtn)
+				micBtn.Children(func() {
+					ui.Icon(c, centerIcon).Size(24, 24).TextColor(pal.Card)
 				})
 
-				if orbBtn.Clicked() {
+				if micBtn.Clicked() {
 					a.toggleVoiceRecording()
 				}
 			})
@@ -262,9 +198,13 @@ func (a *App) renderVoiceCaptureBar(c *ui.Context) {
 				a.pickFileAsync(true)
 			}
 			if a.CaptureAudioPath != "" {
-				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, IconCheck).Size(13, 13).TextColor(ColorSuccessInk)
+				ui.Row(c).Gap(4).Padding(4, 8).Radius(999).Background(ColorSuccessSoft).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, IconCheck).Size(12, 12).TextColor(ColorSuccessInk)
 					ui.Text(c, "已添加录音").FontSize(11.5).Bold().TextColor(ColorSuccessInk)
+					if GhostIconAction(c, "clear_audio_btn", IconClose, "清除录音", false).
+						Size(20, 20).Clicked() {
+						a.CaptureAudioPath = ""
+					}
 				})
 			}
 		})
@@ -299,17 +239,33 @@ func (a *App) toggleVoiceRecording() {
 }
 
 func (a *App) renderImageCaptureBar(c *ui.Context, pal SurfacePalette) {
-	ui.Row(c).FillWidth().Wrap().Gap(8).AlignItems(ui.Center).Children(func() {
-		if PillAction(c, "capture_camera", IconCamera, "拍照", true).Clicked() {
-			a.captureCameraAsync()
-		}
-		if PillAction(c, "capture_gallery", IconImage, "相册选图", false).Clicked() {
-			a.pickFileAsync(false)
-		}
+	ui.Column(c).FillWidth().Gap(10).Children(func() {
+		ui.Row(c).FillWidth().Wrap().Gap(8).AlignItems(ui.Center).Children(func() {
+			if PillAction(c, "capture_camera", IconCamera, "拍照", true).Clicked() {
+				a.captureCameraAsync()
+			}
+			if PillAction(c, "capture_gallery", IconImage, "相册选图", false).Clicked() {
+				a.pickFileAsync(false)
+			}
+		})
+
 		if a.CaptureImagePath != "" {
-			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-				ui.Icon(c, IconCheck).Size(13, 13).TextColor(ColorSuccessInk)
-				ui.Text(c, "已选好图片").FontSize(12).Bold().TextColor(ColorSuccessInk)
+			ui.Row(c).FillWidth().Padding(8, 10).Gap(10).Radius(12).AlignItems(ui.Center).
+				Background(pal.SoftPanel).Border(1, pal.Border).Children(func() {
+				if src := a.loadCachedImage(a.CaptureImagePath); src != nil {
+					ui.Image(c, src).Size(44, 44).Radius(8).Fit(ui.Cover)
+				} else {
+					ui.Box(c).Size(44, 44).Radius(8).Center().Background(pal.Card).Border(1, pal.Border).Children(func() {
+						ui.Icon(c, IconImage).Size(18, 18).TextColor(pal.InkSecondary)
+					})
+				}
+				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					ui.Text(c, "已选好图片").FontSize(12).Bold().TextColor(ColorSuccessInk)
+					ui.Text(c, filepath.Base(a.CaptureImagePath)).FontSize(11).TextColor(pal.InkMuted).SingleLine()
+				})
+				if GhostIconAction(c, "clear_image_btn", IconClose, "移除图片", false).Size(26, 26).Clicked() {
+					a.CaptureImagePath = ""
+				}
 			})
 		}
 	})
@@ -421,7 +377,6 @@ func (a *App) submitQuickCapture(targetNodeID string, autoOrganize bool) {
 	mygo.Haptics.Success()
 	_ = a.ReloadVault()
 	a.SelectNode(out.Node.ID)
-	a.FocusedShowcaseID = out.Node.ID
 
 	if !autoOrganize {
 		if out.AIWarning != "" {
@@ -446,7 +401,6 @@ func (a *App) submitQuickCapture(targetNodeID string, autoOrganize bool) {
 		}
 		a.Dispatch(func() {
 			a.SelectNode(organized.ID)
-			a.FocusedShowcaseID = organized.ID
 			if mergedInto != "" {
 				a.setBanner(fmt.Sprintf("已合并到《%s》，当时的原记录也留好了", organized.Title))
 			} else {

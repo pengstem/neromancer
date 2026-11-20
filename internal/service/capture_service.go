@@ -115,14 +115,18 @@ func (s *CaptureService) CaptureQuick(ctx context.Context, in QuickCaptureInput)
 		}
 	} else {
 		isProvisional = true
+		title := deriveQuickTitle(text, modality)
+		summary := defaultSummary(text, modality)
+		tags := []string{modalityTag(modality)}
+		iconKey := domain.InferIdeaIconKey(text, summary, tags, modality)
 		node = domain.IdeaNode{
 			ID:                    fmt.Sprintf("orb_%d", now.UnixNano()),
-			Title:                 deriveQuickTitle(text, modality),
-			ConversationalSummary: defaultSummary(text, modality),
-			Tags:                  []string{modalityTag(modality)},
-			Theme:                 pickThemeByTime(now),
+			Title:                 title,
+			ConversationalSummary: summary,
+			Tags:                  tags,
+			Theme:                 domain.InferThemeForIcon(iconKey),
 			Visual: domain.VisualMotif{
-				MotifType: "constellation",
+				MotifType: iconKey,
 				Caption:   "",
 				Energy:    0.72,
 			},
@@ -228,9 +232,7 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 			if len(decision.GuidingQuestions) > 0 {
 				target.GuidingQuestions = decision.GuidingQuestions
 			}
-			if decision.Visual.MotifType != "" {
-				target.Visual = decision.Visual
-			}
+			target.Visual = resolveOrganizedVisual(target.Visual, decision.Visual, target.Title, target.ConversationalSummary, target.Tags, ev.Modality)
 			target.RelatedIDs = mergeUniqueStrings(target.RelatedIDs, decision.RelatedIDs)
 			target.UpdatedAt = now
 			if err := s.store.UpsertNode(target); err != nil {
@@ -268,9 +270,7 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 	if decision.Weight > 0 {
 		node.Weight = math.Min(1.0, decision.Weight)
 	}
-	if decision.Visual.MotifType != "" {
-		node.Visual = decision.Visual
-	}
+	node.Visual = resolveOrganizedVisual(node.Visual, decision.Visual, node.Title, node.ConversationalSummary, node.Tags, ev.Modality)
 	if len(decision.GuidingQuestions) > 0 {
 		node.GuidingQuestions = decision.GuidingQuestions
 	}
@@ -293,19 +293,38 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 	return node, "", nil
 }
 
+func resolveOrganizedVisual(current, incoming domain.VisualMotif, title, summary string, tags []string, modality string) domain.VisualMotif {
+	out := current
+	if incoming.AccentHex != "" {
+		out.AccentHex = incoming.AccentHex
+	}
+	if strings.TrimSpace(incoming.Caption) != "" {
+		out.Caption = strings.TrimSpace(incoming.Caption)
+	}
+	if incoming.Energy > 0 {
+		out.Energy = incoming.Energy
+	}
+	norm := domain.NormalizeIconKey(incoming.MotifType)
+	if norm == "" {
+		norm = domain.InferIdeaIconKey(title, summary, tags, modality)
+	}
+	out.MotifType = norm
+	return out
+}
+
 func timeOfDayLabel(t time.Time) string {
 	h := t.Hour()
 	switch {
 	case h < 6:
-		return t.Format("15:04") + " 深夜"
+		return "深夜"
 	case h < 11:
-		return t.Format("15:04") + " 早晨"
+		return "早晨"
 	case h < 14:
-		return t.Format("15:04") + " 午间"
+		return "午间"
 	case h < 18:
-		return t.Format("15:04") + " 午后"
+		return "午后"
 	default:
-		return t.Format("15:04") + " 夜晚"
+		return "夜晚"
 	}
 }
 
@@ -347,11 +366,6 @@ func modalityTag(modality string) string {
 	default:
 		return "随口一记"
 	}
-}
-
-func pickThemeByTime(t time.Time) domain.OrbTheme {
-	themes := domain.AllThemes
-	return themes[t.Minute()%len(themes)]
 }
 
 func mergeUniqueStrings(a, b []string) []string {

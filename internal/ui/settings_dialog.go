@@ -39,7 +39,7 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 						ui.Text(c, "填好 API Key 即可使用语音转文字、自动整理与追问").
 							FontSize(11.5).TextColor(pal.InkSecondary)
 					})
-					if PillAction(c, "settings_close", IconClose, "关闭", false).Clicked() {
+					if GhostIconAction(c, "settings_close", IconClose, "关闭", false).Clicked() {
 						a.SettingsModalOpen = false
 					}
 				})
@@ -174,7 +174,7 @@ func (a *App) renderSleepModal(c *ui.Context) {
 							Background(pal.SoftPanel).TextColor(pal.InkSecondary).Shrink(0)
 					}
 				})
-				if PillAction(c, "sleep_close", IconClose, "关闭", false).Clicked() {
+				if GhostIconAction(c, "sleep_close", IconClose, "关闭", false).Clicked() {
 					a.SleepModalOpen = false
 				}
 			})
@@ -223,6 +223,7 @@ func (a *App) renderSleepModal(c *ui.Context) {
 										firstID := item.ConnectedNodeIDs[0]
 										if PillAction(c, "jump_"+item.ID, IconChevronRight, "去看这条灵感", false).Clicked() {
 											a.SleepModalOpen = false
+											a.ActiveSpace = SpaceArchive
 											a.openNodeDetail(c, firstID)
 										}
 									}

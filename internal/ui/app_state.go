@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -23,18 +22,17 @@ import (
 type Space int
 
 const (
-	SpaceShowcase Space = iota // 星海展示页
-	SpaceMind                  // 思维空间
-	SpaceRoam                  // 漫游与海报分享
+	SpaceDashboard Space = iota // 主页 Bento 智库看板
+	SpaceArchive                // 灵感档案室（从主页下滑进入）
 )
 
-// OrgMode controls how ideas are organized inside Mind Space.
-type OrgMode int
+// ArchiveViewMode controls how ideas are organized inside the Archive Vault.
+type ArchiveViewMode int
 
 const (
-	OrgOutline OrgMode = iota // 目录树
-	OrgGraph                  // 关联星图
-	OrgCards                  // 场景轻卡片
+	ArchiveCards   ArchiveViewMode = iota // 档案卡（默认）
+	ArchiveOutline                        // 目录树
+	ArchiveRoam                           // 漫游与海报分享
 )
 
 // Deps bundles runtime infrastructure & domain services for the native UI.
@@ -60,13 +58,13 @@ type App struct {
 	Services ui.Services
 
 	// Navigation & Appearance state
-	ActiveSpace       Space
-	MindOrgMode       OrgMode
-	ActiveTag         string
-	SearchQuery       string
-	FocusedShowcaseID string
-	GraphOffset       ui.Point
-	AnimOrigin        time.Time
+	ActiveSpace         Space
+	ArchiveMode         ArchiveViewMode
+	ActiveTag           string
+	SearchQuery         string
+	DashboardSearchOpen bool
+	ArchiveSearchOpen   bool
+	AnimOrigin          time.Time
 
 	// Cached vault state (reloaded cleanly on state mutations)
 	Nodes             []domain.IdeaNode
@@ -75,6 +73,7 @@ type App struct {
 	Roots             []string
 	Children          map[string][]string
 	Tags              []service.TagCount
+	DashboardDigest   service.DashboardDigest
 	SelectedID        string
 	SelectedEvidences []domain.RawEvidence
 	SelectedSnapshots []domain.StageSnapshot
@@ -83,14 +82,15 @@ type App struct {
 	RecallHits        []domain.RecallMatch
 
 	// Interactive widget states kept across frames
-	OutlineState    ui.OutlineState[string]
-	OutlineChoice   string
-	ShowcaseScroll  ui.ScrollState
-	ShowcaseRefresh ui.RefreshState
-	DetailScroll    ui.ScrollState
-	MarkdownOpts    markdown.Options
+	OutlineState     ui.OutlineState[string]
+	OutlineChoice    string
+	DashboardScroll  ui.ScrollState
+	DashboardRefresh ui.RefreshState
+	ArchiveScroll    ui.ScrollState
+	DetailScroll     ui.ScrollState
+	MarkdownOpts     markdown.Options
 
-	// Showcase AI spark
+	// Optional AI spark prompt refreshed on pull-to-refresh
 	ShowcaseSpark string
 
 	// Mobile & Desktop Sheets / Drawers
@@ -147,8 +147,8 @@ func NewApp(deps Deps) (*App, error) {
 
 	a := &App{
 		Deps:               deps,
-		ActiveSpace:        SpaceShowcase,
-		MindOrgMode:        OrgOutline,
+		ActiveSpace:        SpaceDashboard,
+		ArchiveMode:        ArchiveCards,
 		CaptureModalityIdx: 1, // Quick text/voice dual-ready
 		CaptureAutoOrg:     true,
 		NodeByID:           make(map[string]domain.IdeaNode),
@@ -158,7 +158,6 @@ func NewApp(deps Deps) (*App, error) {
 		SettingsBaseURL:    deps.Config.DeepSeekBaseURL,
 		SettingsAPIKey:     deps.Config.DeepSeekAPIKey,
 		SettingsModel:      deps.Config.DeepSeekModel,
-		ShowcaseSpark:      "随手记下今天让你觉得有意思的一个小念头吧。",
 	}
 
 	if deps.Share != nil {
@@ -251,7 +250,33 @@ func (a *App) ReloadVault() error {
 	if insights, err := a.Deps.Store.ListActiveSleepInsights(); err == nil {
 		a.SleepInsights = insights
 	}
+	a.DashboardDigest = a.Deps.Organize.BuildDashboardDigest(a.Nodes, a.EvCounts, a.SleepInsights)
 	return nil
+}
+
+// enterArchiveWithTag transitions smoothly from Dashboard into the Archive Vault with an optional tag filter.
+func (a *App) enterArchiveWithTag(tag string) {
+	a.ActiveTag = strings.TrimSpace(tag)
+	a.ActiveSpace = SpaceArchive
+	a.ArchiveMode = ArchiveCards
+	a.ArchiveScroll.Y = 0
+}
+
+// openNodeDetail opens the selected node in Detail Sheet (phone) or Archive Master-Detail split (desktop).
+func (a *App) openNodeDetail(c *ui.Context, id string) {
+	a.SelectNode(id)
+	phone := true
+	if c != nil {
+		phone = a.isPhoneLayout(c)
+	}
+	if phone {
+		a.DetailSheetOpen = true
+	} else {
+		a.ActiveSpace = SpaceArchive
+		if a.ArchiveMode == ArchiveRoam {
+			a.ArchiveMode = ArchiveCards
+		}
+	}
 }
 
 func (a *App) refreshSelectedDetails() {
@@ -347,7 +372,7 @@ func (a *App) isPhoneLayout(c *ui.Context) bool {
 	return w < 760
 }
 
-// RootView builds the Android-first responsive UI frame-by-frame.
+// RootView builds the Android-first responsive UI frame-by-frame without a bottom navigation bar.
 func (a *App) RootView(c *ui.Context) {
 	a.FlushPending()
 	a.mu.Lock()
@@ -355,30 +380,24 @@ func (a *App) RootView(c *ui.Context) {
 	a.mu.Unlock()
 
 	pal := a.Palette()
-	phase := a.Phase(c)
 
 	ui.Themed(c, NeromancerTheme()).Fill().Children(func() {
 		ui.Column(c).Fill().Background(pal.Canvas).Children(func() {
-			a.renderTopBar(c, pal, phase)
 			a.renderBanner(c, pal)
 
 			if a.QuickOrbOverlayOpen {
-				a.renderInAppQuickOrbBar(c, pal, phase)
+				a.renderInAppQuickOrbBar(c, pal)
 			}
 
 			ui.Box(c).Grow(1).FillWidth().Clip().Children(func() {
 				switch a.ActiveSpace {
-				case SpaceShowcase:
-					a.renderShowcaseView(c)
-				case SpaceMind:
-					a.renderMindSpaceView(c)
-				case SpaceRoam:
-					a.renderRoamShareView(c)
+				case SpaceArchive:
+					a.renderArchiveView(c)
+				default:
+					a.renderDashboardView(c)
 				}
 			})
 		})
-
-		a.renderBottomDock(c, pal)
 
 		// Mobile-friendly bottom sheets & drawers
 		a.renderDetailSheet(c)
@@ -390,124 +409,10 @@ func (a *App) RootView(c *ui.Context) {
 	})
 }
 
-func (a *App) renderTopBar(c *ui.Context, pal SurfacePalette, phase float32) {
-	ui.Row(c).Height(48).FillWidth().Padding(0, 14).AlignItems(ui.Center).Gap(8).Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(22, 22).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
-				DrawAnimatedMemoryOrb(p, r, domain.ThemeCoral, 0.9, phase, 0.25, "petals", false)
-			})
-			ui.Text(c, "Neromancer").FontSize(16).Bold().TextColor(pal.Ink).SingleLine()
-			ui.Text(c, fmt.Sprintf("%d", len(a.Nodes))).FontSize(11).Bold().
-				Padding(2, 7).Radius(999).
-				Background(pal.SoftPanel).TextColor(pal.InkMuted).SingleLine()
-		})
-
-		ui.Spacer(c).Grow(1)
-
-		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			if a.BusyTask != "" {
-				ui.Spinner(c).Size(14, 14)
-			}
-
-			if IconAction(c, "top_float", IconFloat, "随手记", a.QuickOrbOverlayOpen).Tooltip("随手记").Clicked() {
-				if a.FloatOnToggle != nil {
-					a.FloatOnToggle()
-				} else {
-					a.QuickOrbOverlayOpen = !a.QuickOrbOverlayOpen
-				}
-			}
-
-			ui.Box(c).Key("top_sleep_wrap").Size(34, 34).Shrink(0).Children(func() {
-				if IconAction(c, "top_sleep", IconSpark, "灵感串联", a.SleepModalOpen).Tooltip("灵感串联").Clicked() {
-					a.SleepModalOpen = true
-				}
-				if len(a.SleepInsights) > 0 {
-					ui.Box(c).Absolute().Top(4).Right(4).Size(6, 6).Radius(3).
-						Background(c.Theme().Danger).PassThrough()
-				}
-			})
-
-			configured := a.Deps.AI != nil && a.Deps.AI.Configured()
-			ui.Box(c).Key("top_settings_wrap").Size(34, 34).Shrink(0).Children(func() {
-				if IconAction(c, "top_settings", IconSliders, "DeepSeek 设置", a.SettingsModalOpen).Tooltip("DeepSeek 设置").Clicked() {
-					a.SettingsModalOpen = true
-				}
-				if configured {
-					ui.Box(c).Absolute().Top(4).Right(4).Size(6, 6).Radius(3).
-						Background(c.Theme().Success).PassThrough()
-				}
-			})
-		})
-	})
-}
-
-func (a *App) renderBottomDock(c *ui.Context, pal SurfacePalette) {
-	if a.DetailSheetOpen || a.CaptureModalOpen || a.EvidenceModalOpen || a.SettingsModalOpen || a.SleepModalOpen || a.ShareModalOpen {
-		return
-	}
-	_, _, bottomSafe, _ := c.SafeArea()
-	ui.Overlay(c, func() {
-		ui.Row(c).Key("bottom_dock").Absolute().Left(14).Right(14).Bottom(14 + bottomSafe).
-			Justify(ui.SpaceBetween).AlignItems(ui.Center).Gap(8).PassThrough().
-			Children(func() {
-				a.renderSpaceDockCapsule(c, pal)
-				a.renderMorphingFAB(c)
-			})
-	})
-}
-
-func (a *App) renderSpaceDockCapsule(c *ui.Context, pal SurfacePalette) {
-	tabs := []struct {
-		space Space
-		icon  *ui.SVG
-		label string
-	}{
-		{SpaceShowcase, IconOrb, "灵感"},
-		{SpaceMind, IconMind, "整理"},
-		{SpaceRoam, IconRoam, "漫游"},
-	}
-
-	ui.Row(c).Key("dock_capsule").Padding(4).Gap(2).Radius(999).AlignItems(ui.Center).Shrink(0).
-		Shadow(0, 8, 22, 0, ui.RGBA(0, 0, 0, 0.14)).
-		Draw(func(p *ui.Painter, r ui.Rect) {
-			DrawFrostSurface(p, r, pal.GlassTint, pal.GlassBorder, 999, 16)
-		}).
-		Clip().
-		Children(func() {
-			for _, tb := range tabs {
-				tab := tb
-				active := a.ActiveSpace == tab.space
-				btn := ui.ButtonBase(c).Key("dock_tab_"+tab.label).
-					Padding(6, 9).Gap(4).Radius(999).Center().
-					Cursor(ui.CursorPointer).Shrink(0).Clip().Label(tab.label)
-				if active {
-					btn.Background(pal.Accent).TextColor(pal.AccentText)
-				} else {
-					bg := ui.Transparent
-					if btn.Pressed() {
-						bg = pal.SoftPanel.Alpha(0.75)
-					} else if btn.Hovered() {
-						bg = pal.SoftPanel.Alpha(0.45)
-					}
-					btn.Background(bg).TextColor(pal.InkSecondary)
-				}
-				mobile.Ink(btn)
-				btn.Children(func() {
-					ui.Icon(c, tab.icon).Size(13.5, 13.5)
-					ui.Text(c, tab.label).FontSize(11.5).Bold().SingleLine()
-				})
-				if btn.Clicked() {
-					mygo.Haptics.Selection()
-					a.ActiveSpace = tab.space
-				}
-			}
-		})
-}
-
 func (a *App) renderBanner(c *ui.Context, pal SurfacePalette) {
 	if a.BusyTask != "" && a.BannerText == "" {
-		ui.Row(c).FillWidth().Padding(8, 12).Margin(0, 14, 6, 14).Gap(8).AlignItems(ui.Center).
-			Radius(10).Background(pal.SoftPanel).Border(1, pal.Border).Children(func() {
+		ui.Row(c).FillWidth().Padding(8, 12).Margin(10, 16, 0, 16).Gap(8).AlignItems(ui.Center).
+			Radius(10).Background(pal.Card).Border(1, pal.Border).Children(func() {
 			ui.Spinner(c).Size(14, 14)
 			ui.Text(c, a.BusyTask).FontSize(12).TextColor(pal.InkSecondary).Grow(1)
 		})
@@ -526,29 +431,27 @@ func (a *App) renderBanner(c *ui.Context, pal SurfacePalette) {
 		border = th.Danger.Alpha(0.35)
 		fg = th.Danger
 	}
-	ui.Row(c).FillWidth().Padding(8, 12).Margin(0, 14, 6, 14).Gap(8).AlignItems(ui.Center).
+	ui.Row(c).FillWidth().Padding(8, 12).Margin(10, 16, 0, 16).Gap(8).AlignItems(ui.Center).
 		Radius(10).Background(bg).Border(1, border).
 		Children(func() {
-			ui.Text(c, a.BannerText).FontSize(12).TextColor(fg).Grow(1)
+			ui.Text(c, a.BannerText).FontSize(12).TextColor(fg).Grow(1).MinWidth(0)
 			if a.BannerShowAI {
 				if PillAction(c, "banner_ai_cfg", IconSliders, "去设置", true).Clicked() {
 					a.SettingsModalOpen = true
 				}
 			}
-			if IconAction(c, "banner_close", IconClose, "关闭提示", false).Clicked() {
+			if GhostIconAction(c, "banner_close", IconClose, "关闭提示", false).Clicked() {
 				a.BannerText = ""
 				a.BannerShowAI = false
 			}
 		})
 }
 
-func (a *App) renderInAppQuickOrbBar(c *ui.Context, pal SurfacePalette, phase float32) {
-	ui.Row(c).FillWidth().Padding(8, 12).Margin(0, 14, 8, 14).Gap(8).AlignItems(ui.Center).
+func (a *App) renderInAppQuickOrbBar(c *ui.Context, pal SurfacePalette) {
+	ui.Row(c).FillWidth().Padding(8, 12).Margin(10, 16, 0, 16).Gap(8).AlignItems(ui.Center).
 		Radius(14).Background(pal.Card).Border(1, pal.Border).
 		Children(func() {
-			ui.Box(c).Size(24, 24).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
-				DrawAnimatedMemoryOrb(p, r, domain.ThemeCoral, 0.9, phase, 0.35, "petals", true)
-			})
+			IdeaIconBadge(c, domain.IconKeyBulb, domain.ThemeAmber, IconBadgeProps{Size: 28, IconSize: 15, Radius: 8})
 			ui.TextInput(c, &a.FloatQuickText).Placeholder("随手记一句…").Grow(1)
 			if PillAction(c, "quick_orb_submit", IconPlus, "记下来", true).Clicked() && strings.TrimSpace(a.FloatQuickText) != "" {
 				a.submitFloatingCapture("")

@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/mobile"
+	"github.com/pengstem/neromancer/internal/domain"
 )
 
 func mustIconSVG(inner string) *ui.SVG {
@@ -11,7 +12,7 @@ func mustIconSVG(inner string) *ui.SVG {
 	return ui.MustParseSVG([]byte(head + inner + tail))
 }
 
-// Vector studio & atelier icons compiled once at startup.
+// Vector studio & semantic archive icons compiled once at startup.
 var (
 	IconOrb           = mustIconSVG(`<circle cx="12" cy="12" r="9"/><path d="M8.5 9.5a5 5 0 0 1 5-3.2"/><circle cx="15.5" cy="15.5" r="1.2"/>`)
 	IconMind          = mustIconSVG(`<circle cx="12" cy="5.5" r="2.5"/><circle cx="6" cy="17.5" r="2.5"/><circle cx="18" cy="17.5" r="2.5"/><path d="M10.8 7.7 7.2 15.3"/><path d="M13.2 7.7 16.8 15.3"/><path d="M8.5 17.5h7"/>`)
@@ -44,9 +45,83 @@ var (
 	IconChevronRight  = mustIconSVG(`<polyline points="9 6 15 12 9 18"/>`)
 	IconMapPin        = mustIconSVG(`<path d="M12 21s-6-5.4-6-10.5a6 6 0 1 1 12 0C18 15.6 12 21 12 21Z"/><circle cx="12" cy="10.5" r="2"/>`)
 	IconClock         = mustIconSVG(`<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>`)
+	IconArrowDown     = mustIconSVG(`<line x1="12" y1="5" x2="12" y2="19"/><polyline points="6 13 12 19 18 13"/>`)
+	IconArrowUp       = mustIconSVG(`<line x1="12" y1="19" x2="12" y2="5"/><polyline points="6 11 12 5 18 11"/>`)
+	IconArchiveFolder = mustIconSVG(`<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>`)
+
+	// Semantic auto-matched icons for Inspiration Archive entries.
+	IconBotanical = mustIconSVG(`<path d="M12 21v-8"/><path d="M12 13c-3.5 0-6-2.5-6-6.5 0-1.5.5-2.8 1.2-3.5 1.6.6 3 1.8 3.6 3.3.4-1.6 1.2-2.8 2.2-3.3 1 .5 1.8 1.7 2.2 3.3.6-1.5 2-2.7 3.6-3.3.7.7 1.2 2 1.2 3.5 0 4-2.5 6.5-6 6.5Z"/><path d="M12 17c2.2 0 4-1.3 4.8-3.2"/><path d="M12 18c-2.2 0-4-1.3-4.8-3.2"/>`)
+	IconCompass   = mustIconSVG(`<circle cx="12" cy="12" r="9"/><polygon points="15.5 8.5 13.5 13.5 8.5 15.5 10.5 10.5 15.5 8.5"/>`)
+	IconWave      = mustIconSVG(`<line x1="4" y1="11" x2="4" y2="13"/><line x1="8" y1="8" x2="8" y2="16"/><line x1="12" y1="5" x2="12" y2="19"/><line x1="16" y1="9" x2="16" y2="15"/><line x1="20" y1="11" x2="20" y2="13"/>`)
+	IconPrism     = mustIconSVG(`<path d="M12 3 3.5 18.5h17L12 3Z"/><path d="M12 3v15.5"/><path d="m12 11 8.5 7.5"/>`)
+	IconCode      = mustIconSVG(`<polyline points="8 7 3 12 8 17"/><polyline points="16 7 21 12 16 17"/><line x1="13.5" y1="5" x2="10.5" y2="19"/>`)
+	IconBook      = mustIconSVG(`<path d="M2 5.5A2.5 2.5 0 0 1 4.5 3H10a2 2 0 0 1 2 2v15a1.5 1.5 0 0 0-1.5-1.5H4.5A2.5 2.5 0 0 1 2 16V5.5Z"/><path d="M22 5.5A2.5 2.5 0 0 0 19.5 3H14a2 2 0 0 0-2 2v15a1.5 1.5 0 0 1 1.5-1.5h6A2.5 2.5 0 0 0 22 16V5.5Z"/>`)
+	IconMusic     = mustIconSVG(`<path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>`)
+	IconCoffee    = mustIconSVG(`<path d="M17 8h1.5a3.5 3.5 0 0 1 0 7H17"/><path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z"/><line x1="7" y1="3" x2="7" y2="5"/><line x1="11" y1="3" x2="11" y2="5"/>`)
+	IconBulb      = mustIconSVG(`<path d="M9 18h6"/><path d="M10 21h4"/><path d="M15.5 14c.8-.9 1.5-2.1 1.5-3.8a5 5 0 1 0-10 0c0 1.7.7 2.9 1.5 3.8.6.7 1 1.3 1 2h5c0-.7.4-1.3 1-2Z"/>`)
 )
 
-// IconAction builds a compact 34x34 rounded icon button with accessible label and Material ink.
+// SVGForIconKey returns the vector SVG matching a canonical or legacy icon key.
+func SVGForIconKey(iconKey string) *ui.SVG {
+	switch domain.NormalizeIconKey(iconKey) {
+	case domain.IconKeyBotanical:
+		return IconBotanical
+	case domain.IconKeyCompass:
+		return IconCompass
+	case domain.IconKeyWave:
+		return IconWave
+	case domain.IconKeyPrism:
+		return IconPrism
+	case domain.IconKeyCode:
+		return IconCode
+	case domain.IconKeyBook:
+		return IconBook
+	case domain.IconKeyMusic:
+		return IconMusic
+	case domain.IconKeyCamera:
+		return IconCamera
+	case domain.IconKeyCoffee:
+		return IconCoffee
+	default:
+		return IconBulb
+	}
+}
+
+// ResolveNodeSVG resolves the semantic vector SVG icon for an IdeaNode.
+func ResolveNodeSVG(node domain.IdeaNode) *ui.SVG {
+	return SVGForIconKey(domain.ResolveIdeaIconKey(node))
+}
+
+// IconBadgeProps configures IdeaIconBadge dimensions; zero values produce the 38px archive tile badge.
+type IconBadgeProps struct {
+	Size     float32
+	IconSize float32
+	Radius   float32
+}
+
+// IdeaIconBadge renders a tinted rounded badge housing an auto-matched semantic SVG icon.
+func IdeaIconBadge(c *ui.Context, iconKey string, theme domain.OrbTheme, p IconBadgeProps) ui.Element {
+	size := p.Size
+	if size <= 0 {
+		size = 38
+	}
+	icSize := p.IconSize
+	if icSize <= 0 {
+		icSize = 19
+	}
+	rad := p.Radius
+	if rad <= 0 {
+		rad = 10
+	}
+	orbPal := ColorsForTheme(theme)
+	return ui.Box(c).Size(size, size).Radius(rad).Shrink(0).Center().
+		Background(orbPal.BadgeBg).
+		Children(func() {
+			ui.Icon(c, SVGForIconKey(iconKey)).Size(icSize, icSize).TextColor(orbPal.BadgeText)
+		})
+}
+
+// IconAction builds a compact 32x32 rounded icon button with accessible label and Material ink.
 func IconAction(c *ui.Context, key string, ic *ui.SVG, label string, active bool) ui.Element {
 	t := c.Theme()
 	b := ui.ButtonBase(c)
@@ -60,11 +135,11 @@ func IconAction(c *ui.Context, key string, ic *ui.SVG, label string, active bool
 	border := t.Border
 	fg := t.TextMuted
 	if active {
-		const alpha = float32(0.14)
+		const alpha = float32(0.10)
 		bg = t.Accent.Alpha(alpha)
-		hover = t.Accent.Alpha(alpha + 0.06)
-		pressed = t.Accent.Alpha(alpha + 0.12)
-		border = t.Accent.Alpha(0.45)
+		hover = t.Accent.Alpha(alpha + 0.05)
+		pressed = t.Accent.Alpha(alpha + 0.10)
+		border = t.Accent.Alpha(0.35)
 		fg = t.Accent
 	}
 
@@ -75,8 +150,45 @@ func IconAction(c *ui.Context, key string, ic *ui.SVG, label string, active bool
 		face = hover
 	}
 
-	b.Size(34, 34).Radius(10).Center().
+	b.Size(32, 32).Radius(9).Center().
 		Background(face).Border(1, border).TextColor(fg).
+		Cursor(ui.CursorPointer).Shrink(0).Clip().Label(label)
+	mobile.Ink(b)
+
+	if ic != nil {
+		b.Children(func() {
+			ui.Icon(c, ic).Size(15, 15)
+		})
+	}
+	return b
+}
+
+// GhostIconAction builds a quiet borderless 32x32 icon button for sheet close actions and restrained header tools.
+func GhostIconAction(c *ui.Context, key string, ic *ui.SVG, label string, active bool) ui.Element {
+	t := c.Theme()
+	b := ui.ButtonBase(c)
+	if key != "" {
+		b.Key(key)
+	}
+
+	bg := ui.Transparent
+	hover := t.SurfaceHover
+	pressed := t.SurfacePressed
+	fg := t.TextMuted
+	if active {
+		bg = t.Accent.Alpha(0.10)
+		fg = t.Accent
+	}
+
+	face := bg
+	if b.Pressed() {
+		face = pressed
+	} else if b.Hovered() {
+		face = hover
+	}
+
+	b.Size(32, 32).Radius(9).Center().
+		Background(face).TextColor(fg).
 		Cursor(ui.CursorPointer).Shrink(0).Clip().Label(label)
 	mobile.Ink(b)
 

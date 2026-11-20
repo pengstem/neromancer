@@ -3,31 +3,33 @@ package ui
 import (
 	"context"
 	"fmt"
-	"math"
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/mobile"
 	"github.com/pengstem/neromancer/internal/domain"
+	"github.com/pengstem/neromancer/internal/service"
 )
 
-func (a *App) renderShowcaseView(c *ui.Context) {
-	sc := ui.Scroll(c).Key("space_showcase").TrackScroll(&a.ShowcaseScroll).Fill().
+func (a *App) renderDashboardView(c *ui.Context) {
+	pal := a.Palette()
+	phone := a.isPhoneLayout(c)
+
+	sc := ui.Scroll(c).Key("space_dashboard").TrackScroll(&a.DashboardScroll).Fill().Background(pal.Canvas).
 		HandleInput(func(ev ui.InputEvent) bool {
-			// Pull up past bottom transitions into Mind Space.
-			if ev.Kind == ui.InputScroll && ev.DY > 28 && a.ShowcaseScroll.Y >= a.ShowcaseScroll.MaxY-8 {
-				a.ActiveSpace = SpaceMind
+			// Scrolling down past the bottom of the Dashboard enters the Inspiration Archive Vault.
+			if ev.Kind == ui.InputScroll && ev.DY > 18 && a.DashboardScroll.Y >= a.DashboardScroll.MaxY-8 {
+				a.enterArchiveWithTag("")
 				return true
 			}
 			return false
 		})
 
-	if sc.PullToRefresh(&a.ShowcaseRefresh) {
+	if sc.PullToRefresh(&a.DashboardRefresh) {
 		mygo.Haptics.Light()
-		a.RunAsync("正在换一条新启发…", func(ctx context.Context) error {
-			defer a.Dispatch(func() { a.ShowcaseRefresh.Refreshing = false })
+		a.RunAsync("正在刷新灵感看板…", func(ctx context.Context) error {
+			defer a.Dispatch(func() { a.DashboardRefresh.Refreshing = false })
 			if a.Deps.AI != nil && a.Deps.AI.Configured() {
 				if spark, err := a.Deps.Incubate.SuggestShowcaseSpark(ctx); err == nil && spark != "" {
 					a.Dispatch(func() { a.ShowcaseSpark = spark })
@@ -37,53 +39,153 @@ func (a *App) renderShowcaseView(c *ui.Context) {
 		})
 	}
 
+	viewH := sc.Bounds().H
+	if viewH <= 0 {
+		_, viewH = c.Size()
+	}
+
 	sc.Children(func() {
 		padX := float32(16)
-		if !a.isPhoneLayout(c) {
+		padTop := float32(14)
+		if !phone {
 			padX = 28
+			padTop = 20
 		}
-		ui.Column(c).FillWidth().Padding(12, padX, 112, padX).Gap(14).Children(func() {
-			a.renderShowcaseHeaderAndRecall(c)
-			a.renderTagFilterBar(c)
-			a.renderMemoryOrbField(c)
-			a.renderShowcaseSparkBanner(c)
-			a.renderMemoryOrbsGrid(c)
-			a.renderPullDownToMindSpace(c)
+
+		inner := func() {
+			col := ui.Column(c).FillWidth().Padding(padTop, padX, 18, padX).Gap(12)
+			if viewH > 0 {
+				col.MinHeight(viewH)
+			}
+			col.Children(func() {
+				a.renderDashboardHeader(c, pal)
+
+				if a.DashboardSearchOpen || strings.TrimSpace(a.SearchQuery) != "" {
+					a.renderDashboardSearchCard(c, pal)
+				}
+
+				a.renderDashboardHeroRow(c, pal, phone)
+				a.renderDashboardKeywordMatrix(c, pal)
+				a.renderDashboardCluesCard(c, pal)
+				a.renderDashboardCaptureTiles(c, pal)
+
+				ui.Spacer(c).Grow(1)
+
+				a.renderDashboardArchivePortal(c, pal)
+			})
+		}
+
+		if phone {
+			inner()
+			return
+		}
+		ui.Column(c).FillWidth().AlignItems(ui.Center).Children(func() {
+			ui.Box(c).FillWidth().MaxWidth(760).Children(inner)
 		})
 	})
 }
 
-func (a *App) renderShowcaseHeaderAndRecall(c *ui.Context) {
-	pal := a.Palette()
+func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette) {
+	winW, _ := c.Size()
+	compact := winW > 0 && winW < 380
+	gap := float32(6)
+	btnPadH := float32(11)
+	if compact {
+		gap = 5
+		btnPadH = 9
+	}
 
-	ui.Row(c).FillWidth().Padding(8, 14).Gap(8).AlignItems(ui.Center).
-		Radius(999).Background(pal.Card).Border(1, pal.Border).
-		Role(ui.RoleSearch).
-		Children(func() {
-			ui.Icon(c, IconSearch).Size(16, 16).TextColor(pal.InkMuted).Shrink(0)
-			if ui.TextInputBase(c, &a.SearchQuery).
-				Placeholder("搜搜以前记过的想法…").
-				PlaceholderColor(pal.InkMuted).
-				TextColor(pal.Ink).
-				FontSize(14).
-				Label("搜索灵感").
-				Search().
-				Grow(1).MinWidth(0).
-				Changed() {
-				a.refreshRecallHits()
+	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(gap).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
+			ui.Box(c).Size(26, 26).Radius(7).Center().Background(pal.Ink).Children(func() {
+				ui.Icon(c, IconSpark).Size(14, 14).TextColor(pal.Card)
+			})
+			ui.Text(c, "Neromancer").FontSize(16).Bold().TextColor(pal.Ink).SingleLine()
+		})
+
+		ui.Spacer(c).Grow(1)
+
+		ui.Row(c).Gap(gap).AlignItems(ui.Center).Shrink(0).Children(func() {
+			if a.BusyTask != "" {
+				ui.Spinner(c).Size(14, 14)
 			}
-			if strings.TrimSpace(a.SearchQuery) != "" {
-				if IconAction(c, "search_clear_pill", IconClose, "清空搜索", false).
-					Size(26, 26).Radius(999).Clicked() {
-					a.SearchQuery = ""
+
+			if IconAction(c, "dash_search_btn", IconSearch, "搜索灵感", a.DashboardSearchOpen).Tooltip("搜索灵感").Clicked() {
+				a.DashboardSearchOpen = !a.DashboardSearchOpen
+				if !a.DashboardSearchOpen && strings.TrimSpace(a.SearchQuery) == "" {
 					a.RecallHits = nil
 				}
 			}
-		})
 
-	if strings.TrimSpace(a.SearchQuery) != "" {
-		a.renderRecallResults(c)
-	}
+			ui.Box(c).Key("dash_sleep_wrap").Size(32, 32).Shrink(0).Children(func() {
+				if IconAction(c, "dash_sleep_btn", IconMoon, "灵感串联", a.SleepModalOpen).Tooltip("灵感串联").Clicked() {
+					a.SleepModalOpen = true
+				}
+				if len(a.SleepInsights) > 0 {
+					ui.Box(c).Absolute().Top(4).Right(4).Size(6, 6).Radius(3).
+						Background(ColorVermilion).PassThrough()
+				}
+			})
+
+			configured := a.Deps.AI != nil && a.Deps.AI.Configured()
+			ui.Box(c).Key("dash_settings_wrap").Size(32, 32).Shrink(0).Children(func() {
+				if IconAction(c, "dash_settings_btn", IconSliders, "DeepSeek 设置", a.SettingsModalOpen).Tooltip("DeepSeek 设置").Clicked() {
+					a.SettingsModalOpen = true
+				}
+				if configured {
+					ui.Box(c).Absolute().Top(4).Right(4).Size(6, 6).Radius(3).
+						Background(ColorSuccessInk).PassThrough()
+				}
+			})
+
+			addBtn := ui.ButtonBase(c).Key("dash_quick_add").
+				Padding(7, btnPadH).Gap(4).Radius(9).AlignItems(ui.Center).Shrink(0).
+				Background(pal.Ink).TextColor(pal.Card).Cursor(ui.CursorPointer).Label("记一笔")
+			mobile.Ink(addBtn)
+			addBtn.OnClick(func() {
+				mygo.Haptics.Light()
+				a.CaptureModalityIdx = 1
+				a.CaptureModalOpen = true
+			}).Children(func() {
+				ui.Icon(c, IconPlus).Size(13.5, 13.5).TextColor(pal.Card)
+				ui.Text(c, "记一笔").FontSize(12.5).Bold().TextColor(pal.Card).SingleLine()
+			})
+		})
+	})
+}
+
+func (a *App) renderDashboardSearchCard(c *ui.Context, pal SurfacePalette) {
+	ui.Column(c).FillWidth().Gap(8).Children(func() {
+		ui.Row(c).FillWidth().Padding(8, 12).Gap(8).AlignItems(ui.Center).
+			Radius(12).Background(pal.Card).Border(1, pal.Border).
+			Role(ui.RoleSearch).
+			Children(func() {
+				ui.Icon(c, IconSearch).Size(15, 15).TextColor(pal.InkMuted).Shrink(0)
+				if ui.TextInputBase(c, &a.SearchQuery).
+					Placeholder("搜搜以前记过的想法…").
+					PlaceholderColor(pal.InkMuted).
+					TextColor(pal.Ink).
+					FontSize(13.5).
+					Label("搜索灵感").
+					Search().
+					Grow(1).MinWidth(0).
+					Changed() {
+					a.refreshRecallHits()
+				}
+				if strings.TrimSpace(a.SearchQuery) != "" || a.DashboardSearchOpen {
+					if GhostIconAction(c, "dash_search_clear", IconClose, "清空搜索", false).
+						Size(26, 26).Clicked() {
+						a.SearchQuery = ""
+						a.RecallHits = nil
+						a.DashboardSearchOpen = false
+					}
+				}
+			})
+
+		if strings.TrimSpace(a.SearchQuery) != "" {
+			a.renderRecallResults(c)
+		}
+	})
 }
 
 func (a *App) refreshRecallHits() {
@@ -100,15 +202,14 @@ func (a *App) refreshRecallHits() {
 
 func (a *App) renderRecallResults(c *ui.Context) {
 	pal := a.Palette()
-	phase := a.Phase(c)
 
-	ui.Column(c).FillWidth().Padding(12).Gap(8).Radius(16).
+	ui.Column(c).FillWidth().Padding(12).Gap(8).Radius(14).
 		Background(pal.Card).Border(1, pal.Border).
 		Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-				ui.Icon(c, IconSearch).Size(14, 14).TextColor(pal.Accent).Shrink(0)
+				ui.Icon(c, IconSearch).Size(14, 14).TextColor(pal.Ink).Shrink(0)
 				ui.Textf(c, "找到 %d 条相关记录", len(a.RecallHits)).
-					FontSize(12.5).Bold().TextColor(pal.Accent).Grow(1)
+					FontSize(12.5).Bold().TextColor(pal.Ink).Grow(1)
 				if PillAction(c, "recall_clear", IconClose, "清除", false).Clicked() {
 					a.SearchQuery = ""
 					a.RecallHits = nil
@@ -116,499 +217,313 @@ func (a *App) renderRecallResults(c *ui.Context) {
 			})
 
 			if len(a.RecallHits) == 0 {
-				ui.Text(c, "还没有关于这个词的记录，随手记一条吧。").
+				ui.Text(c, "还没有关于这个词的记录，随手记一笔吧。").
 					FontSize(12).TextColor(pal.InkSecondary)
 				return
 			}
 
 			for i, hit := range a.RecallHits {
 				h := hit
-				row := ui.Row(c).Key(fmt.Sprintf("recall_%d_%s", i, h.Node.ID)).
-					FillWidth().Padding(8, 10).Gap(10).AlignItems(ui.Center).
-					Radius(12).Background(pal.SoftPanel)
-				row.Children(func() {
-					ui.Box(c).Size(28, 28).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
-						DrawAnimatedMemoryOrb(p, r, h.Node.Theme, h.Node.Weight, phase+float32(i)*0.7, float32(h.Node.Visual.Energy), h.Node.Visual.MotifType, false)
-					})
-					ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-						ui.Text(c, h.Node.Title).FontSize(13).Bold().TextColor(pal.Ink).MaxLines(1)
-						ui.Textf(c, "%s · %d 条原记录", h.MatchReason, h.EvidenceCount).
-							FontSize(11).TextColor(pal.InkMuted).MaxLines(1)
-					})
-					if PillAction(c, "recall_open_"+h.Node.ID, IconChevronRight, "打开", true).Clicked() {
-						a.openNodeDetail(c, h.Node.ID)
-					}
-				})
-			}
-		})
-}
-
-func (a *App) renderTagFilterBar(c *ui.Context) {
-	pal := a.Palette()
-
-	ui.ScrollHorizontal(c).FillWidth().Scrollbars(false).Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			allActive := a.ActiveTag == ""
-			a.renderFilterChip(c, "tag_all", "全部", allActive, pal, func() {
-				a.ActiveTag = ""
-			})
-
-			limit := min(len(a.Tags), 10)
-			for i := 0; i < limit; i++ {
-				tc := a.Tags[i]
-				tagName := tc.Tag
-				label := fmt.Sprintf("#%s %d", tc.Tag, tc.Count)
-				active := a.ActiveTag == tagName
-				a.renderFilterChip(c, "tag_"+tagName, label, active, pal, func() {
-					if a.ActiveTag == tagName {
-						a.ActiveTag = ""
-					} else {
-						a.ActiveTag = tagName
-					}
-				})
-			}
-		})
-	})
-}
-
-func (a *App) renderFilterChip(c *ui.Context, key, label string, active bool, pal SurfacePalette, onTap func()) {
-	bgTarget := pal.SoftPanel
-	fgTarget := pal.InkSecondary
-	if active {
-		bgTarget = pal.Accent
-		fgTarget = pal.AccentText
-	}
-
-	chip := ui.ButtonBase(c).Key(key).Padding(6, 12).Radius(999).
-		Cursor(ui.CursorPointer).Shrink(0).Clip().Label(label)
-	bg := chip.AnimateColor("bg", bgTarget, ui.Animation{Duration: 160 * time.Millisecond, Oklab: true})
-	fg := chip.AnimateColor("fg", fgTarget, ui.Animation{Duration: 160 * time.Millisecond, Oklab: true})
-	chip.Background(bg).TextColor(fg)
-	mobile.Ink(chip)
-	chip.Children(func() {
-		ui.Text(c, label).FontSize(12).Bold().SingleLine()
-	})
-	if chip.Clicked() {
-		mygo.Haptics.Selection()
-		onTap()
-	}
-}
-
-func (a *App) renderMemoryOrbField(c *ui.Context) {
-	filtered := a.filteredShowcaseNodes()
-	if len(filtered) == 0 {
-		return
-	}
-
-	pal := a.Palette()
-	phase := a.Phase(c)
-	phone := a.isPhoneLayout(c)
-
-	maxField := min(len(filtered), 6)
-	fieldNodes := filtered[:maxField]
-	anchors := showcaseOrbAnchors(maxField)
-
-	posByID := make(map[string][2]float32, maxField)
-	for i, n := range fieldNodes {
-		posByID[n.ID] = anchors[i]
-	}
-
-	focusedID := a.FocusedShowcaseID
-	var focusedNode domain.IdeaNode
-	hasExplicitFocus := false
-	for _, n := range fieldNodes {
-		if n.ID == focusedID {
-			focusedNode = n
-			hasExplicitFocus = true
-			break
-		}
-	}
-	if !hasExplicitFocus {
-		focusedNode = fieldNodes[0]
-		focusedID = ""
-	}
-
-	ui.Column(c).FillWidth().Gap(10).Children(func() {
-		stage := ui.Box(c).Key("showcase_orb_field").FillWidth().Height(280).
-			Radius(20).Background(pal.Card.Alpha(0.55)).Border(1, pal.Border.Alpha(0.75)).Clip()
-
-		stage.Draw(func(p *ui.Painter, r ui.Rect) {
-			cx := r.X + r.W/2
-			cy := r.Y + r.H/2
-			base := min(r.W, r.H)
-
-			// Concentric orbital rings.
-			for _, frac := range []float32{0.18, 0.31, 0.44} {
-				var ring ui.Path
-				ring.Circle(cx, cy, base*frac)
-				p.StrokePath(&ring, 1, pal.Border.Alpha(0.62))
-			}
-
-			// Cardinal observatory ticks on middle ring.
-			ringR := base * 0.31
-			for _, ang := range []float64{0, math.Pi / 2, math.Pi, 3 * math.Pi / 2} {
-				tx := cx + ringR*float32(math.Cos(ang))
-				ty := cy + ringR*float32(math.Sin(ang))
-				var tick ui.Path
-				tick.Circle(tx, ty, 2)
-				p.FillPath(&tick, pal.InkMuted.Alpha(0.35))
-			}
-
-			// Ambient wash under focused orb.
-			if hasExplicitFocus {
-				if anchor, ok := posByID[focusedNode.ID]; ok {
-					fx := r.X + anchor[0]*r.W
-					fy := r.Y + anchor[1]*r.H
-					orbPal := ColorsForTheme(focusedNode.Theme)
-					haloR := float32(76)
-					p.FillRadialGradient(ui.Rect{
-						X: fx - haloR,
-						Y: fy - haloR,
-						W: haloR * 2,
-						H: haloR * 2,
-					}, ui.RadialGradient{
-						Center: ui.Point{X: 0.5, Y: 0.5},
-						Radius: haloR,
-						Oklab:  true,
-						Stops: []ui.GradientStop{
-							{Color: orbPal.Aura.Alpha(0.35), At: 0},
-							{Color: ui.Transparent, At: 1},
-						},
-					}, haloR)
-				}
-			}
-
-			// Subtle Bezier filament lines connecting RelatedIDs.
-			drawnEdges := make(map[string]struct{})
-			for _, n := range fieldNodes {
-				p1, ok1 := posByID[n.ID]
-				if !ok1 {
-					continue
-				}
-				x1, y1 := r.X+p1[0]*r.W, r.Y+p1[1]*r.H
-				for _, relID := range n.RelatedIDs {
-					p2, ok2 := posByID[relID]
-					if !ok2 || relID == n.ID {
-						continue
-					}
-					edgeKey := n.ID + "|" + relID
-					if relID < n.ID {
-						edgeKey = relID + "|" + n.ID
-					}
-					if _, seen := drawnEdges[edgeKey]; seen {
-						continue
-					}
-					drawnEdges[edgeKey] = struct{}{}
-
-					x2, y2 := r.X+p2[0]*r.W, r.Y+p2[1]*r.H
-					mx, my := (x1+x2)/2, (y1+y2)/2
-					ctrlX := mx + (cx-mx)*0.22
-					ctrlY := my + (cy-my)*0.22 - 14
-
-					var fil ui.Path
-					fil.MoveTo(x1, y1)
-					fil.QuadTo(ctrlX, ctrlY, x2, y2)
-
-					lineW := float32(1.1)
-					lineCol := pal.Border.Alpha(0.9)
-					if focusedID != "" && (n.ID == focusedID || relID == focusedID) {
-						lineW = 1.8
-						lineCol = pal.Accent.Alpha(0.55)
-					}
-					p.StrokePath(&fil, lineW, lineCol)
-				}
-			}
-		})
-
-		stage.Children(func() {
-			for idx, node := range fieldNodes {
-				n := node
-				pos := anchors[idx]
-				orbDim := float32(56 + 36*clampOrbWeight(n.Weight))
-				isFocused := n.ID == focusedID
-
-				orbBtn := ui.ButtonBase(c).Key("field_orb_"+n.ID).
-					Absolute().
-					LeftPercent(pos[0]*100).
-					TopPercent(pos[1]*100).
-					TranslatePercent(-50, -50).
-					Size(orbDim, orbDim).
-					Radius(orbDim / 2).
-					Cursor(ui.CursorPointer).
-					Label("查看灵感 " + n.Title).
-					Tooltip(n.Title)
-
-				pose := ui.Pose{}
-				if isFocused {
-					pose = ui.Pose{Scale: 1.07, Y: -2}
-				} else if orbBtn.Hovered() {
-					pose = ui.Pose{Scale: 1.04}
-				}
-				orbBtn.AnimatePose(pose, ui.Snappy)
-
-				orbBtn.Draw(func(p *ui.Painter, r ui.Rect) {
-					DrawAnimatedMemoryOrb(p, r, n.Theme, n.Weight, phase+float32(idx)*0.85, float32(n.Visual.Energy), n.Visual.MotifType, isFocused)
-				})
-
-				orbBtn.OnClick(func() {
+				row := ui.ButtonBase(c).Key(fmt.Sprintf("recall_%d_%s", i, h.Node.ID)).
+					FillWidth().Padding(9, 10).Radius(11).Background(pal.SoftPanel).
+					Cursor(ui.CursorPointer).Label(h.Node.Title)
+				mobile.Ink(row)
+				row.OnClick(func() {
 					mygo.Haptics.Selection()
-					if a.FocusedShowcaseID == n.ID {
-						a.SelectNode(n.ID)
-						if phone {
-							a.DetailSheetOpen = true
-						} else {
-							a.ActiveSpace = SpaceMind
-						}
-					} else {
-						a.FocusedShowcaseID = n.ID
-					}
-				})
-
-				pillBg := pal.Card.Alpha(0.90)
-				pillBorder := pal.Border.Alpha(0.65)
-				pillFg := pal.InkSecondary
-				if isFocused {
-					pillBg = pal.Card
-					pillBorder = pal.Accent.Alpha(0.55)
-					pillFg = pal.Ink
-				}
-
-				ui.Box(c).Key("field_pill_"+n.ID).
-					Absolute().
-					LeftPercent(pos[0]*100).
-					TopPercent(pos[1]*100).
-					Translate(0, orbDim/2+3).
-					TranslatePercent(-50, 0).
-					Padding(1.5, 6).
-					Radius(999).
-					Background(pillBg).
-					Border(1, pillBorder).
-					PassThrough().
-					Children(func() {
-						ui.Text(c, trimText(n.Title, 6)).
-							FontSize(10.5).
-							Bold().
-							TextColor(pillFg).
-							SingleLine()
+					a.openNodeDetail(c, h.Node.ID)
+				}).Children(func() {
+					ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
+						IdeaIconBadge(c, domain.ResolveIdeaIconKey(h.Node), h.Node.Theme, IconBadgeProps{
+							Size:     30,
+							IconSize: 15,
+							Radius:   8,
+						})
+						ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+							ui.Text(c, h.Node.Title).FontSize(13).Bold().TextColor(pal.Ink).MaxLines(1)
+							ui.Textf(c, "%s · %d 条原记录", h.MatchReason, h.EvidenceCount).
+								FontSize(11).TextColor(pal.InkMuted).MaxLines(1)
+						})
+						ui.Icon(c, IconChevronRight).Size(14, 14).TextColor(pal.InkMuted).Shrink(0)
 					})
+				})
 			}
 		})
-
-		// Sleek whisper bar for the focused (or lead) memory orb.
-		orbPal := ColorsForTheme(focusedNode.Theme)
-		ui.Row(c).Key("showcase_whisper_bar").FillWidth().Padding(10, 12).Gap(10).
-			AlignItems(ui.Center).Radius(14).Background(pal.Card).Border(1, pal.Border).
-			Children(func() {
-				ui.Box(c).Size(8, 8).Radius(4).Background(orbPal.Mid).Shrink(0)
-				infoBtn := ui.ButtonBase(c).Key("whisper_info_" + focusedNode.ID).
-					Grow(1).MinWidth(0).Cursor(ui.CursorPointer).Label(focusedNode.Title)
-				infoBtn.Children(func() {
-					ui.Column(c).FillWidth().Gap(2).Children(func() {
-						ui.Text(c, focusedNode.Title).FontSize(13.5).Bold().TextColor(pal.Ink).MaxLines(1)
-						ui.Text(c, trimText(focusedNode.ConversationalSummary, 46)).
-							FontSize(11.5).TextColor(pal.InkSecondary).MaxLines(1)
-					})
-				})
-				infoBtn.OnClick(func() {
-					mygo.Haptics.Selection()
-					a.SelectNode(focusedNode.ID)
-					if phone {
-						a.DetailSheetOpen = true
-					} else {
-						a.ActiveSpace = SpaceMind
-					}
-				})
-
-				if PillAction(c, "whisper_detail_"+focusedNode.ID, IconChevronRight, "查看详情", false).Clicked() {
-					mygo.Haptics.Selection()
-					a.openNodeDetail(c, focusedNode.ID)
-				}
-			})
-	})
 }
 
-func showcaseOrbAnchors(count int) [][2]float32 {
-	switch count {
-	case 1:
-		return [][2]float32{{0.50, 0.48}}
-	case 2:
-		return [][2]float32{{0.33, 0.46}, {0.69, 0.50}}
-	case 3:
-		return [][2]float32{{0.50, 0.30}, {0.24, 0.67}, {0.76, 0.65}}
-	case 4:
-		return [][2]float32{{0.33, 0.30}, {0.73, 0.27}, {0.23, 0.69}, {0.69, 0.70}}
-	case 5:
-		return [][2]float32{{0.50, 0.47}, {0.20, 0.24}, {0.80, 0.24}, {0.21, 0.73}, {0.79, 0.73}}
-	default:
-		return [][2]float32{
-			{0.32, 0.23},
-			{0.70, 0.22},
-			{0.17, 0.57},
-			{0.51, 0.52},
-			{0.84, 0.56},
-			{0.65, 0.81},
-		}
+func (a *App) renderDashboardHeroRow(c *ui.Context, pal SurfacePalette, phone bool) {
+	digest := a.DashboardDigest
+	winW, _ := c.Size()
+
+	rightW := float32(124)
+	if !phone {
+		rightW = 168
+	} else if winW > 0 && winW < 380 {
+		rightW = 112
 	}
-}
 
-func (a *App) renderShowcaseSparkBanner(c *ui.Context) {
-	pal := a.Palette()
-
-	ui.Row(c).FillWidth().Wrap().Padding(10, 12).Gap(8).AlignItems(ui.Center).
-		Justify(ui.SpaceBetween).Radius(12).Background(pal.SoftPanel.Alpha(0.7)).
-		Children(func() {
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Grow(1).MinWidth(200).Children(func() {
-				ui.Icon(c, IconSpark).Size(15, 15).TextColor(pal.Accent).Shrink(0)
-				ui.Text(c, a.ShowcaseSpark).FontSize(12.5).LineHeight(1.45).
-					TextColor(pal.InkSecondary).Grow(1).MinWidth(0)
-			})
-			ui.Row(c).Gap(6).Shrink(0).AlignItems(ui.Center).Children(func() {
-				if PillAction(c, "spark_refresh", IconRefresh, "换一条", false).Clicked() {
-					a.RunAsync("正在换一条新启发…", func(ctx context.Context) error {
-						spark, err := a.Deps.Incubate.SuggestShowcaseSpark(ctx)
-						if err != nil {
-							return err
-						}
-						a.Dispatch(func() { a.ShowcaseSpark = spark })
-						return nil
-					})
-				}
-				if PillAction(c, "spark_capture", IconQuill, "顺着记", false).Clicked() {
-					a.CaptureText = a.ShowcaseSpark
-					a.CaptureModalityIdx = 1
-					a.CaptureModalOpen = true
-				}
-			})
-		})
-}
-
-func (a *App) renderMemoryOrbsGrid(c *ui.Context) {
-	pal := a.Palette()
-	filtered := a.filteredShowcaseNodes()
-	if len(filtered) == 0 {
-		ui.Column(c).FillWidth().Padding(28).Center().Gap(8).Radius(16).
+	ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Stretch).Children(func() {
+		// Left card: AI Persona Insight
+		ui.Column(c).Grow(1).Basis(0).Padding(14).Gap(8).Radius(16).
 			Background(pal.Card).Border(1, pal.Border).Children(func() {
-			ui.Text(c, "还没有匹配的灵感记录").FontSize(15).Bold().TextColor(pal.Ink)
-			ui.Text(c, "点右下角「记灵感」，随口说一句或写几个字就行。").
-				FontSize(12.5).TextColor(pal.InkSecondary).TextAlign(ui.Center)
-		})
-		return
-	}
-
-	phone := a.isPhoneLayout(c)
-	ui.Row(c).FillWidth().Wrap().Gap(12).Children(func() {
-		for _, node := range filtered {
-			n := node
-			a.renderShowcaseOrbCard(c, n, phone)
-		}
-	})
-}
-
-func (a *App) renderShowcaseOrbCard(c *ui.Context, n domain.IdeaNode, fullWidth bool) {
-	pal := a.Palette()
-	orbPal := ColorsForTheme(n.Theme)
-	phase := a.Phase(c)
-	isSelected := n.ID == a.SelectedID || n.ID == a.FocusedShowcaseID
-	evCount := a.EvCounts[n.ID]
-
-	borderCol := pal.Border
-	borderW := float32(1)
-	if isSelected {
-		borderCol = pal.Accent.Alpha(0.75)
-		borderW = 1.5
-	}
-
-	card := ui.ButtonBase(c).Key("orb_card_"+n.ID).Padding(14, 16).Radius(16).
-		Background(pal.Card).Border(borderW, borderCol)
-	if fullWidth {
-		card.FillWidth()
-	} else {
-		card.Width(332)
-	}
-	mobile.Ink(card)
-
-	card.OnClick(func() {
-		mygo.Haptics.Selection()
-		a.FocusedShowcaseID = n.ID
-		a.SelectNode(n.ID)
-		if fullWidth {
-			a.DetailSheetOpen = true
-		} else {
-			a.ActiveSpace = SpaceMind
-		}
-	}).Children(func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(52, 52).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
-					DrawAnimatedMemoryOrb(p, r, n.Theme, n.Weight, phase, float32(n.Visual.Energy), n.Visual.MotifType, isSelected)
+			ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).Padding(2, 7).Radius(6).Background(ColorSuccessSoft).Children(func() {
+					ui.Text(c, "AI 灵感画像").FontSize(10.5).FontWeight(700).TextColor(ColorSuccessInk).SingleLine()
 				})
-				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-					ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Box(c).Size(6, 6).Radius(3).Background(orbPal.Mid).Shrink(0)
-						ui.Text(c, n.Stage.Label()).FontSize(11).Bold().TextColor(pal.InkSecondary)
-						ui.Spacer(c).Grow(1)
-						ui.Textf(c, "%d 条原记录", evCount).FontSize(11).TextColor(pal.InkMuted)
-					})
-					ui.Text(c, n.Title).FontSize(15).Bold().TextColor(pal.Ink).MaxLines(2)
-				})
+				if a.Deps.AI != nil && a.Deps.AI.Configured() {
+					if GhostIconAction(c, "dash_spark_refresh", IconRefresh, "刷新洞察", false).
+						Size(22, 22).Clicked() {
+						a.RunAsync("正在刷新灵感看板…", func(ctx context.Context) error {
+							spark, err := a.Deps.Incubate.SuggestShowcaseSpark(ctx)
+							if err != nil {
+								return err
+							}
+							a.Dispatch(func() { a.ShowcaseSpark = spark })
+							return nil
+						})
+					}
+				}
 			})
 
-			ui.Text(c, trimText(n.ConversationalSummary, 62)).
-				FontSize(13).LineHeight(1.48).TextColor(pal.InkSecondary).MaxLines(2)
+			ui.Text(c, digest.PersonaHeadline).FontSize(16).Bold().LineHeight(1.28).
+				TextColor(pal.Ink).MaxLines(2)
 
-			if len(n.Tags) > 0 {
-				ui.Row(c).FillWidth().Wrap().Gap(6).Children(func() {
-					for _, tag := range n.Tags {
-						ui.Text(c, "#"+tag).FontSize(11).Padding(3, 8).Radius(999).
-							Background(pal.SoftPanel).TextColor(pal.InkSecondary)
-					}
-				})
+			summaryText := digest.PersonaSummary
+			if strings.TrimSpace(a.ShowcaseSpark) != "" {
+				summaryText = a.ShowcaseSpark
 			}
+			ui.Text(c, summaryText).FontSize(12).LineHeight(1.48).
+				TextColor(pal.InkSecondary).MaxLines(3)
 		})
-	})
-}
 
-func (a *App) renderPullDownToMindSpace(c *ui.Context) {
-	pal := a.Palette()
-	ui.Column(c).FillWidth().Center().Padding(8, 0, 4, 0).Gap(8).Children(func() {
-		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, IconChevronDown).Size(14, 14).TextColor(pal.InkMuted)
-			ui.Text(c, "继续上滑进入整理视图").FontSize(12).TextColor(pal.InkMuted)
-		})
-		if PillAction(c, "showcase_to_mind", IconMind, "去整理", false).Clicked() {
+		// Right card: Pulse-style Weekly Metric & Sparkline
+		metricBtn := ui.ButtonBase(c).Key("dash_metric_tile").
+			Width(rightW).Shrink(0).Padding(14).Radius(16).
+			Background(pal.Card).Border(1, pal.Border).
+			Cursor(ui.CursorPointer).Label("打开灵感档案室")
+		mobile.Ink(metricBtn)
+		metricBtn.OnClick(func() {
 			mygo.Haptics.Selection()
-			a.ActiveSpace = SpaceMind
+			a.enterArchiveWithTag("")
+		}).Children(func() {
+			ui.Column(c).Fill().Justify(ui.SpaceBetween).Gap(6).Children(func() {
+				ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "本周积累").FontSize(11).FontWeight(600).TextColor(pal.InkMuted).SingleLine()
+					ui.Box(c).Size(6, 6).Radius(3).Background(ColorSuccessInk).Shrink(0)
+				})
+
+				ui.Row(c).FillWidth().AlignItems(ui.End).Gap(4).Children(func() {
+					ui.Text(c, fmt.Sprintf("%02d", digest.TotalNodes)).
+						FontSize(28).Bold().FontFeatures("tnum").TextColor(pal.Ink).SingleLine()
+					ui.Textf(c, "篇 / %d 条", digest.TotalEvidences).
+						FontSize(10.5).Padding(0, 0, 4, 0).TextColor(pal.InkMuted).SingleLine().MinWidth(0)
+				})
+
+				ptsNorm := digest.Sparkline
+				ui.Box(c).FillWidth().Height(26).Draw(func(p *ui.Painter, r ui.Rect) {
+					drawDashboardSparkline(p, r, ptsNorm, ColorSuccessInk)
+				})
+			})
+		})
+	})
+}
+
+func drawDashboardSparkline(p *ui.Painter, r ui.Rect, values []float32, strokeCol ui.Color) {
+	if p == nil || r.W < 12 || r.H < 8 || len(values) < 2 {
+		return
+	}
+	pts := make([][2]float32, len(values))
+	padX := float32(2)
+	usableW := max(float32(4), r.W-padX*2)
+	for i, v := range values {
+		t := float32(i) / float32(len(values)-1)
+		clamped := max(float32(0.08), min(float32(0.95), v))
+		x := r.X + padX + usableW*t
+		y := r.Y + r.H*(1.0-clamped)
+		pts[i] = [2]float32{x, y}
+	}
+	p.StrokePolyline(pts, 2.0, strokeCol)
+	last := pts[len(pts)-1]
+	var dot ui.Path
+	dot.Circle(last[0], last[1], 2.5)
+	p.FillPath(&dot, strokeCol)
+}
+
+func (a *App) renderDashboardKeywordMatrix(c *ui.Context, pal SurfacePalette) {
+	clusters := a.DashboardDigest.Clusters
+
+	ui.Column(c).FillWidth().Padding(14).Gap(11).Radius(16).
+		Background(pal.Card).Border(1, pal.Border).Children(func() {
+		ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "AI 提炼关键词矩阵").FontSize(13.5).Bold().TextColor(pal.Ink)
+			ui.Text(c, "点按过滤档案").FontSize(11).TextColor(pal.InkMuted)
+		})
+
+		if len(clusters) == 0 {
+			ui.Text(c, "记下几条想法后，这里会自动提炼关键词。").
+				FontSize(12).TextColor(pal.InkSecondary).Padding(4, 0)
+			return
+		}
+
+		for rowStart := 0; rowStart < len(clusters); rowStart += 2 {
+			start := rowStart
+			ui.Row(c).FillWidth().Gap(9).Children(func() {
+				for col := 0; col < 2; col++ {
+					idx := start + col
+					if idx >= len(clusters) {
+						ui.Box(c).Grow(1).Basis(0)
+						continue
+					}
+					a.renderKeywordClusterTile(c, pal, idx, clusters[idx])
+				}
+			})
 		}
 	})
 }
 
-func (a *App) openNodeDetail(c *ui.Context, id string) {
-	a.SelectNode(id)
-	phone := true
-	if c != nil {
-		phone = a.isPhoneLayout(c)
-	}
-	if phone {
-		a.DetailSheetOpen = true
-	} else {
-		a.ActiveSpace = SpaceMind
-	}
+func (a *App) renderKeywordClusterTile(c *ui.Context, pal SurfacePalette, idx int, cl service.KeywordCluster) {
+	orbPal := ColorsForTheme(cl.Theme)
+	share := max(float32(0.15), min(float32(1.0), cl.Share))
+
+	tile := ui.ButtonBase(c).Key(fmt.Sprintf("kw_tile_%d_%s", idx, cl.FilterTag)).
+		Grow(1).Basis(0).Padding(11, 12).Radius(12).
+		Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.75)).
+		Cursor(ui.CursorPointer).Label(cl.Name)
+	mobile.Ink(tile)
+	tile.OnClick(func() {
+		mygo.Haptics.Selection()
+		a.enterArchiveWithTag(cl.FilterTag)
+	}).Children(func() {
+		ui.Column(c).FillWidth().Gap(7).Children(func() {
+			ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
+				IdeaIconBadge(c, cl.IconKey, cl.Theme, IconBadgeProps{
+					Size:     26,
+					IconSize: 14,
+					Radius:   7,
+				})
+				ui.Textf(c, "%d%%", cl.Percent).
+					FontSize(11.5).Bold().FontFeatures("tnum").TextColor(orbPal.BadgeText).SingleLine()
+			})
+
+			ui.Column(c).FillWidth().Gap(2).Children(func() {
+				ui.Text(c, cl.Name).FontSize(13).Bold().TextColor(pal.Ink).SingleLine()
+				ui.Text(c, cl.SubKeywords).FontSize(10.5).TextColor(pal.InkMuted).SingleLine()
+			})
+
+			ui.Box(c).FillWidth().Height(4).Draw(func(p *ui.Painter, r ui.Rect) {
+				p.Fill(r, pal.Border, 2)
+				fillW := max(float32(6), r.W*share)
+				p.Fill(ui.Rect{X: r.X, Y: r.Y, W: fillW, H: r.H}, orbPal.Mid, 2)
+			})
+		})
+	})
 }
 
-func (a *App) filteredShowcaseNodes() []domain.IdeaNode {
-	if a.ActiveTag == "" {
-		return a.Nodes
-	}
-	var out []domain.IdeaNode
-	for _, n := range a.Nodes {
-		for _, t := range n.Tags {
-			if t == a.ActiveTag {
-				out = append(out, n)
-				break
-			}
+func (a *App) renderDashboardCluesCard(c *ui.Context, pal SurfacePalette) {
+	clues := a.DashboardDigest.Clues
+
+	ui.Column(c).FillWidth().Padding(14).Gap(9).Radius(16).
+		Background(pal.Card).Border(1, pal.Border).Children(func() {
+		ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "串联与待深化追问").FontSize(13.5).Bold().TextColor(pal.Ink)
+			ui.Textf(c, "%d 条新线索", len(clues)).FontSize(11).FontWeight(600).TextColor(ui.Hex("#D97706"))
+		})
+
+		if len(clues) == 0 {
+			ui.Text(c, "暂无新线索，记录更多想法或点击右上角「灵感串联」试试。").
+				FontSize(12).TextColor(pal.InkSecondary).Padding(2, 0)
+			return
 		}
-	}
-	return out
+
+		for i, clue := range clues {
+			cl := clue
+			orbPal := ColorsForTheme(cl.Theme)
+			rowBtn := ui.ButtonBase(c).Key(fmt.Sprintf("dash_clue_%d_%s", i, cl.Kind)).
+				FillWidth().Padding(9, 11).Radius(10).
+				Background(pal.SoftPanel).Cursor(ui.CursorPointer).Label(cl.Text)
+			mobile.Ink(rowBtn)
+			rowBtn.OnClick(func() {
+				mygo.Haptics.Selection()
+				if cl.Kind == "sleep" {
+					a.SleepModalOpen = true
+					return
+				}
+				if cl.NodeID != "" {
+					a.openNodeDetail(c, cl.NodeID)
+				}
+			}).Children(func() {
+				ui.Row(c).FillWidth().Gap(9).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, SVGForIconKey(cl.IconKey)).Size(15, 15).TextColor(orbPal.BadgeText).Shrink(0)
+					ui.Text(c, cl.Text).FontSize(12).TextColor(pal.Ink).Grow(1).MinWidth(0).SingleLine()
+					ui.Icon(c, IconChevronRight).Size(13, 13).TextColor(pal.InkMuted).Shrink(0)
+				})
+			})
+		}
+	})
+}
+
+func (a *App) renderDashboardCaptureTiles(c *ui.Context, pal SurfacePalette) {
+	ui.Row(c).FillWidth().Gap(10).Children(func() {
+		voiceTile := ui.ButtonBase(c).Key("dash_voice_capture").
+			Grow(1).Basis(0).Padding(13, 14).Radius(14).
+			Background(pal.Ink).Cursor(ui.CursorPointer).Label("语音速记")
+		mobile.Ink(voiceTile)
+		voiceTile.OnClick(func() {
+			mygo.Haptics.Light()
+			a.CaptureModalityIdx = 0
+			a.CaptureModalOpen = true
+		}).Children(func() {
+			ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).Size(32, 32).Radius(16).Shrink(0).Center().
+					Background(ui.RGBA(255, 255, 255, 0.14)).
+					Children(func() {
+						ui.Icon(c, IconMic).Size(16, 16).TextColor(pal.Card)
+					})
+				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					ui.Text(c, "语音速记").FontSize(13.5).Bold().TextColor(pal.Card).SingleLine()
+					ui.Text(c, "点按即录 · 自动转写").FontSize(10.5).TextColor(ui.Hex("#A3A8B4")).SingleLine()
+				})
+			})
+		})
+
+		mediaTile := ui.ButtonBase(c).Key("dash_text_image_capture").
+			Grow(1).Basis(0).Padding(13, 14).Radius(14).
+			Background(pal.Card).Border(1, pal.Border).Cursor(ui.CursorPointer).Label("图文落稿")
+		mobile.Ink(mediaTile)
+		mediaTile.OnClick(func() {
+			mygo.Haptics.Light()
+			a.CaptureModalityIdx = 2
+			a.CaptureModalOpen = true
+		}).Children(func() {
+			ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).Size(32, 32).Radius(16).Shrink(0).Center().
+					Background(pal.SoftPanel).
+					Children(func() {
+						ui.Icon(c, IconImage).Size(16, 16).TextColor(pal.Ink)
+					})
+				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					ui.Text(c, "图文落稿").FontSize(13.5).Bold().TextColor(pal.Ink).SingleLine()
+					ui.Text(c, "自动匹配图标归档").FontSize(10.5).TextColor(pal.InkMuted).SingleLine()
+				})
+			})
+		})
+	})
+}
+
+func (a *App) renderDashboardArchivePortal(c *ui.Context, pal SurfacePalette) {
+	portal := ui.ButtonBase(c).Key("dash_enter_archive").
+		FillWidth().Padding(11, 14).Radius(12).
+		Background(ui.Hex("#E7E9EF")).Cursor(ui.CursorPointer).Label("进入灵感档案室")
+	mobile.Ink(portal)
+	portal.OnClick(func() {
+		mygo.Haptics.Selection()
+		a.enterArchiveWithTag("")
+	}).Children(func() {
+		ui.Row(c).FillWidth().Center().Gap(6).Children(func() {
+			ui.Icon(c, IconArrowDown).Size(13, 13).TextColor(pal.InkSecondary).Shrink(0)
+			ui.Textf(c, "下滑打开「灵感档案室」（%d 篇归档）", len(a.Nodes)).
+				FontSize(12).FontWeight(600).TextColor(pal.InkSecondary).SingleLine()
+		})
+	})
 }
 
 func trimText(s string, maxRunes int) string {
@@ -617,14 +532,4 @@ func trimText(s string, maxRunes int) string {
 		return string(r)
 	}
 	return string(r[:maxRunes]) + "…"
-}
-
-func clampOrbWeight(v float64) float64 {
-	if v < 0 {
-		return 0
-	}
-	if v > 1 {
-		return 1
-	}
-	return v
 }

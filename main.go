@@ -99,7 +99,7 @@ func main() {
 			Height:          892,
 			MinWidth:        360,
 			MinHeight:       620,
-			BackgroundColor: "#FAF7F2",
+			BackgroundColor: "#F2F3F6",
 			StateKey:        "neromancer_mobile",
 			Content:         ui.View(app.RootView),
 		})

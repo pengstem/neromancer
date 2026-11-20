@@ -64,9 +64,10 @@ func newAuditTestApp(t *testing.T) (*App, func()) {
 
 func settleAudit(tt *ui.Tester) {
 	tt.Frame()
-	for i := 0; i < 6 && tt.FramePending(); i++ {
-		tt.Advance(100 * time.Millisecond)
+	for i := 0; i < 24 && tt.FramePending(); i++ {
+		tt.Advance(80 * time.Millisecond)
 	}
+	tt.Frame()
 	tt.Frame()
 }
 
@@ -109,24 +110,24 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	tt := ui.NewTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
-	// 1. Showcase + Orb Field + Frosted Dock
-	for _, want := range []string{"灵感", "整理", "漫游", "记灵感"} {
+	// 1. Homepage Option B Bento Dashboard (no bottom nav bar)
+	for _, want := range []string{"AI 灵感画像", "本周积累", "AI 提炼关键词矩阵", "串联与待深化追问", "语音速记", "图文落稿"} {
 		if !tt.HasText(want) {
-			t.Fatalf("showcase missing dock label %q", want)
+			t.Fatalf("dashboard missing expected label %q", want)
 		}
 	}
-	if _, ok := tt.Find("语音速记"); !ok {
-		t.Fatalf("showcase missing dock voice button labeled \"语音速记\"")
+	if _, ok := tt.Find("进入灵感档案室"); !ok {
+		t.Fatalf("dashboard missing bottom portal \"进入灵感档案室\"")
 	}
-	if _, ok := tt.Find("夜间模式"); ok {
-		t.Fatalf("expected dark mode toggle \"夜间模式\" to be removed")
+	if _, ok := tt.Find("灵感"); ok {
+		t.Fatalf("expected bottom nav bar \"灵感\" to be removed")
 	}
-	assertAuditNoEmojis(t, "showcase", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_showcase.png")
+	assertAuditNoEmojis(t, "dashboard_bento", tt.Texts())
+	saveAuditPNG(t, auditDir, tt.Image(), "ui_dashboard_bento.png")
 
-	// 2. Voice-First Capture Sheet open via dock "语音速记"
+	// 2. Voice-First Capture Sheet via Dashboard "语音速记" Bento tile
 	if err := tt.Click("语音速记"); err != nil {
-		t.Fatalf("click voice capture dock button: %v", err)
+		t.Fatalf("click voice capture tile: %v", err)
 	}
 	settleAudit(tt)
 	if !app.CaptureModalOpen || app.CaptureModalityIdx != 0 {
@@ -138,7 +139,6 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	assertAuditNoEmojis(t, "capture_voice", tt.Texts())
 	saveAuditPNG(t, auditDir, tt.Image(), "ui_capture_voice.png")
 
-	// Also verify text & image capture tabs have zero emojis before closing.
 	if err := tt.Click("文字"); err != nil {
 		t.Fatalf("switch capture tab to text: %v", err)
 	}
@@ -154,45 +154,55 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	}
 	settleAudit(tt)
 
-	// 4. Mind Space Outline view
-	if err := tt.Click("整理"); err != nil {
-		t.Fatalf("switch to mind space: %v", err)
+	// 3. Tapping a keyword cluster tile filters directly into SpaceArchive
+	if len(app.DashboardDigest.Clusters) > 0 {
+		firstCluster := app.DashboardDigest.Clusters[0]
+		if err := tt.Click(firstCluster.Name); err != nil {
+			t.Fatalf("click keyword cluster %q: %v", firstCluster.Name, err)
+		}
+		settleAudit(tt)
+		if app.ActiveSpace != SpaceArchive || app.ActiveTag != firstCluster.FilterTag {
+			t.Fatalf("expected SpaceArchive filtered by %q, got space=%v tag=%q", firstCluster.FilterTag, app.ActiveSpace, app.ActiveTag)
+		}
+		if err := tt.Click("回到主页看板"); err != nil {
+			t.Fatalf("back to dashboard: %v", err)
+		}
+		settleAudit(tt)
 	}
-	settleAudit(tt)
-	if app.ActiveSpace != SpaceMind || app.MindOrgMode != OrgOutline {
-		t.Fatalf("expected SpaceMind/OrgOutline, got space=%v mode=%v", app.ActiveSpace, app.MindOrgMode)
-	}
-	assertAuditNoEmojis(t, "mind_outline", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_mind_outline.png")
 
-	// 5. Mind Space Constellation Graph view via "切换视图"
-	if err := tt.Click("切换视图"); err != nil {
-		t.Fatalf("cycle mind org mode to graph: %v", err)
+	// 4. Inspiration Archive Vault (Cards mode via bottom portal)
+	if err := tt.Click("进入灵感档案室"); err != nil {
+		t.Fatalf("enter archive vault: %v", err)
 	}
 	settleAudit(tt)
-	if app.MindOrgMode != OrgGraph {
-		t.Fatalf("expected OrgGraph, got %v", app.MindOrgMode)
+	if app.ActiveSpace != SpaceArchive || app.ArchiveMode != ArchiveCards {
+		t.Fatalf("expected SpaceArchive/ArchiveCards, got space=%v mode=%v", app.ActiveSpace, app.ArchiveMode)
 	}
-	assertAuditNoEmojis(t, "mind_constellation", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_mind_constellation.png")
+	if !tt.HasText("灵感档案室") || !tt.HasText("用一个蓝色花瓶养一株郁金香") {
+		t.Fatalf("archive cards missing expected labels, texts=%v", tt.Texts())
+	}
+	assertAuditNoEmojis(t, "archive_cards", tt.Texts())
+	saveAuditPNG(t, auditDir, tt.Image(), "ui_archive_cards.png")
 
-	// Cycle to Scene Cards to verify zero emojis there as well, then back to Outline.
-	if err := tt.Click("切换视图"); err != nil {
-		t.Fatalf("cycle mind org mode to cards: %v", err)
+	// 5. Archive Outline mode
+	if err := tt.Click("目录"); err != nil {
+		t.Fatalf("switch archive mode to outline: %v", err)
 	}
 	settleAudit(tt)
-	if app.MindOrgMode != OrgCards {
-		t.Fatalf("expected OrgCards, got %v", app.MindOrgMode)
+	if app.ArchiveMode != ArchiveOutline {
+		t.Fatalf("expected ArchiveOutline, got %v", app.ArchiveMode)
 	}
-	assertAuditNoEmojis(t, "mind_cards", tt.Texts())
-	if err := tt.Click("切换视图"); err != nil {
-		t.Fatalf("cycle mind org mode back to outline: %v", err)
+	assertAuditNoEmojis(t, "archive_outline", tt.Texts())
+	saveAuditPNG(t, auditDir, tt.Image(), "ui_archive_outline.png")
+
+	if err := tt.Click("档案卡"); err != nil {
+		t.Fatalf("switch archive mode back to cards: %v", err)
 	}
 	settleAudit(tt)
 
-	// 6. Tulip Detail Sheet with stage track & spoken quote
+	// 6. Tulip Detail Sheet with close button, stage track & spoken quote
 	if err := tt.Click("用一个蓝色花瓶养一株郁金香"); err != nil {
-		t.Fatalf("click tulip node in mind outline: %v", err)
+		t.Fatalf("click tulip card in archive: %v", err)
 	}
 	settleAudit(tt)
 	if !app.DetailSheetOpen || app.SelectedID != "orb_tulip" {
@@ -200,6 +210,9 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	}
 	if !tt.HasText("原始记录") || !tt.HasText("AI 帮忙") {
 		t.Fatalf("detail sheet missing expected action labels, texts=%v", tt.Texts())
+	}
+	if _, ok := tt.Find("关闭"); !ok {
+		t.Fatalf("detail sheet missing explicit close button")
 	}
 	assertAuditNoEmojis(t, "detail_sheet", tt.Texts())
 	saveAuditPNG(t, auditDir, tt.Image(), "ui_detail_sheet.png")
@@ -215,8 +228,8 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if !tt.HasText("买一盆郁金香放在阳台上养") || !tt.HasText("郁金香的花瓶应该是蓝色的") {
 		t.Fatalf("raw evidence sheet missing immutable tulip quotes, texts=%v", tt.Texts())
 	}
-	if !tt.HasText("播放原声") || !tt.HasText("关闭") {
-		t.Fatalf("raw evidence sheet missing audio/close controls, texts=%v", tt.Texts())
+	if !tt.HasText("播放原声") {
+		t.Fatalf("raw evidence sheet missing audio control, texts=%v", tt.Texts())
 	}
 	if r, ok := tt.Find("补充"); !ok || r.Y+r.H > 892 {
 		t.Fatalf("raw evidence append composer \"补充\" clipped/off-screen: ok=%v rect=%+v", ok, r)
@@ -228,63 +241,24 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		t.Fatalf("close raw evidence sheet: %v", err)
 	}
 	settleAudit(tt)
-	app.DetailSheetOpen = false
-	settleAudit(tt)
-
-	// Verify Sleep & Settings modals also contain zero emojis.
-	if err := tt.Click("灵感串联"); err != nil {
-		t.Fatalf("open sleep modal: %v", err)
-	}
-	settleAudit(tt)
-	assertAuditNoEmojis(t, "sleep_modal", tt.Texts())
 	if err := tt.Click("关闭"); err != nil {
-		t.Fatalf("close sleep modal: %v", err)
+		t.Fatalf("close detail sheet: %v", err)
 	}
 	settleAudit(tt)
 
-	if err := tt.Click("DeepSeek 设置"); err != nil {
-		t.Fatalf("open settings modal: %v", err)
-	}
-	settleAudit(tt)
-	assertAuditNoEmojis(t, "settings_modal", tt.Texts())
-	if err := tt.Click("关闭"); err != nil {
-		t.Fatalf("close settings modal: %v", err)
-	}
-	settleAudit(tt)
-
-	// 8. Roam & Poster Studio view
+	// 8. Roam & Poster Studio inside Archive
 	if err := tt.Click("漫游"); err != nil {
-		t.Fatalf("switch to roam view: %v", err)
+		t.Fatalf("switch archive to roam mode: %v", err)
 	}
 	settleAudit(tt)
-	if app.ActiveSpace != SpaceRoam {
-		t.Fatalf("expected SpaceRoam, got %v", app.ActiveSpace)
+	if app.ArchiveMode != ArchiveRoam {
+		t.Fatalf("expected ArchiveRoam, got %v", app.ArchiveMode)
 	}
-	if !tt.HasText("选一条灵感") {
-		t.Fatalf("expected \"选一条灵感\" selector label, texts=%v", tt.Texts())
-	}
-	if _, ok := tt.Find("分享海报"); !ok {
-		t.Fatalf("expected dock action \"分享海报\" in roam view, texts=%v", tt.Texts())
-	}
-	if !tt.HasText("导出海报") || !tt.HasText("碰撞") {
+	if !tt.HasText("选一条灵感") || !tt.HasText("导出海报") || !tt.HasText("碰撞") {
 		t.Fatalf("roam view missing expected labels, texts=%v", tt.Texts())
 	}
-	assertAuditNoEmojis(t, "roam_poster", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_roam_poster.png")
-
-	// Verify dock button "分享海报" opens share modal without emojis
-	if err := tt.Click("分享海报"); err != nil {
-		t.Fatalf("click dock action \"分享海报\": %v", err)
-	}
-	settleAudit(tt)
-	if !app.ShareModalOpen {
-		t.Fatalf("expected ShareModalOpen=true after clicking 分享海报")
-	}
-	assertAuditNoEmojis(t, "share_modal", tt.Texts())
-	if err := tt.Click("关闭"); err != nil {
-		t.Fatalf("close share modal: %v", err)
-	}
-	settleAudit(tt)
+	assertAuditNoEmojis(t, "archive_roam", tt.Texts())
+	saveAuditPNG(t, auditDir, tt.Image(), "ui_archive_roam.png")
 
 	// 9. Export 1200x1640 PNG poster and copy to ui_exported_poster.png
 	if err := tt.Click("导出海报"); err != nil {
@@ -312,4 +286,57 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(auditDir, "ui_exported_poster.png"), rawPoster, 0o644); err != nil {
 		t.Fatalf("copy ui_exported_poster.png: %v", err)
 	}
+
+	// 10. Verify Sleep & Settings modals open cleanly from Dashboard with zero emojis
+	if err := tt.Click("回到主页看板"); err != nil {
+		t.Fatalf("back to dashboard: %v", err)
+	}
+	settleAudit(tt)
+	if err := tt.Click("灵感串联"); err != nil {
+		t.Fatalf("open sleep modal: %v", err)
+	}
+	settleAudit(tt)
+	assertAuditNoEmojis(t, "sleep_modal", tt.Texts())
+	if err := tt.Click("关闭"); err != nil {
+		t.Fatalf("close sleep modal: %v", err)
+	}
+	settleAudit(tt)
+
+	if err := tt.Click("DeepSeek 设置"); err != nil {
+		t.Fatalf("open settings modal: %v", err)
+	}
+	settleAudit(tt)
+	assertAuditNoEmojis(t, "settings_modal", tt.Texts())
+	if err := tt.Click("关闭"); err != nil {
+		t.Fatalf("close settings modal: %v", err)
+	}
+	settleAudit(tt)
+
+	// 11. Responsive layout screenshots: minimum 360x620 & desktop 920x720
+	ttMin := ui.NewTester(app.RootView, 360, 620)
+	app.ActiveSpace = SpaceDashboard
+	settleAudit(ttMin)
+	if r, ok := ttMin.Find("记一笔"); !ok || r.X+r.W > 360 {
+		t.Fatalf("360px header CTA clipped: ok=%v rect=%+v", ok, r)
+	}
+	saveAuditPNG(t, auditDir, ttMin.Image(), "ui_360x620_dashboard.png")
+
+	app.ActiveSpace = SpaceArchive
+	app.ArchiveMode = ArchiveCards
+	settleAudit(ttMin)
+	if r, ok := ttMin.Find("漫游"); !ok || r.X+r.W > 360 {
+		t.Fatalf("360px archive header mode switch clipped: ok=%v rect=%+v", ok, r)
+	}
+	saveAuditPNG(t, auditDir, ttMin.Image(), "ui_360x620_archive.png")
+
+	ttWide := ui.NewTester(app.RootView, 920, 720)
+	app.ActiveSpace = SpaceDashboard
+	settleAudit(ttWide)
+	saveAuditPNG(t, auditDir, ttWide.Image(), "ui_920x720_dashboard.png")
+
+	app.ActiveSpace = SpaceArchive
+	app.ArchiveMode = ArchiveCards
+	app.SelectNode("orb_tulip")
+	settleAudit(ttWide)
+	saveAuditPNG(t, auditDir, ttWide.Image(), "ui_920x720_archive.png")
 }

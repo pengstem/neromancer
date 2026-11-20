@@ -122,14 +122,22 @@ func (s *IncubateService) CollideWithRoam(ctx context.Context, myNodeID string, 
 	}
 
 	now := time.Now()
+	title := strings.TrimSpace(res.Title)
+	if title == "" {
+		title = mine.Title + " × " + roam.Title
+	}
+	summary := strings.TrimSpace(res.ConversationalSummary)
+	tags := mergeUniqueStrings(res.Tags, []string{"灵感碰撞"})
+	iconKey := domain.InferIdeaIconKey(title, summary, tags, "text")
+
 	hybrid := domain.IdeaNode{
 		ID:                    fmt.Sprintf("orb_col_%d", now.UnixNano()),
-		Title:                 strings.TrimSpace(res.Title),
-		ConversationalSummary: strings.TrimSpace(res.ConversationalSummary),
-		Tags:                  mergeUniqueStrings(res.Tags, []string{"灵感碰撞"}),
+		Title:                 title,
+		ConversationalSummary: summary,
+		Tags:                  tags,
 		Theme:                 domain.NormalizeTheme(res.Theme),
 		Visual: domain.VisualMotif{
-			MotifType: "constellation",
+			MotifType: iconKey,
 			Caption:   "",
 			Energy:    0.88,
 		},
@@ -139,9 +147,6 @@ func (s *IncubateService) CollideWithRoam(ctx context.Context, myNodeID string, 
 		RelatedIDs:   []string{mine.ID},
 		CreatedAt:    now,
 		UpdatedAt:    now,
-	}
-	if hybrid.Title == "" {
-		hybrid.Title = mine.Title + " × " + roam.Title
 	}
 	if err := s.store.UpsertNode(hybrid); err != nil {
 		return domain.IdeaNode{}, nil, err

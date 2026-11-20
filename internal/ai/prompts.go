@@ -29,7 +29,7 @@ B) 或者作为一颗全新的独立记忆球节点新建。
   "theme": "coral | sky | amber | mint | lavender 五选一",
   "weight": 0.78,
   "visual": {
-    "motif_type": "petals | orbit | wave | prism | sprout | constellation 六选一",
+    "motif_type": "botanical | compass | wave | prism | code | book | music | camera | coffee | bulb 十选一（根据灵感主题自动挑选最贴合的矢量图标）",
     "accent_hex": "#3B82F6",
     "caption": "12~24字的有画面感微注解",
     "energy": 0.85

@@ -26,7 +26,7 @@ func (s *Store) SeedIfEmpty() error {
 			Tags:                  []string{"生活美学", "阳台植物", "颜色碰撞"},
 			Theme:                 domain.ThemeCoral,
 			Visual: domain.VisualMotif{
-				MotifType: "petals",
+				MotifType: domain.IconKeyBotanical,
 				AccentHex: "#3B82F6",
 				Caption:   "珊瑚花瓣 × 钴蓝玻璃的晨间仪式",
 				Energy:    0.92,
@@ -50,7 +50,7 @@ func (s *Store) SeedIfEmpty() error {
 			Tags:                  []string{"学习笔记", "强化学习", "马尔可夫"},
 			Theme:                 domain.ThemeSky,
 			Visual: domain.VisualMotif{
-				MotifType: "orbit",
+				MotifType: domain.IconKeyCompass,
 				AccentHex: "#0284C7",
 				Caption:   "手握地图算账 vs 蒙眼跑局采样",
 				Energy:    0.84,
@@ -61,7 +61,7 @@ func (s *Store) SeedIfEmpty() error {
 				"能不能顺着这个思路，把‘动态规划’和‘蒙特卡洛’也压缩成一句菜市场讲价级别的大白话？",
 				"如果环境规则只知道一半（半模型），智能体什么时候该停下来算，什么时候该先试一局？",
 			},
-			ActionPlanMD: "### 三步把硬核公式讲成“听别人聊天”\n\n- **第一步（5分钟）**：挑出最劝退人的那个符号（比如转移概率 $P(s'|s,a)$），先不写公式，口头录一段 30 秒语音讲给完全不懂 CS 的朋友听。\n- **第二步（20分钟）**：画一张左右对照小草图——左边是“手里有地图直接按图算账”，右边是“没地图只能多跑几局记平均分”。\n- **第三步（本周）**：把这类笔记收进同一个记忆球簇，攒够五张就能直接拼成期末复盘小册子。",
+			ActionPlanMD: "### 三步把硬核公式讲成“听别人聊天”\n\n- **第一步（5分钟）**：挑出最劝退人的那个符号（比如转移概率 `P(s' | s, a)`），先不写公式，口头录一段 30 秒语音讲给完全不懂 CS 的朋友听。\n- **第二步（20分钟）**：画一张左右对照小草图——左边是“手里有地图直接按图算账”，右边是“没地图只能多跑几局记平均分”。\n- **第三步（本周）**：把这类笔记收进同一个灵感簇，攒够五张就能直接拼成期末复盘小册子。",
 			RelatedIDs:   []string{"orb_shader"},
 			CreatedAt:    now.Add(-72 * time.Hour),
 			UpdatedAt:    now.Add(-5 * time.Hour),
@@ -73,7 +73,7 @@ func (s *Store) SeedIfEmpty() error {
 			Tags:                  []string{"穿戴交互", "多端协同", "硬件交互"},
 			Theme:                 domain.ThemeMint,
 			Visual: domain.VisualMotif{
-				MotifType: "wave",
+				MotifType: domain.IconKeyWave,
 				AccentHex: "#0D9488",
 				Caption:   "抬腕即记：零视觉负担的十秒捕获",
 				Energy:    0.78,
@@ -95,7 +95,7 @@ func (s *Store) SeedIfEmpty() error {
 			Tags:                  []string{"图形学", "手绘质感", "着色器"},
 			Theme:                 domain.ThemeLavender,
 			Visual: domain.VisualMotif{
-				MotifType: "prism",
+				MotifType: domain.IconKeyPrism,
 				AccentHex: "#7C3AED",
 				Caption:   "故意保留 15% 的错误与笔触颗粒",
 				Energy:    0.72,
@@ -125,7 +125,7 @@ func (s *Store) SeedIfEmpty() error {
 			RawText:    "买一盆郁金香放在阳台上养，感觉每天早上拉开窗帘心情都会亮起来。",
 			DurationMs: 6400,
 			Scene: domain.SceneContext{
-				TimeOfDay:   "21:12 晚间散步",
+				TimeOfDay:   "晚间散步",
 				Location:    "宿舍旁街角花店",
 				MoodWeather: "微风 · 放松",
 				NowPlaying:  "City Pop 随听",
@@ -138,7 +138,7 @@ func (s *Store) SeedIfEmpty() error {
 			Modality: "image",
 			RawText:  "郁金香的花瓶应该是蓝色的，最好是透光一点的钴蓝玻璃配橙粉色花瓣。",
 			Scene: domain.SceneContext{
-				TimeOfDay:   "21:35 睡前刷图",
+				TimeOfDay:   "睡前刷图",
 				Location:    "书桌前",
 				MoodWeather: "安静 · 期待",
 				NowPlaying:  "雨声白噪音",
@@ -151,7 +151,7 @@ func (s *Store) SeedIfEmpty() error {
 			Modality: "text",
 			RawText:  "Model-Based 和 Model-Free 到底差啥？说白了不就是手头有没有转移概率表吗，有就解方程，没有就只能跑局采样求平均。",
 			Scene: domain.SceneContext{
-				TimeOfDay:   "15:40 下午复盘",
+				TimeOfDay:   "下午复盘",
 				Location:    "图书馆三楼窗边",
 				MoodWeather: "晴朗 · 恍然大悟",
 			},
@@ -164,7 +164,7 @@ func (s *Store) SeedIfEmpty() error {
 			RawText:    "要是手表侧面能直接按一下就录音记灵感就好了，不用掏手机选文件夹，十秒搞定。",
 			DurationMs: 5200,
 			Scene: domain.SceneContext{
-				TimeOfDay:   "08:45 早高峰",
+				TimeOfDay:   "早高峰",
 				Location:    "地铁换乘通道",
 				MoodWeather: "赶时间 · 灵光一闪",
 			},
@@ -176,7 +176,7 @@ func (s *Store) SeedIfEmpty() error {
 			Modality: "sketch",
 			RawText:  "把法线扰动故意加粗一点点反而更有手绘感，太工整的参数像 AI 味儿太重了。",
 			Scene: domain.SceneContext{
-				TimeOfDay:   "23:18 深夜实验",
+				TimeOfDay:   "深夜实验",
 				Location:    "宿舍桌前",
 				MoodWeather: "微雨 · 兴奋",
 				NowPlaying:  "Lo-Fi Beats",

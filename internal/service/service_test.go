@@ -139,3 +139,68 @@ func TestShareCardPNGAndCapsuleExportImport(t *testing.T) {
 		t.Fatalf("unexpected imported title %q", imported.Title)
 	}
 }
+
+func TestDashboardDigestAndAutoIconOnCapture(t *testing.T) {
+	st, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.SeedIfEmpty(); err != nil {
+		t.Fatal(err)
+	}
+
+	tmpDir := t.TempDir()
+	mm := media.NewManager(filepath.Join(tmpDir, "audio"), filepath.Join(tmpDir, "images"))
+	aiClient := ai.NewClient("https://api.deepseek.com", "", "deepseek-flash")
+	capSvc := NewCaptureService(st, aiClient, mm)
+	orgSvc := NewOrganizeService(st)
+
+	// CaptureQuick should synchronously assign semantic SVG icon key on local save.
+	out, err := capSvc.CaptureQuick(context.Background(), QuickCaptureInput{
+		RawText:  "在阳台种一盆薄荷",
+		Modality: "text",
+	})
+	if err != nil {
+		t.Fatalf("CaptureQuick failed: %v", err)
+	}
+	if out.Node.Visual.MotifType != domain.IconKeyBotanical {
+		t.Fatalf("expected auto-assigned botanical icon, got %q", out.Node.Visual.MotifType)
+	}
+
+	nodes, counts, _, _, err := orgSvc.ListVault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	insights, err := st.ListActiveSleepInsights()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	digest := orgSvc.BuildDashboardDigest(nodes, counts, insights)
+	if digest.PersonaHeadline == "" || digest.PersonaSummary == "" {
+		t.Fatalf("expected non-empty persona headline/summary, got %+v", digest)
+	}
+	if digest.TotalNodes != len(nodes) {
+		t.Fatalf("expected TotalNodes=%d, got %d", len(nodes), digest.TotalNodes)
+	}
+	if len(digest.Sparkline) != 6 {
+		t.Fatalf("expected 6-point sparkline, got %d", len(digest.Sparkline))
+	}
+	if len(digest.Clusters) != 4 {
+		t.Fatalf("expected 4 keyword clusters, got %d", len(digest.Clusters))
+	}
+	pctSum := 0
+	for _, cl := range digest.Clusters {
+		pctSum += cl.Percent
+		if cl.IconKey == "" || cl.Name == "" {
+			t.Fatalf("cluster missing icon or name: %+v", cl)
+		}
+	}
+	if pctSum != 100 {
+		t.Fatalf("expected cluster percentages to sum to 100, got %d", pctSum)
+	}
+	if len(digest.Clues) != 2 {
+		t.Fatalf("expected 2 actionable clues (sleep + question), got %+v", digest.Clues)
+	}
+}

@@ -24,23 +24,34 @@ func (a *App) renderDetailSheet(c *ui.Context) {
 	pal := a.Palette()
 	sheetBg := pal.Card
 	mobile.Sheet(c, &a.DetailSheetOpen, mobile.SheetOptions{
-		Detents:    []float32{0.80, 0.95},
+		Detents:    []float32{0.82, 0.95},
 		Background: &sheetBg,
 		Label:      "灵感详情",
 	}, func() {
-		a.renderDetailContent(c)
+		ui.Column(c).Grow(1).Basis(0).MinHeight(0).FillWidth().Children(func() {
+			// Fixed non-scrolling header keeps sheet grabber clearance & gives an explicit close button.
+			ui.Row(c).FillWidth().Padding(10, 18, 10, 18).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(c, "灵感详情").FontSize(12.5).FontWeight(600).LetterSpacing(0.4).TextColor(pal.InkMuted)
+				if GhostIconAction(c, "detail_close", IconClose, "关闭", false).Clicked() {
+					a.DetailSheetOpen = false
+				}
+			})
+			ui.Box(c).FillWidth().Height(1).Background(pal.Border)
+			a.renderDetailContent(c)
+		})
 	})
 }
 
 func (a *App) renderDetailContent(c *ui.Context) {
 	pal := a.Palette()
-	phase := a.Phase(c)
 
 	node, ok := a.SelectedNode()
 	if !ok {
-		ui.Column(c).Fill().Center().Padding(28, 28, 112, 28).Gap(10).Children(func() {
-			ui.Box(c).Size(44, 44).Draw(func(p *ui.Painter, r ui.Rect) {
-				DrawAnimatedMemoryOrb(p, r, domain.ThemeSky, 0.72, phase, 0.5, "orbit", false)
+		ui.Column(c).Fill().Center().Padding(28, 28, 48, 28).Gap(10).Children(func() {
+			IdeaIconBadge(c, domain.IconKeyBulb, domain.ThemeAmber, IconBadgeProps{
+				Size:     48,
+				IconSize: 24,
+				Radius:   13,
 			})
 			ui.Text(c, "点选一条灵感查看详情").FontSize(16).Bold().TextColor(pal.Ink)
 			ui.Text(c, "整理后的摘要、追问和最初的原记录都在这里。").
@@ -54,16 +65,18 @@ func (a *App) renderDetailContent(c *ui.Context) {
 	evCount := len(a.SelectedEvidences)
 
 	ui.Scroll(c).TrackScroll(&a.DetailScroll).Grow(1).Basis(0).MinHeight(0).FillWidth().Children(func() {
-		ui.Column(c).FillWidth().Padding(16, 18, 112, 18).Gap(18).Children(func() {
-			// Top Identity Hero: 56px animated shader orb + 20px Bold Title + stage/records caption
+		ui.Column(c).FillWidth().Padding(16, 18, 36, 18).Gap(18).Children(func() {
+			// Top Identity Hero: 48px auto-matched SVG badge + 20px Bold Title + stage/records caption
 			ui.Row(c).FillWidth().Gap(14).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(56, 56).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
-					DrawAnimatedMemoryOrb(p, r, node.Theme, node.Weight, phase, float32(node.Visual.Energy), node.Visual.MotifType, true)
+				IdeaIconBadge(c, domain.ResolveIdeaIconKey(node), node.Theme, IconBadgeProps{
+					Size:     48,
+					IconSize: 24,
+					Radius:   13,
 				})
 				ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
 					ui.Text(c, node.Title).FontSize(20).Bold().LineHeight(1.28).TextColor(pal.Ink).MaxLines(3)
 					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Box(c).Size(6, 6).Radius(99).Background(orbPal.Rim).Shrink(0)
+						ui.Box(c).Size(6, 6).Radius(99).Background(orbPal.Mid).Shrink(0)
 						ui.Text(c, node.Stage.Label()).FontSize(12).FontWeight(600).TextColor(badgeText)
 						ui.Text(c, "·").FontSize(12).TextColor(pal.InkMuted)
 						ui.Textf(c, "%d 条原记录", evCount).FontSize(12).TextColor(pal.InkMuted)
@@ -75,17 +88,17 @@ func (a *App) renderDetailContent(c *ui.Context) {
 			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 				evBtn := ui.ButtonBase(c).Key("detail_raw_ev").
 					Padding(8, 13).Radius(999).Gap(7).AlignItems(ui.Center).Shrink(0).
-					Background(pal.Accent).Cursor(ui.CursorPointer).Label("原始记录")
+					Background(pal.Ink).Cursor(ui.CursorPointer).Label("原始记录")
 				mobile.Ink(evBtn)
 				evBtn.OnClick(func() {
 					mygo.Haptics.Selection()
 					a.EvidenceModalOpen = true
 				}).Children(func() {
-					ui.Icon(c, IconArchive).FontSize(14).TextColor(pal.AccentText)
-					ui.Text(c, "原始记录").FontSize(13).FontWeight(600).TextColor(pal.AccentText).SingleLine()
+					ui.Icon(c, IconArchive).FontSize(14).TextColor(pal.Card)
+					ui.Text(c, "原始记录").FontSize(13).FontWeight(600).TextColor(pal.Card).SingleLine()
 					ui.Textf(c, "%d", evCount).FontSize(11).FontWeight(700).
 						Padding(1, 6).Radius(999).
-						Background(pal.AccentText.Alpha(0.18)).TextColor(pal.AccentText).SingleLine()
+						Background(pal.Card.Alpha(0.18)).TextColor(pal.Card).SingleLine()
 				})
 
 				if PillAction(c, "detail_share", IconShare, "分享", false).Shrink(0).Clicked() {
@@ -98,8 +111,8 @@ func (a *App) renderDetailContent(c *ui.Context) {
 			// Connected 4-stage horizontal stepper track
 			a.renderStageStepper(c, pal, orbPal, node)
 
-			// Tag row & subtle italic visual caption
-			if len(node.Tags) > 0 || strings.TrimSpace(node.Visual.Caption) != "" {
+			// Tag row & separate italic visual caption row
+			if len(node.Tags) > 0 {
 				ui.Row(c).FillWidth().Wrap().Gap(6).AlignItems(ui.Center).Children(func() {
 					for i, tag := range node.Tags {
 						t := tag
@@ -107,17 +120,17 @@ func (a *App) renderDetailContent(c *ui.Context) {
 							Padding(3, 10).Radius(999).
 							Background(badgeBg).TextColor(badgeText)
 					}
-					if capText := strings.TrimSpace(node.Visual.Caption); capText != "" {
-						ui.Text(c, capText).FontSize(11).Italic().TextColor(pal.InkMuted)
-					}
 				})
+			}
+			if capText := strings.TrimSpace(node.Visual.Caption); capText != "" {
+				ui.Text(c, capText).FontSize(12).Italic().TextColor(pal.InkMuted)
 			}
 
 			// Editorial Spoken Summary: 3px warm left accent bar + conversational prose
 			ui.Row(c).FillWidth().Gap(14).Padding(14, 16).Radius(14).
 				Background(softTint).AlignItems(ui.Stretch).
 				Children(func() {
-					ui.Box(c).Width(3).Radius(2).Background(orbPal.Rim).Shrink(0)
+					ui.Box(c).Width(3).Radius(2).Background(orbPal.Mid).Shrink(0)
 					ui.Text(c, node.ConversationalSummary).
 						FontSize(15).LineHeight(1.65).TextColor(pal.Ink).Grow(1).MinWidth(0)
 				})
@@ -360,11 +373,11 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 			return
 		}
 		ui.Column(c).Grow(1).Basis(0).MinHeight(0).FillWidth().Padding(14, 18, 16, 18).Gap(10).Children(func() {
-			// Header: "原始记录" + count + "关闭"
+			// Header: "原始记录" + count + quiet close icon button
 			ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						ui.Icon(c, IconArchive).FontSize(16).TextColor(pal.Accent)
+						ui.Icon(c, IconArchive).FontSize(16).TextColor(pal.Ink)
 						ui.Text(c, "原始记录").FontSize(18).Bold().TextColor(pal.Ink)
 						ui.Textf(c, "%d 条", len(a.SelectedEvidences)).FontSize(11).FontWeight(600).
 							Padding(2, 8).Radius(999).Background(pal.SoftPanel).TextColor(pal.InkSecondary)
@@ -372,7 +385,7 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 					ui.Text(c, node.Title).FontSize(12).TextColor(pal.InkMuted).SingleLine()
 				})
 
-				if PillAction(c, "ev_close", IconClose, "关闭", false).Shrink(0).Clicked() {
+				if GhostIconAction(c, "ev_close", IconClose, "关闭", false).Clicked() {
 					a.EvidenceModalOpen = false
 				}
 			})
@@ -407,7 +420,7 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 
 									ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 										ui.Icon(c, IconMapPin).FontSize(11).TextColor(pal.InkMuted)
-										ui.Text(c, item.Scene.SummaryLine()).
+										ui.Text(c, item.Scene.LocationSummaryLine()).
 											FontSize(11).TextColor(pal.InkSecondary)
 									})
 								})
@@ -449,7 +462,7 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 										})
 								}
 
-								// Polaroid image preview
+								// Polaroid image preview or graceful placeholder when image modality has no local file
 								if item.ImagePath != "" {
 									if src := a.loadCachedImage(item.ImagePath); src != nil {
 										ui.Column(c).Padding(8, 8, 12, 8).Radius(10).
@@ -458,7 +471,21 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 											Children(func() {
 												ui.Image(c, src).Size(156, 112).Radius(6).Fit(ui.Contain)
 											})
+									} else if item.Modality == "image" {
+										ui.Row(c).FillWidth().Padding(9, 12).Gap(8).Radius(10).AlignItems(ui.Center).
+											Background(pal.SoftPanel).Border(1, pal.Border).Children(func() {
+											ui.Icon(c, IconImage).Size(15, 15).TextColor(pal.InkMuted).Shrink(0)
+											ui.Text(c, "图片未附带本地文件（仅留存文字描述）").
+												FontSize(12).TextColor(pal.InkMuted).Grow(1).MinWidth(0)
+										})
 									}
+								} else if item.Modality == "image" {
+									ui.Row(c).FillWidth().Padding(9, 12).Gap(8).Radius(10).AlignItems(ui.Center).
+										Background(pal.SoftPanel).Border(1, pal.Border).Children(func() {
+										ui.Icon(c, IconImage).Size(15, 15).TextColor(pal.InkMuted).Shrink(0)
+										ui.Text(c, "图片未附带本地文件（仅留存文字描述）").
+											FontSize(12).TextColor(pal.InkMuted).Grow(1).MinWidth(0)
+									})
 								}
 							})
 					}
