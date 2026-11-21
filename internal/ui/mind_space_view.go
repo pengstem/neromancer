@@ -11,47 +11,50 @@ import (
 	"github.com/pengstem/neromancer/internal/domain"
 )
 
-func (a *App) renderArchiveView(c *ui.Context) {
+func (a *App) renderArchiveView(c *ui.Context, pushDist, pushThreshold float32) {
 	pal := a.Palette()
 	phone := a.isPhoneLayout(c)
+	_, _, bottomSafe, _ := c.SafeArea()
 
-	if !phone && a.ArchiveMode != ArchiveRoam {
-		// Wide Desktop: Master-Detail Split.
-		ui.Row(c).Key("space_archive_split").Fill().Background(pal.Canvas).Children(func() {
-			ui.Box(c).Width(420).FillHeight().Background(pal.Canvas).
-				BorderWidth(0, 1, 0, 0).BorderColor(pal.Border).
-				Children(func() {
-					ui.Column(c).Fill().Children(func() {
-						a.renderArchiveHeader(c, pal, false)
-						a.renderArchiveTitleAndTabs(c, pal)
-						a.renderArchiveBody(c, pal, false)
+	ui.Column(c).Key("space_archive_root").Fill().Background(pal.Canvas).Children(func() {
+		if !phone && a.ArchiveMode != ArchiveRoam {
+			// Wide Desktop: Master-Detail Split above the unified bottom return bar.
+			ui.Row(c).Key("space_archive_split").Grow(1).FillWidth().MinHeight(0).Background(pal.Canvas).Children(func() {
+				ui.Box(c).Width(420).FillHeight().Background(pal.Canvas).
+					BorderWidth(0, 1, 0, 0).BorderColor(pal.Border).
+					Children(func() {
+						ui.Column(c).Fill().Children(func() {
+							a.renderArchiveHeader(c, pal, false)
+							a.renderArchiveTitleAndTabs(c, pal)
+							a.renderArchiveBody(c, pal, false)
+						})
 					})
-				})
 
-			ui.Box(c).Grow(1).FillHeight().Background(pal.Card).Children(func() {
-				a.renderDetailContent(c)
+				ui.Box(c).Grow(1).FillHeight().Background(pal.Card).Children(func() {
+					a.renderDetailContent(c)
+				})
 			})
-		})
-		return
-	}
-
-	ui.Box(c).Key("space_archive").Fill().Background(pal.Canvas).Children(func() {
-		ui.Column(c).Fill().Children(func() {
-			if !phone && a.ArchiveMode == ArchiveRoam {
-				ui.Column(c).FillWidth().AlignItems(ui.Center).Children(func() {
-					ui.Box(c).FillWidth().MaxWidth(900).Children(func() {
-						a.renderArchiveHeader(c, pal, false)
+		} else {
+			ui.Column(c).Key("space_archive").Grow(1).FillWidth().MinHeight(0).Background(pal.Canvas).Children(func() {
+				if !phone && a.ArchiveMode == ArchiveRoam {
+					ui.Column(c).FillWidth().AlignItems(ui.Center).Children(func() {
+						ui.Box(c).FillWidth().MaxWidth(900).Children(func() {
+							a.renderArchiveHeader(c, pal, false)
+						})
 					})
-				})
-			} else {
-				a.renderArchiveHeader(c, pal, phone)
-			}
+				} else {
+					a.renderArchiveHeader(c, pal, phone)
+				}
 
-			if a.ArchiveMode != ArchiveRoam {
-				a.renderArchiveTitleAndTabs(c, pal)
-			}
-			a.renderArchiveBody(c, pal, phone)
-		})
+				if a.ArchiveMode != ArchiveRoam {
+					a.renderArchiveTitleAndTabs(c, pal)
+				}
+				a.renderArchiveBody(c, pal, phone)
+			})
+		}
+
+		// Bottom Pull-Up Handle Bar docked at the lower edge of the Archive floor (physically right above Home).
+		a.renderArchiveBottomHandle(c, pal, pushDist, pushThreshold, bottomSafe)
 	})
 }
 
@@ -61,18 +64,8 @@ func (a *App) renderArchiveHeader(c *ui.Context, pal SurfacePalette, phone bool)
 		padX = 20
 	}
 
-	ui.Row(c).FillWidth().Padding(12, padX, 6, padX).Gap(8).AlignItems(ui.Center).Children(func() {
-		backBtn := ui.ButtonBase(c).Key("archive_back_home").
-			Padding(4, 2).Radius(8).Gap(5).AlignItems(ui.Center).Shrink(0).
-			Cursor(ui.CursorPointer).Label("回到主页看板")
-		mobile.Ink(backBtn)
-		backBtn.OnClick(func() {
-			mygo.Haptics.Selection()
-			a.ActiveSpace = SpaceDashboard
-		}).Children(func() {
-			ui.Icon(c, IconArrowUp).Size(14, 14).TextColor(pal.InkSecondary)
-			ui.Text(c, "回到主页看板").FontSize(12.5).FontWeight(600).TextColor(pal.InkSecondary).SingleLine()
-		})
+	ui.Row(c).FillWidth().Padding(14, padX, 6, padX).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, "灵感档案室").FontSize(19).Bold().TextColor(pal.Ink).SingleLine().Shrink(1).MinWidth(0)
 
 		ui.Spacer(c).Grow(1)
 
@@ -91,6 +84,49 @@ func (a *App) renderArchiveHeader(c *ui.Context, pal SurfacePalette, phone bool)
 					a.renderArchiveModeTab(c, pal, "arch_mode_outline", "目录", ArchiveOutline)
 					a.renderArchiveModeTab(c, pal, "arch_mode_roam", "漫游", ArchiveRoam)
 				})
+		})
+	})
+}
+
+func (a *App) renderArchiveBottomHandle(c *ui.Context, pal SurfacePalette, pushDist, pushThreshold, bottomSafe float32) {
+	progress := float32(0)
+	if pushThreshold > 0 {
+		progress = min(float32(1), max(float32(0), pushDist/pushThreshold))
+	}
+	ready := pushDist >= pushThreshold && pushThreshold > 0
+
+	label := "上拉回到主页看板"
+	if ready {
+		label = "松手回到主页看板"
+	} else if pushDist > 6 {
+		label = "继续上拉回到主页"
+	}
+
+	fg := pal.InkSecondary
+	grabberCol := pal.InkMuted.Alpha(0.32 + 0.35*progress)
+	if ready {
+		fg = ColorVermilion
+		grabberCol = ColorVermilion.Alpha(0.78)
+	}
+
+	bar := ui.ButtonBase(c).Key("archive_back_home").
+		FillWidth().
+		Padding(9, 16, 10+bottomSafe, 16).
+		Background(pal.Canvas).
+		BorderWidth(1, 0, 0, 0).BorderColor(pal.Border).
+		Cursor(ui.CursorPointer).
+		Label("回到主页看板")
+	mobile.Ink(bar)
+	bar.OnClick(func() {
+		mygo.Haptics.Selection()
+		a.returnToDashboard()
+	}).Children(func() {
+		ui.Column(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
+				ui.Icon(c, IconChevronUp).Size(14, 14).TextColor(fg).Shrink(0)
+				ui.Text(c, label).FontSize(12).FontWeight(600).TextColor(fg).SingleLine()
+			})
+			ui.Box(c).Width(36 + 12*progress).Height(4).Radius(2).Background(grabberCol)
 		})
 	})
 }
@@ -126,12 +162,9 @@ func (a *App) renderArchiveModeTab(c *ui.Context, pal SurfacePalette, key, label
 func (a *App) renderArchiveTitleAndTabs(c *ui.Context, pal SurfacePalette) {
 	filtered := a.filteredArchiveNodes()
 
-	ui.Column(c).FillWidth().Padding(4, 16, 0, 16).Gap(10).Children(func() {
-		ui.Row(c).FillWidth().AlignItems(ui.End).Justify(ui.SpaceBetween).Gap(8).Children(func() {
-			ui.Text(c, "灵感档案室").FontSize(22).Bold().TextColor(pal.Ink).SingleLine()
-			ui.Textf(c, "%d 篇 · 落稿自动匹配图标", len(filtered)).
-				FontSize(11.5).Padding(0, 0, 2, 0).TextColor(pal.InkMuted).SingleLine()
-		})
+	ui.Column(c).FillWidth().Padding(0, 16, 0, 16).Gap(8).Children(func() {
+		ui.Textf(c, "%d 篇 · 落稿自动匹配图标", len(filtered)).
+			FontSize(11.5).TextColor(pal.InkMuted).SingleLine()
 
 		if a.ArchiveSearchOpen || strings.TrimSpace(a.SearchQuery) != "" {
 			ui.Row(c).FillWidth().Padding(7, 11).Gap(8).AlignItems(ui.Center).
@@ -216,12 +249,8 @@ func (a *App) renderArchiveCards(c *ui.Context, pal SurfacePalette, phone bool) 
 
 	ui.Scroll(c).Key("archive_cards_scroll").TrackScroll(&a.ArchiveScroll).Grow(1).FillWidth().
 		HandleInput(func(ev ui.InputEvent) bool {
-			// Scrolling upward past the top of the Archive Vault smoothly returns to the Dashboard.
-			if ev.Kind == ui.InputScroll && ev.DY < -24 && a.ArchiveScroll.Y <= 2 {
-				a.ActiveSpace = SpaceDashboard
-				return true
-			}
-			return false
+			// Pushing upward past the bottom of the Archive Vault smoothly pulls the Dashboard back up.
+			return a.handleSpaceBoundaryScroll(ev, SpaceDashboard, a.ArchiveScroll.Y >= a.ArchiveScroll.MaxY-1)
 		}).
 		Children(func() {
 			ui.Column(c).FillWidth().Padding(12, 16, 28, 16).Gap(11).Children(func() {

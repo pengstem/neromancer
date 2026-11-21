@@ -23,7 +23,7 @@ type Space int
 
 const (
 	SpaceDashboard Space = iota // 主页 Bento 智库看板
-	SpaceArchive                // 灵感档案室（从主页下滑进入）
+	SpaceArchive                // 灵感档案室（位于主页上方，从上往下拉出）
 )
 
 // ArchiveViewMode controls how ideas are organized inside the Archive Vault.
@@ -79,14 +79,15 @@ type App struct {
 	SleepInsights     []domain.SleepInsight
 
 	// Interactive widget states kept across frames
-	OutlineState     ui.OutlineState[string]
-	OutlineChoice    string
-	DashboardScroll  ui.ScrollState
-	DashboardRefresh ui.RefreshState
-	ArchiveScroll    ui.ScrollState
-	DetailScroll     ui.ScrollState
-	MarkdownOpts     markdown.Options
-	Globe            GlobeState
+	OutlineState    ui.OutlineState[string]
+	OutlineChoice   string
+	DashboardScroll ui.ScrollState
+	ArchiveScroll   ui.ScrollState
+	RoamScroll      ui.ScrollState
+	DetailScroll    ui.ScrollState
+	MarkdownOpts    markdown.Options
+	Globe           GlobeState
+	SpaceDeck       SpaceDeckState
 
 	// Optional AI spark prompt refreshed on pull-to-refresh
 	ShowcaseSpark string
@@ -251,6 +252,12 @@ func (a *App) ReloadVault() error {
 	}
 	a.DashboardDigest = a.Deps.Organize.BuildDashboardDigest(a.Nodes, a.EvCounts, a.SleepInsights)
 	return nil
+}
+
+// returnToDashboard transitions smoothly from the Archive Vault back to the Home Dashboard.
+func (a *App) returnToDashboard() {
+	a.CaptureDialOpen = false
+	a.ActiveSpace = SpaceDashboard
 }
 
 // enterArchiveWithTag transitions smoothly from Dashboard into the Archive Vault with an optional tag filter.
@@ -419,14 +426,7 @@ func (a *App) RootView(c *ui.Context) {
 				a.renderInAppQuickOrbBar(c, pal)
 			}
 
-			ui.Box(c).Grow(1).FillWidth().Clip().Children(func() {
-				switch a.ActiveSpace {
-				case SpaceArchive:
-					a.renderArchiveView(c)
-				default:
-					a.renderDashboardView(c)
-				}
-			})
+			a.renderSpaceDeck(c, pal)
 		})
 
 		// Mobile-friendly bottom sheets & drawers

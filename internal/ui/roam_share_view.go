@@ -28,7 +28,11 @@ func (a *App) renderRoamShareView(c *ui.Context) {
 		padX = 24
 	}
 
-	ui.Scroll(c).Key("space_roam").Grow(1).FillWidth().Background(pal.Canvas).Children(func() {
+	ui.Scroll(c).Key("space_roam").TrackScroll(&a.RoamScroll).Grow(1).FillWidth().Background(pal.Canvas).
+		HandleInput(func(ev ui.InputEvent) bool {
+			return a.handleSpaceBoundaryScroll(ev, SpaceDashboard, a.RoamScroll.Y >= a.RoamScroll.MaxY-1)
+		}).
+		Children(func() {
 		body := func() {
 			ui.Column(c).FillWidth().Padding(10, padX, 88, padX).Gap(22).Children(func() {
 				a.renderPosterStudioSection(c, pal)

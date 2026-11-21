@@ -128,8 +128,8 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if r, ok := tt.Find("记一笔"); !ok || r.X < 300 || r.Y < 750 {
 		t.Fatalf("expected unified bottom-right \"记一笔\" seal button, got ok=%v rect=%+v", ok, r)
 	}
-	if _, ok := tt.Find("进入灵感档案室"); !ok {
-		t.Fatalf("dashboard missing bottom portal \"进入灵感档案室\"")
+	if r, ok := tt.Find("进入灵感档案室"); !ok || r.Y > 80 {
+		t.Fatalf("dashboard missing top pull-down portal \"进入灵感档案室\", got ok=%v rect=%+v", ok, r)
 	}
 	if _, ok := tt.Find("灵感"); ok {
 		t.Fatalf("expected bottom nav bar \"灵感\" to be removed")

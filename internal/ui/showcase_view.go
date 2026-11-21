@@ -10,60 +10,51 @@ import (
 	"github.com/egoist/mygo/ui/mobile"
 )
 
-func (a *App) renderDashboardView(c *ui.Context) {
+func (a *App) renderDashboardView(c *ui.Context, pullDist, pullThreshold float32) {
 	pal := a.Palette()
 	phone := a.isPhoneLayout(c)
 	_, _, bottomSafe, _ := c.SafeArea()
 
+	padX := float32(16)
+	if !phone {
+		padX = 28
+	}
+
 	ui.Box(c).Key("space_dashboard_root").Fill().Background(pal.Canvas).Children(func() {
-		sc := ui.Scroll(c).Key("space_dashboard").TrackScroll(&a.DashboardScroll).Fill().Background(pal.Canvas).
-			HandleInput(func(ev ui.InputEvent) bool {
-				// Scrolling down past the bottom of the Dashboard enters the Inspiration Archive Vault.
-				if ev.Kind == ui.InputScroll && ev.DY > 18 && a.DashboardScroll.Y >= a.DashboardScroll.MaxY-8 {
-					a.enterArchiveWithTag("")
-					return true
-				}
-				return false
-			})
-
-		if sc.PullToRefresh(&a.DashboardRefresh) {
-			mygo.Haptics.Light()
-			a.RunAsync("正在刷新灵感看板…", func(ctx context.Context) error {
-				defer a.Dispatch(func() { a.DashboardRefresh.Refreshing = false })
-				if a.Deps.AI != nil && a.Deps.AI.Configured() {
-					if spark, err := a.Deps.Incubate.SuggestShowcaseSpark(ctx); err == nil && spark != "" {
-						a.Dispatch(func() { a.ShowcaseSpark = spark })
-					}
-				}
-				return nil
-			})
-		}
-
-		sc.Children(func() {
-			padX := float32(16)
-			padTop := float32(14)
-			if !phone {
-				padX = 28
-				padTop = 20
+		ui.Column(c).Fill().Children(func() {
+			// Top Pull-Down Archive Bar (outside Scroll so dragging down from top always moves the 2-floor deck immediately)
+			topBar := func() {
+				a.renderDashboardHeader(c, pal, padX, pullDist, pullThreshold)
 			}
-
-			inner := func() {
-				ui.Column(c).FillWidth().Padding(padTop, padX, 96+bottomSafe, padX).Gap(12).Children(func() {
-					a.renderDashboardHeader(c, pal)
-
-					a.renderDashboardHeroRow(c, pal, phone)
-					a.renderDashboardWordCloudGlobe(c, pal)
-					a.renderDashboardCluesCard(c, pal)
-					a.renderDashboardArchivePortal(c, pal)
+			if phone {
+				topBar()
+			} else {
+				ui.Column(c).FillWidth().AlignItems(ui.Center).Children(func() {
+					ui.Box(c).FillWidth().MaxWidth(760).Children(topBar)
 				})
 			}
 
-			if phone {
-				inner()
-				return
-			}
-			ui.Column(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Box(c).FillWidth().MaxWidth(760).Children(inner)
+			sc := ui.Scroll(c).Key("space_dashboard").TrackScroll(&a.DashboardScroll).Grow(1).FillWidth().Background(pal.Canvas).
+				HandleInput(func(ev ui.InputEvent) bool {
+					return a.handleSpaceBoundaryScroll(ev, SpaceArchive, a.DashboardScroll.Y <= 1)
+				})
+
+			sc.Children(func() {
+				inner := func() {
+					ui.Column(c).FillWidth().Padding(4, padX, 96+bottomSafe, padX).Gap(12).Children(func() {
+						a.renderDashboardHeroRow(c, pal, phone)
+						a.renderDashboardWordCloudGlobe(c, pal)
+						a.renderDashboardCluesCard(c, pal)
+					})
+				}
+
+				if phone {
+					inner()
+					return
+				}
+				ui.Column(c).FillWidth().AlignItems(ui.Center).Children(func() {
+					ui.Box(c).FillWidth().MaxWidth(760).Children(inner)
+				})
 			})
 		})
 
@@ -71,7 +62,7 @@ func (a *App) renderDashboardView(c *ui.Context) {
 	})
 }
 
-func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette) {
+func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette, padX, pullDist, pullThreshold float32) {
 	winW, _ := c.Size()
 	compact := winW > 0 && winW < 380
 	gap := float32(6)
@@ -79,35 +70,87 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette) {
 		gap = 5
 	}
 
-	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(gap).Children(func() {
-		ui.Spacer(c).Grow(1)
+	progress := float32(0)
+	if pullThreshold > 0 {
+		progress = min(float32(1), max(float32(0), pullDist/pullThreshold))
+	}
+	ready := pullDist >= pullThreshold && pullThreshold > 0
 
-		ui.Row(c).Gap(gap).AlignItems(ui.Center).Shrink(0).Children(func() {
-			if a.BusyTask != "" {
-				ui.Spinner(c).Size(14, 14)
-			}
+	pullLabel := fmt.Sprintf("下拉打开灵感档案室 · %d", len(a.Nodes))
+	if compact {
+		pullLabel = "下拉打开灵感档案室"
+	}
+	if ready {
+		pullLabel = "松手打开灵感档案室"
+	} else if pullDist > 6 {
+		pullLabel = "继续下拉打开档案室"
+	}
 
-			ui.Box(c).Key("dash_sleep_wrap").Size(32, 32).Shrink(0).Children(func() {
-				if IconAction(c, "dash_sleep_btn", IconMoon, "灵感串联", a.SleepModalOpen).Tooltip("灵感串联").Clicked() {
-					a.CaptureDialOpen = false
-					a.SleepModalOpen = true
-				}
-				if len(a.SleepInsights) > 0 {
-					ui.Box(c).Absolute().Top(4).Right(4).Size(6, 6).Radius(3).
-						Background(ColorVermilion).PassThrough()
-				}
+	pillBg := ui.Hex("#E7E9EF")
+	pillFg := pal.InkSecondary
+	grabberCol := pal.InkMuted.Alpha(0.28 + 0.35*progress)
+	if ready {
+		pillBg = ColorVermilion.Alpha(0.12)
+		pillFg = ColorVermilion
+		grabberCol = ColorVermilion.Alpha(0.75)
+	}
+
+	headerCol := ui.Column(c).Key("dash_top_pull_header").FillWidth().Padding(6, padX, 8, padX).Gap(6)
+	if pullDist > 0.5 {
+		headerCol.BorderWidth(1, 0, 0, 0).BorderColor(pal.Border)
+	}
+	headerCol.Children(func() {
+		// Subtle centered pull-down grabber bar signaling the upper Archive floor.
+		ui.Box(c).Width(34 + 12*progress).Height(3.5).Radius(2).
+			Background(grabberCol).AlignSelf(ui.Center)
+
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(gap).Children(func() {
+			portal := ui.ButtonBase(c).Key("dash_enter_archive").
+				Padding(6, 11).Radius(999).
+				Background(pillBg).Cursor(ui.CursorPointer).
+				Shrink(1).MinWidth(0).
+				Label("进入灵感档案室")
+			mobile.Ink(portal)
+			portal.OnClick(func() {
+				mygo.Haptics.Selection()
+				a.enterArchiveWithTag("")
+			}).Children(func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
+					ui.Icon(c, IconChevronDown).Size(13, 13).TextColor(pillFg).Shrink(0)
+					ui.Text(c, pullLabel).
+						FontSize(11.5).FontWeight(600).TextColor(pillFg).SingleLine().MinWidth(0)
+				})
 			})
 
-			configured := a.Deps.AI != nil && a.Deps.AI.Configured()
-			ui.Box(c).Key("dash_settings_wrap").Size(32, 32).Shrink(0).Children(func() {
-				if IconAction(c, "dash_settings_btn", IconSliders, "DeepSeek 设置", a.SettingsModalOpen).Tooltip("DeepSeek 设置").Clicked() {
-					a.CaptureDialOpen = false
-					a.SettingsModalOpen = true
+			ui.Spacer(c).Grow(1)
+
+			ui.Row(c).Gap(gap).AlignItems(ui.Center).Shrink(0).Children(func() {
+				if a.BusyTask != "" {
+					ui.Spinner(c).Size(14, 14)
 				}
-				if configured {
-					ui.Box(c).Absolute().Top(4).Right(4).Size(6, 6).Radius(3).
-						Background(ColorSuccessInk).PassThrough()
-				}
+
+				ui.Box(c).Key("dash_sleep_wrap").Size(32, 32).Shrink(0).Children(func() {
+					if IconAction(c, "dash_sleep_btn", IconMoon, "灵感串联", a.SleepModalOpen).Tooltip("灵感串联").Clicked() {
+						a.CaptureDialOpen = false
+						a.SleepModalOpen = true
+					}
+					if len(a.SleepInsights) > 0 {
+						ui.Box(c).Absolute().Top(4).Right(4).Size(6, 6).Radius(3).
+							Background(ColorVermilion).PassThrough()
+					}
+				})
+
+				configured := a.Deps.AI != nil && a.Deps.AI.Configured()
+				ui.Box(c).Key("dash_settings_wrap").Size(32, 32).Shrink(0).Children(func() {
+					if IconAction(c, "dash_settings_btn", IconSliders, "DeepSeek 设置", a.SettingsModalOpen).Tooltip("DeepSeek 设置").Clicked() {
+						a.CaptureDialOpen = false
+						a.SettingsModalOpen = true
+					}
+					if configured {
+						ui.Box(c).Absolute().Top(4).Right(4).Size(6, 6).Radius(3).
+							Background(ColorSuccessInk).PassThrough()
+					}
+				})
 			})
 		})
 	})
@@ -251,23 +294,6 @@ func (a *App) renderDashboardCluesCard(c *ui.Context, pal SurfacePalette) {
 				})
 			})
 		}
-	})
-}
-
-func (a *App) renderDashboardArchivePortal(c *ui.Context, pal SurfacePalette) {
-	portal := ui.ButtonBase(c).Key("dash_enter_archive").
-		FillWidth().Padding(11, 14).Radius(12).
-		Background(ui.Hex("#E7E9EF")).Cursor(ui.CursorPointer).Label("进入灵感档案室")
-	mobile.Ink(portal)
-	portal.OnClick(func() {
-		mygo.Haptics.Selection()
-		a.enterArchiveWithTag("")
-	}).Children(func() {
-		ui.Row(c).FillWidth().Center().Gap(6).Children(func() {
-			ui.Icon(c, IconArrowDown).Size(13, 13).TextColor(pal.InkSecondary).Shrink(0)
-			ui.Textf(c, "下滑打开「灵感档案室」（%d 篇归档）", len(a.Nodes)).
-				FontSize(12).FontWeight(600).TextColor(pal.InkSecondary).SingleLine()
-		})
 	})
 }
 
