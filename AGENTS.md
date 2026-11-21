@@ -17,7 +17,7 @@ main.go
               ├── internal/media       (mygo/audio 回放与跨端录音管理)
               │     └── internal/voicerec  (安卓 AudioRecord 16kHz WAV 录音插件)
               └── internal/config      (.env 与沙盒路径配置)
-                    └── internal/domain    (纯领域模型：IdeaNode / RawEvidence / StageSnapshot)
+                    └── internal/domain    (纯领域模型：IdeaNode / RawEvidence)
 ```
 
 1. `internal/domain` 保持零内部依赖，仅定义领域模型与纯方法。

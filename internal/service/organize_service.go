@@ -17,7 +17,7 @@ type TagCount struct {
 	Count int
 }
 
-// OrganizeService manages Mind Space tree structure, stage evolution, and associative recall.
+// OrganizeService manages Mind Space tree structure and associative recall.
 type OrganizeService struct {
 	store *store.Store
 }
@@ -63,11 +63,6 @@ func (s *OrganizeService) SearchRecall(query string, limit int) ([]domain.Recall
 	return s.store.SearchAssociativeRecall(query, limit)
 }
 
-// AdvanceStage moves a node to stage and records an immutable StageSnapshot.
-func (s *OrganizeService) AdvanceStage(nodeID string, stage domain.LifecycleStage, note string) (domain.IdeaNode, domain.StageSnapshot, error) {
-	return s.store.UpdateNodeStage(nodeID, stage, note)
-}
-
 // MergeNodes merges sourceID into targetID while keeping every RawEvidence intact.
 func (s *OrganizeService) MergeNodes(sourceID, targetID string) (domain.IdeaNode, error) {
 	if sourceID == targetID {
@@ -93,23 +88,11 @@ func (s *OrganizeService) MergeNodes(sourceID, targetID string) (domain.IdeaNode
 	}
 
 	dst.Tags = mergeUniqueStrings(dst.Tags, src.Tags)
-	if dst.Stage == domain.StageSpark {
-		dst.Stage = domain.StageSprouting
-	}
 	dst.Weight = min(1.0, dst.Weight+0.08)
 	dst.UpdatedAt = time.Now()
 	if err := s.store.UpsertNode(dst); err != nil {
 		return domain.IdeaNode{}, err
 	}
-	_ = s.store.AddStageSnapshot(domain.StageSnapshot{
-		ID:        fmt.Sprintf("snap_%d", time.Now().UnixNano()),
-		NodeID:    dst.ID,
-		Stage:     dst.Stage,
-		Title:     dst.Title,
-		Summary:   dst.ConversationalSummary,
-		Note:      fmt.Sprintf("手动归并《%s》的原始记录", src.Title),
-		CreatedAt: time.Now(),
-	})
 	_ = s.store.DeleteNode(sourceID)
 	return dst, nil
 }
@@ -150,6 +133,25 @@ type KeywordCluster struct {
 	Share       float32
 }
 
+// WordCloudTerm represents an extracted, weighted keyword or concept for the 3D Inspiration Globe.
+type WordCloudTerm struct {
+	Word           string
+	FilterTag      string // exact tag if Kind=="tag"
+	Kind           string // "tag" | "concept"
+	Theme          domain.OrbTheme
+	IconKey        string
+	Weight         float64
+	NormWeight     float32 // 0.15 ~ 1.00 normalized relative to max term
+	Percent        int     // proportional share summing cleanly to 100 across WordCloud
+	Tier           int     // 0=core high-heat, 1=mid active, 2=long-tail whisper
+	NodeCount      int
+	EvidenceCount  int
+	TopNodeID      string
+	TopNodeTitle   string
+	TopNodeSummary string
+	NodeIDs        []string
+}
+
 // DashboardClue represents an actionable sleep connection or guiding question surfaced on the Dashboard.
 type DashboardClue struct {
 	Kind    string // "sleep" | "question"
@@ -167,14 +169,16 @@ type DashboardDigest struct {
 	TotalEvidences  int
 	Sparkline       []float32
 	Clusters        []KeywordCluster
+	WordCloud       []WordCloudTerm
 	Clues           []DashboardClue
 }
 
 // BuildDashboardDigest computes weighted keyword clusters, activity sparkline, and next clues from vault data.
 func (s *OrganizeService) BuildDashboardDigest(nodes []domain.IdeaNode, evCounts map[string]int, insights []domain.SleepInsight) DashboardDigest {
+	now := time.Now()
 	digest := DashboardDigest{
 		TotalNodes: len(nodes),
-		Sparkline:  computeActivitySparkline(nodes, time.Now()),
+		Sparkline:  computeActivitySparkline(nodes, now),
 	}
 	for _, n := range nodes {
 		c := evCounts[n.ID]
@@ -189,6 +193,7 @@ func (s *OrganizeService) BuildDashboardDigest(nodes []domain.IdeaNode, evCounts
 		digest.PersonaSummary = "随口说一句话或拍张图，系统会自动归类并提炼关键词。"
 		return digest
 	}
+	digest.WordCloud = buildWordCloudTerms(nodes, evCounts, now)
 
 	type clusterAcc struct {
 		name      string
@@ -206,12 +211,8 @@ func (s *OrganizeService) BuildDashboardDigest(nodes []domain.IdeaNode, evCounts
 	groups := make(map[string]*clusterAcc)
 	var groupKeys []string
 
-	activeCount := 0
 	for _, n := range nodes {
 		byID[n.ID] = n
-		if n.Stage != domain.StageSpark {
-			activeCount++
-		}
 
 		primaryTag := ""
 		var secondary []string
@@ -328,8 +329,8 @@ func (s *OrganizeService) BuildDashboardDigest(nodes []domain.IdeaNode, evCounts
 		c0, c1 := digest.Clusters[0], digest.Clusters[1]
 		digest.PersonaHeadline = fmt.Sprintf("%s × %s", c0.Name, c1.Name)
 		digest.PersonaSummary = fmt.Sprintf(
-			"共沉淀 %d 篇灵感（%d 篇已推进），重心聚焦在「%s」与「%s」（%d%%）。",
-			len(nodes), activeCount, c0.Name, c1.Name, c0.Percent+c1.Percent,
+			"已记录 %d 篇灵感与 %d 条原始记录，重心聚焦在「%s」与「%s」（%d%%）。",
+			len(nodes), digest.TotalEvidences, c0.Name, c1.Name, c0.Percent+c1.Percent,
 		)
 	} else {
 		c0 := digest.Clusters[0]
@@ -436,4 +437,294 @@ func computeActivitySparkline(nodes []domain.IdeaNode, now time.Time) []float32 
 		pts[i] = norm
 	}
 	return pts
+}
+
+func buildWordCloudTerms(nodes []domain.IdeaNode, evCounts map[string]int, now time.Time) []WordCloudTerm {
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	type termAcc struct {
+		term       WordCloudTerm
+		isPrimary  bool
+		topScore   float64
+		nodeSeen   map[string]struct{}
+	}
+
+	accMap := make(map[string]*termAcc)
+	addContribution := func(word, filterTag, kind string, n domain.IdeaNode, score, mult float64, evC int, isPrimary bool) {
+		w := strings.TrimSpace(word)
+		if w == "" {
+			return
+		}
+		acc, ok := accMap[w]
+		if !ok {
+			acc = &termAcc{
+				term: WordCloudTerm{
+					Word:           w,
+					FilterTag:      filterTag,
+					Kind:           kind,
+					Theme:          n.Theme,
+					IconKey:        domain.ResolveIdeaIconKey(n),
+					TopNodeID:      n.ID,
+					TopNodeTitle:   n.Title,
+					TopNodeSummary: n.ConversationalSummary,
+				},
+				topScore: score,
+				nodeSeen: make(map[string]struct{}),
+			}
+			accMap[w] = acc
+		}
+		acc.term.Weight += score * mult
+		if isPrimary {
+			acc.isPrimary = true
+		}
+		if kind == "tag" && acc.term.Kind != "tag" {
+			acc.term.Kind = "tag"
+			acc.term.FilterTag = filterTag
+		}
+		if _, seen := acc.nodeSeen[n.ID]; !seen {
+			acc.nodeSeen[n.ID] = struct{}{}
+			acc.term.NodeIDs = append(acc.term.NodeIDs, n.ID)
+			acc.term.NodeCount++
+			acc.term.EvidenceCount += evC
+		}
+		if score > acc.topScore {
+			acc.topScore = score
+			acc.term.Theme = n.Theme
+			acc.term.IconKey = domain.ResolveIdeaIconKey(n)
+			acc.term.TopNodeID = n.ID
+			acc.term.TopNodeTitle = n.Title
+			acc.term.TopNodeSummary = n.ConversationalSummary
+		}
+	}
+
+	nodeScores := make([]float64, len(nodes))
+	for i, n := range nodes {
+		evC := max(1, evCounts[n.ID])
+		score := computeNodeWordScore(n, evC, now)
+		nodeScores[i] = score
+
+		seenNodeTags := make(map[string]struct{})
+		primaryAssigned := false
+		for _, rawTag := range n.Tags {
+			tag := strings.TrimSpace(rawTag)
+			if tag == "" {
+				continue
+			}
+			if _, dup := seenNodeTags[tag]; dup {
+				continue
+			}
+			seenNodeTags[tag] = struct{}{}
+			if !primaryAssigned {
+				addContribution(tag, tag, "tag", n, score, 1.00, evC, true)
+				primaryAssigned = true
+			} else {
+				addContribution(tag, tag, "tag", n, score, 0.58, evC, false)
+			}
+		}
+	}
+
+	// Supplement with clean concept whispers if unique tags are fewer than 16.
+	if len(accMap) < 16 {
+		for i, n := range nodes {
+			if len(accMap) >= 16 {
+				break
+			}
+			for _, concept := range extractNodeConcepts(n) {
+				if _, exists := accMap[concept]; exists {
+					continue
+				}
+				evC := max(1, evCounts[n.ID])
+				addContribution(concept, "", "concept", n, nodeScores[i], 0.26, evC, false)
+				if len(accMap) >= 16 {
+					break
+				}
+			}
+		}
+	}
+
+	// Fallback if all nodes had empty tags and no concepts matched.
+	if len(accMap) == 0 {
+		n := nodes[0]
+		addContribution("随手闪念", "", "concept", n, max(0.35, nodeScores[0]), 1.0, max(1, evCounts[n.ID]), true)
+	}
+
+	list := make([]*termAcc, 0, len(accMap))
+	for _, acc := range accMap {
+		list = append(list, acc)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].term.Weight != list[j].term.Weight {
+			return list[i].term.Weight > list[j].term.Weight
+		}
+		if list[i].term.NodeCount != list[j].term.NodeCount {
+			return list[i].term.NodeCount > list[j].term.NodeCount
+		}
+		return list[i].term.Word < list[j].term.Word
+	})
+
+	if len(list) > 18 {
+		list = list[:18]
+	}
+
+	maxW := list[0].term.Weight
+	totalW := 0.0
+	for _, acc := range list {
+		totalW += acc.term.Weight
+	}
+
+	out := make([]WordCloudTerm, len(list))
+	rawPcts := make([]float64, len(list))
+	pctSum := 0
+	for i, acc := range list {
+		norm := float32(1.0)
+		if maxW > 0 {
+			norm = float32(acc.term.Weight / maxW)
+		}
+		if norm < 0.15 {
+			norm = 0.15
+		} else if norm > 1.0 {
+			norm = 1.0
+		}
+		if i == 0 {
+			norm = 1.0
+		}
+		acc.term.NormWeight = norm
+
+		raw := 0.0
+		if totalW > 0 {
+			raw = (acc.term.Weight / totalW) * 100.0
+		}
+		rawPcts[i] = raw
+		p := max(1, int(math.Floor(raw)))
+		acc.term.Percent = p
+		pctSum += p
+
+		switch {
+		case i == 0 || (i < 4 && (acc.isPrimary || norm >= 0.72)):
+			acc.term.Tier = 0
+		case norm >= 0.42 || (acc.term.Kind == "tag" && i < 10):
+			acc.term.Tier = 1
+		default:
+			acc.term.Tier = 2
+		}
+
+		out[i] = acc.term
+	}
+
+	reconcileWordCloudPercents(out, rawPcts, pctSum)
+	return out
+}
+
+func computeNodeWordScore(n domain.IdeaNode, evCount int, now time.Time) float64 {
+	recencyBonus := 0.0
+	ts := n.UpdatedAt
+	if ts.IsZero() {
+		ts = n.CreatedAt
+	}
+	if !ts.IsZero() {
+		ageHours := max(0.0, now.Sub(ts).Hours())
+		recencyBonus = 0.14 * math.Exp(-ageHours/72.0)
+	}
+	return max(0.35, n.Weight) + 0.16*float64(evCount) + recencyBonus
+}
+
+func reconcileWordCloudPercents(out []WordCloudTerm, rawPcts []float64, pctSum int) {
+	if len(out) == 0 {
+		return
+	}
+	if pctSum < 100 {
+		type remIdx struct {
+			idx int
+			rem float64
+		}
+		rems := make([]remIdx, len(out))
+		for i := range out {
+			rems[i] = remIdx{idx: i, rem: rawPcts[i] - float64(out[i].Percent)}
+		}
+		sort.Slice(rems, func(i, j int) bool {
+			if rems[i].rem != rems[j].rem {
+				return rems[i].rem > rems[j].rem
+			}
+			return rems[i].idx < rems[j].idx
+		})
+		need := 100 - pctSum
+		for k := 0; k < need; k++ {
+			out[rems[k%len(rems)].idx].Percent++
+		}
+		return
+	}
+	for pctSum > 100 {
+		changed := false
+		for i := len(out) - 1; i >= 0 && pctSum > 100; i-- {
+			if out[i].Percent > 1 {
+				out[i].Percent--
+				pctSum--
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+}
+
+var curatedConceptPhrases = []string{
+	"郁金香", "蓝花瓶", "钴蓝玻璃", "手吹玻璃", "语音记忆球", "手表盲操",
+	"单键录音", "噪点质感", "转移概率", "动态规划", "蒙特卡洛", "水彩插画",
+	"手绘笔触", "阳台绿植", "晨间仪式", "跨端同步", "桌面美学", "随身手账",
+	"光影折射", "声音笔记", "零视觉负担", "笔触颗粒", "薄荷绿植", "明信片",
+}
+
+var conceptStopwords = map[string]struct{}{
+	"到底": {}, "什么": {}, "怎么": {}, "一个": {}, "一种": {}, "还是": {},
+	"或者": {}, "为什么": {}, "如果": {}, "觉得": {}, "应该": {}, "可以": {},
+	"自己": {}, "每天": {}, "早上": {}, "晚上": {}, "时候": {}, "东西": {},
+}
+
+func extractNodeConcepts(n domain.IdeaNode) []string {
+	var out []string
+	seen := make(map[string]struct{})
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		if _, stop := conceptStopwords[s]; stop {
+			return
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+
+	hay := n.Title + " " + n.Visual.Caption + " " + n.ConversationalSummary
+	for _, phrase := range curatedConceptPhrases {
+		if strings.Contains(hay, phrase) {
+			add(phrase)
+		}
+	}
+
+	splitTokens := strings.FieldsFunc(n.Visual.Caption+" "+n.Title, func(r rune) bool {
+		switch r {
+		case ' ', '\t', '\n', '·', '×', '：', ':', '、', '/', '|', '—', '–', '-', '，', '。', '？', '！', '「', '」', '（', '）', '“', '”', '"', '\'':
+			return true
+		default:
+			return false
+		}
+	})
+	for _, tok := range splitTokens {
+		tok = strings.TrimSpace(tok)
+		if strings.EqualFold(tok, "vs") {
+			continue
+		}
+		rc := len([]rune(tok))
+		if rc >= 2 && rc <= 5 {
+			add(tok)
+		}
+	}
+	return out
 }

@@ -8,54 +8,6 @@ import (
 	"time"
 )
 
-// LifecycleStage represents the maturation phase of an inspiration orb.
-type LifecycleStage string
-
-const (
-	StageSpark        LifecycleStage = "spark"        // 闪念（初生）
-	StageSprouting    LifecycleStage = "sprouting"    // 萌芽（已归并/追问）
-	StageIncubating   LifecycleStage = "incubating"   // 孵化中（生成方案/多模态展开）
-	StageCrystallized LifecycleStage = "crystallized" // 已沉淀（落地/高权重核心球）
-)
-
-// AllStages lists lifecycle stages in natural progression order.
-var AllStages = []LifecycleStage{
-	StageSpark,
-	StageSprouting,
-	StageIncubating,
-	StageCrystallized,
-}
-
-// Label returns the human-readable Chinese label for a lifecycle stage.
-func (s LifecycleStage) Label() string {
-	switch s {
-	case StageSpark:
-		return "闪念"
-	case StageSprouting:
-		return "萌芽"
-	case StageIncubating:
-		return "孵化中"
-	case StageCrystallized:
-		return "已沉淀"
-	default:
-		return "闪念"
-	}
-}
-
-// Next returns the next stage in the lifecycle, wrapping back to StageSpark at the end.
-func (s LifecycleStage) Next() LifecycleStage {
-	switch s {
-	case StageSpark:
-		return StageSprouting
-	case StageSprouting:
-		return StageIncubating
-	case StageIncubating:
-		return StageCrystallized
-	default:
-		return StageSpark
-	}
-}
-
 // OrbTheme defines the gentle, lively Inside-Out inspired colorways for memory orbs.
 type OrbTheme string
 
@@ -282,15 +234,14 @@ type IdeaNode struct {
 	Title                 string         `json:"title"`
 	ConversationalSummary string         `json:"conversational_summary"`
 	Tags                  []string       `json:"tags"`
-	Theme                 OrbTheme       `json:"theme"`
-	Visual                VisualMotif    `json:"visual"`
-	Weight                float64        `json:"weight"` // 0.1 ~ 1.0; drives orb radius & glow
-	Stage                 LifecycleStage `json:"stage"`
-	GuidingQuestions      []string       `json:"guiding_questions"`
-	ActionPlanMD          string         `json:"action_plan_md"`
-	RelatedIDs            []string       `json:"related_ids"`
-	CreatedAt             time.Time      `json:"created_at"`
-	UpdatedAt             time.Time      `json:"updated_at"`
+	Theme                 OrbTheme    `json:"theme"`
+	Visual                VisualMotif `json:"visual"`
+	Weight                float64     `json:"weight"` // 0.1 ~ 1.0; drives orb radius & glow
+	GuidingQuestions      []string    `json:"guiding_questions"`
+	ActionPlanMD          string      `json:"action_plan_md"`
+	RelatedIDs            []string    `json:"related_ids"`
+	CreatedAt             time.Time   `json:"created_at"`
+	UpdatedAt             time.Time   `json:"updated_at"`
 }
 
 // RawEvidence is an append-only, immutable record of what the user actually said, wrote, or photographed.
@@ -320,17 +271,6 @@ func (ev RawEvidence) ModalityBadge() string {
 	}
 }
 
-// StageSnapshot preserves how an inspiration evolved across lifecycle stages.
-type StageSnapshot struct {
-	ID        string         `json:"id"`
-	NodeID    string         `json:"node_id"`
-	Stage     LifecycleStage `json:"stage"`
-	Title     string         `json:"title"`
-	Summary   string         `json:"summary"`
-	Note      string         `json:"note"`
-	CreatedAt time.Time      `json:"created_at"`
-}
-
 // SleepInsight holds an overnight or background cross-idea connection found by the Sleep Agent.
 type SleepInsight struct {
 	ID               string    `json:"id"`
@@ -355,11 +295,10 @@ type RoamSlice struct {
 
 // OrbCapsule is a portable .orb.json sharing bundle for cool peer-to-peer sharing without a forum.
 type OrbCapsule struct {
-	Version    string          `json:"version"`
-	ExportedAt time.Time       `json:"exported_at"`
-	Node       IdeaNode        `json:"node"`
-	Evidences  []RawEvidence   `json:"evidences"`
-	Snapshots  []StageSnapshot `json:"snapshots"`
+	Version    string        `json:"version"`
+	ExportedAt time.Time     `json:"exported_at"`
+	Node       IdeaNode      `json:"node"`
+	Evidences  []RawEvidence `json:"evidences"`
 }
 
 // RecallMatch represents a fast local associative recall hit while typing or reviewing.

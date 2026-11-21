@@ -21,13 +21,12 @@ import (
 var ErrNotFound = errors.New("record not found")
 
 type vaultData struct {
-	Version       string                   `json:"version"`
-	Nodes         map[string]domain.IdeaNode     `json:"nodes"`
-	Evidences     []domain.RawEvidence     `json:"evidences"`
-	Snapshots     []domain.StageSnapshot   `json:"snapshots"`
-	SleepInsights []domain.SleepInsight    `json:"sleep_insights"`
+	Version       string                     `json:"version"`
+	Nodes         map[string]domain.IdeaNode `json:"nodes"`
+	Evidences     []domain.RawEvidence       `json:"evidences"`
+	SleepInsights []domain.SleepInsight      `json:"sleep_insights"`
 	RoamSlices    map[string]domain.RoamSlice `json:"roam_slices"`
-	Settings      map[string]string        `json:"settings"`
+	Settings      map[string]string          `json:"settings"`
 }
 
 func newVaultData() vaultData {
@@ -169,9 +168,6 @@ func (s *Store) UpsertNode(node domain.IdeaNode) error {
 	if node.Weight <= 0 {
 		node.Weight = 0.5
 	}
-	if node.Stage == "" {
-		node.Stage = domain.StageSpark
-	}
 	node.Theme = domain.NormalizeTheme(string(node.Theme))
 
 	s.mu.Lock()
@@ -187,36 +183,6 @@ func (s *Store) DeleteNode(id string) error {
 	defer s.mu.Unlock()
 	delete(s.data.Nodes, id)
 	return s.flushLocked()
-}
-
-// UpdateNodeStage transitions an IdeaNode's lifecycle stage and records an immutable StageSnapshot.
-func (s *Store) UpdateNodeStage(id string, stage domain.LifecycleStage, note string) (domain.IdeaNode, domain.StageSnapshot, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	node, ok := s.data.Nodes[id]
-	if !ok {
-		return domain.IdeaNode{}, domain.StageSnapshot{}, ErrNotFound
-	}
-	now := time.Now()
-	node.Stage = stage
-	node.UpdatedAt = now
-	s.data.Nodes[id] = cloneNode(node)
-
-	snap := domain.StageSnapshot{
-		ID:        fmt.Sprintf("snap_%d", now.UnixNano()),
-		NodeID:    node.ID,
-		Stage:     stage,
-		Title:     node.Title,
-		Summary:   node.ConversationalSummary,
-		Note:      note,
-		CreatedAt: now,
-	}
-	s.data.Snapshots = append(s.data.Snapshots, snap)
-	if err := s.flushLocked(); err != nil {
-		return domain.IdeaNode{}, domain.StageSnapshot{}, err
-	}
-	return cloneNode(node), snap, nil
 }
 
 // AddRawEvidence appends an immutable RawEvidence entry. Raw user captures are never overwritten.
@@ -282,41 +248,6 @@ func (s *Store) CountEvidencesByNode() (map[string]int, error) {
 		counts[ev.NodeID]++
 	}
 	return counts, nil
-}
-
-// AddStageSnapshot stores a lifecycle snapshot for an IdeaNode.
-func (s *Store) AddStageSnapshot(snap domain.StageSnapshot) error {
-	if snap.CreatedAt.IsZero() {
-		snap.CreatedAt = time.Now()
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for i := range s.data.Snapshots {
-		if s.data.Snapshots[i].ID == snap.ID {
-			s.data.Snapshots[i] = snap
-			return s.flushLocked()
-		}
-	}
-	s.data.Snapshots = append(s.data.Snapshots, snap)
-	return s.flushLocked()
-}
-
-// ListSnapshotsByNode returns chronological stage snapshots for a node.
-func (s *Store) ListSnapshotsByNode(nodeID string) ([]domain.StageSnapshot, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var out []domain.StageSnapshot
-	for _, snap := range s.data.Snapshots {
-		if snap.NodeID == nodeID {
-			out = append(out, snap)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].CreatedAt.Before(out[j].CreatedAt)
-	})
-	return out, nil
 }
 
 // SearchAssociativeRecall surfaces past inspirations matching keywords in the active thought/query.
@@ -452,7 +383,7 @@ func (s *Store) SetSetting(key, value string) error {
 	return s.flushLocked()
 }
 
-// ExportOrbCapsule bundles an IdeaNode with all of its immutable RawEvidences and StageSnapshots.
+// ExportOrbCapsule bundles an IdeaNode with all of its immutable RawEvidences.
 func (s *Store) ExportOrbCapsule(nodeID string) (domain.OrbCapsule, error) {
 	node, err := s.GetNode(nodeID)
 	if err != nil {
@@ -462,16 +393,11 @@ func (s *Store) ExportOrbCapsule(nodeID string) (domain.OrbCapsule, error) {
 	if err != nil {
 		return domain.OrbCapsule{}, err
 	}
-	snaps, err := s.ListSnapshotsByNode(nodeID)
-	if err != nil {
-		return domain.OrbCapsule{}, err
-	}
 	return domain.OrbCapsule{
 		Version:    "neromancer.orb.v1",
 		ExportedAt: time.Now(),
 		Node:       node,
 		Evidences:  evs,
-		Snapshots:  snaps,
 	}, nil
 }
 
@@ -493,13 +419,6 @@ func (s *Store) ImportOrbCapsule(capsule domain.OrbCapsule) (domain.IdeaNode, er
 		ev.ID = fmt.Sprintf("%s_ev_%d_%d", node.ID, i, time.Now().UnixNano()%10000)
 		ev.NodeID = node.ID
 		if err := s.AddRawEvidence(ev); err != nil {
-			return domain.IdeaNode{}, err
-		}
-	}
-	for i, snap := range capsule.Snapshots {
-		snap.ID = fmt.Sprintf("%s_snap_%d_%d", node.ID, i, time.Now().UnixNano()%10000)
-		snap.NodeID = node.ID
-		if err := s.AddStageSnapshot(snap); err != nil {
 			return domain.IdeaNode{}, err
 		}
 	}

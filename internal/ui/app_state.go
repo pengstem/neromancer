@@ -58,13 +58,12 @@ type App struct {
 	Services ui.Services
 
 	// Navigation & Appearance state
-	ActiveSpace         Space
-	ArchiveMode         ArchiveViewMode
-	ActiveTag           string
-	SearchQuery         string
-	DashboardSearchOpen bool
-	ArchiveSearchOpen   bool
-	AnimOrigin          time.Time
+	ActiveSpace       Space
+	ArchiveMode       ArchiveViewMode
+	ActiveTag         string
+	SearchQuery       string
+	ArchiveSearchOpen bool
+	AnimOrigin        time.Time
 
 	// Cached vault state (reloaded cleanly on state mutations)
 	Nodes             []domain.IdeaNode
@@ -76,10 +75,8 @@ type App struct {
 	DashboardDigest   service.DashboardDigest
 	SelectedID        string
 	SelectedEvidences []domain.RawEvidence
-	SelectedSnapshots []domain.StageSnapshot
 	RoamSlices        []domain.RoamSlice
 	SleepInsights     []domain.SleepInsight
-	RecallHits        []domain.RecallMatch
 
 	// Interactive widget states kept across frames
 	OutlineState     ui.OutlineState[string]
@@ -89,6 +86,7 @@ type App struct {
 	ArchiveScroll    ui.ScrollState
 	DetailScroll     ui.ScrollState
 	MarkdownOpts     markdown.Options
+	Globe            GlobeState
 
 	// Optional AI spark prompt refreshed on pull-to-refresh
 	ShowcaseSpark string
@@ -264,6 +262,39 @@ func (a *App) enterArchiveWithTag(tag string) {
 	a.ArchiveScroll.Y = 0
 }
 
+// enterArchiveWithTerm transitions from a focused Globe word into the Archive Vault filtered by tag or search query.
+func (a *App) enterArchiveWithTerm(term service.WordCloudTerm) {
+	a.CaptureDialOpen = false
+	a.ActiveSpace = SpaceArchive
+	a.ArchiveMode = ArchiveCards
+	a.ArchiveScroll.Y = 0
+	if tag := strings.TrimSpace(term.FilterTag); tag != "" {
+		a.ActiveTag = tag
+		a.SearchQuery = ""
+		return
+	}
+	a.ActiveTag = ""
+	a.SearchQuery = strings.TrimSpace(term.Word)
+}
+
+// TriggerGlobeCaptureRipple arms a gentle fly-in ripple and rotation toward a newly captured idea's primary keyword.
+func (a *App) TriggerGlobeCaptureRipple(node domain.IdeaNode) {
+	term := ""
+	for _, t := range node.Tags {
+		if tr := strings.TrimSpace(t); tr != "" {
+			term = tr
+			break
+		}
+	}
+	if term == "" {
+		term = trimText(node.Title, 8)
+	}
+	a.Globe.FocusedWord = ""
+	a.Globe.RipplePending = true
+	a.Globe.RippleTerm = term
+	a.Globe.RippleTheme = node.Theme
+}
+
 // openNodeDetail opens the selected node in Detail Sheet (phone) or Archive Master-Detail split (desktop).
 func (a *App) openNodeDetail(c *ui.Context, id string) {
 	a.CaptureDialOpen = false
@@ -285,14 +316,10 @@ func (a *App) openNodeDetail(c *ui.Context, id string) {
 func (a *App) refreshSelectedDetails() {
 	if a.SelectedID == "" {
 		a.SelectedEvidences = nil
-		a.SelectedSnapshots = nil
 		return
 	}
 	if evs, err := a.Deps.Store.ListEvidencesByNode(a.SelectedID); err == nil {
 		a.SelectedEvidences = evs
-	}
-	if snaps, err := a.Deps.Store.ListSnapshotsByNode(a.SelectedID); err == nil {
-		a.SelectedSnapshots = snaps
 	}
 }
 

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"image/png"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/pengstem/neromancer/internal/ai"
@@ -181,6 +183,9 @@ func TestDashboardDigestAndAutoIconOnCapture(t *testing.T) {
 	if digest.PersonaHeadline == "" || digest.PersonaSummary == "" {
 		t.Fatalf("expected non-empty persona headline/summary, got %+v", digest)
 	}
+	if strings.Contains(digest.PersonaSummary, "已推进") {
+		t.Fatalf("expected PersonaSummary without stage progress copy, got %q", digest.PersonaSummary)
+	}
 	if digest.TotalNodes != len(nodes) {
 		t.Fatalf("expected TotalNodes=%d, got %d", len(nodes), digest.TotalNodes)
 	}
@@ -202,5 +207,73 @@ func TestDashboardDigestAndAutoIconOnCapture(t *testing.T) {
 	}
 	if len(digest.Clues) != 2 {
 		t.Fatalf("expected 2 actionable clues (sleep + question), got %+v", digest.Clues)
+	}
+	if len(digest.WordCloud) == 0 || len(digest.WordCloud) > 18 {
+		t.Fatalf("expected 1..18 WordCloud terms, got %d", len(digest.WordCloud))
+	}
+	wcPctSum := 0
+	for i, term := range digest.WordCloud {
+		if term.Word == "" || term.TopNodeID == "" || term.TopNodeTitle == "" {
+			t.Fatalf("word cloud term[%d] missing word/top node metadata: %+v", i, term)
+		}
+		if math.IsNaN(term.Weight) || math.IsInf(term.Weight, 0) || math.IsNaN(float64(term.NormWeight)) {
+			t.Fatalf("word cloud term[%d] contains NaN/Inf: %+v", i, term)
+		}
+		if term.NormWeight < 0.15 || term.NormWeight > 1.0 {
+			t.Fatalf("word cloud term[%d] NormWeight out of [0.15, 1.0]: %v", i, term.NormWeight)
+		}
+		if i == 0 && term.NormWeight != 1.0 {
+			t.Fatalf("expected top word cloud term NormWeight=1.0, got %v", term.NormWeight)
+		}
+		if i > 0 && digest.WordCloud[i-1].Weight < term.Weight {
+			t.Fatalf("word cloud not sorted by weight descending at %d: %v < %v", i, digest.WordCloud[i-1].Weight, term.Weight)
+		}
+		if term.Percent < 1 {
+			t.Fatalf("expected term[%d] Percent >= 1, got %d", i, term.Percent)
+		}
+		wcPctSum += term.Percent
+	}
+	if wcPctSum != 100 {
+		t.Fatalf("expected WordCloud percentages to sum to 100, got %d", wcPctSum)
+	}
+}
+
+func TestWordCloudEdgeCases(t *testing.T) {
+	st, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	orgSvc := NewOrganizeService(st)
+
+	emptyDigest := orgSvc.BuildDashboardDigest(nil, nil, nil)
+	if len(emptyDigest.WordCloud) != 0 {
+		t.Fatalf("expected empty WordCloud for empty vault, got %+v", emptyDigest.WordCloud)
+	}
+
+	singleNode := []domain.IdeaNode{{
+		ID:                    "single_1",
+		Title:                 "清晨手冲咖啡实验",
+		ConversationalSummary: "试一下浅烘耶加雪菲用 92 度水温。",
+		Tags:                  []string{"手冲咖啡"},
+		Theme:                 domain.ThemeAmber,
+		Weight:                0.8,
+	}}
+	singleDigest := orgSvc.BuildDashboardDigest(singleNode, map[string]int{"single_1": 1}, nil)
+	if len(singleDigest.WordCloud) == 0 {
+		t.Fatalf("expected non-empty WordCloud for 1-node vault")
+	}
+	pctSum := 0
+	for i, term := range singleDigest.WordCloud {
+		if math.IsNaN(term.Weight) || math.IsNaN(float64(term.NormWeight)) {
+			t.Fatalf("single vault term[%d] has NaN: %+v", i, term)
+		}
+		if term.TopNodeID != "single_1" || term.TopNodeTitle != "清晨手冲咖啡实验" {
+			t.Fatalf("single vault term[%d] wrong top node: %+v", i, term)
+		}
+		pctSum += term.Percent
+	}
+	if pctSum != 100 {
+		t.Fatalf("expected single-node WordCloud percentages to sum to 100, got %d", pctSum)
 	}
 }

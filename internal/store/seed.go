@@ -32,7 +32,6 @@ func (s *Store) SeedIfEmpty() error {
 				Energy:    0.92,
 			},
 			Weight: 0.94,
-			Stage:  domain.StageSprouting,
 			GuidingQuestions: []string{
 				"比起买一大束，单支郁金香在蓝瓶里每天‘低头弯腰’的变化是不是更有陪伴感？",
 				"如果花期只有七天，凋谢后那个蓝色花瓶你想用来插干枝还是留给下一季？",
@@ -56,7 +55,6 @@ func (s *Store) SeedIfEmpty() error {
 				Energy:    0.84,
 			},
 			Weight: 0.86,
-			Stage:  domain.StageIncubating,
 			GuidingQuestions: []string{
 				"能不能顺着这个思路，把‘动态规划’和‘蒙特卡洛’也压缩成一句菜市场讲价级别的大白话？",
 				"如果环境规则只知道一半（半模型），智能体什么时候该停下来算，什么时候该先试一局？",
@@ -79,7 +77,6 @@ func (s *Store) SeedIfEmpty() error {
 				Energy:    0.78,
 			},
 			Weight: 0.78,
-			Stage:  domain.StageSpark,
 			GuidingQuestions: []string{
 				"如果手表录音时震动反馈模仿“弹珠落进玻璃罐”的清脆手感，会不会更有记录欲？",
 				"在地铁噪杂环境里，录完直接留原声，等回到静音环境再批量转写是不是比现场强行识别更好？",
@@ -101,7 +98,6 @@ func (s *Store) SeedIfEmpty() error {
 				Energy:    0.72,
 			},
 			Weight: 0.71,
-			Stage:  domain.StageCrystallized,
 			GuidingQuestions: []string{
 				"如果把这套‘故意留瑕疵’的边缘抖动用在记忆球的发光边缘上，会不会比完美圆更像手吹玻璃？",
 			},
@@ -187,32 +183,6 @@ func (s *Store) SeedIfEmpty() error {
 
 	for _, ev := range evidences {
 		if err := s.AddRawEvidence(ev); err != nil {
-			return err
-		}
-	}
-
-	snapshots := []domain.StageSnapshot{
-		{
-			ID:        "snap_tulip_1",
-			NodeID:    "orb_tulip",
-			Stage:     domain.StageSpark,
-			Title:     "买一盆郁金香放在阳台上养",
-			Summary:   "散步经过花店时的第一句随口语音。",
-			Note:      "最初记下的一段语音",
-			CreatedAt: now.Add(-48 * time.Hour),
-		},
-		{
-			ID:        "snap_tulip_2",
-			NodeID:    "orb_tulip",
-			Stage:     domain.StageSprouting,
-			Title:     "用一个蓝色花瓶养一株郁金香",
-			Summary:   "和半小时前关于花瓶颜色的想法合在了一起，两条最初的记录都原样留着。",
-			Note:      "AI 自动合并了 2 条相关记录",
-			CreatedAt: now.Add(-47 * time.Hour),
-		},
-	}
-	for _, snap := range snapshots {
-		if err := s.AddStageSnapshot(snap); err != nil {
 			return err
 		}
 	}

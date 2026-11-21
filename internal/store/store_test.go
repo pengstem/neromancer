@@ -45,22 +45,6 @@ func TestStoreSeedAndRawEvidencePreservation(t *testing.T) {
 	if len(evs) != 2 {
 		t.Fatalf("expected 2 immutable raw evidences for tulip node, got %d", len(evs))
 	}
-
-	// Stage transition must create a snapshot while preserving raw evidences.
-	updated, snap, err := s.UpdateNodeStage("orb_tulip", domain.StageIncubating, "准备去花市买瓶子")
-	if err != nil {
-		t.Fatalf("update node stage: %v", err)
-	}
-	if updated.Stage != domain.StageIncubating || snap.Stage != domain.StageIncubating {
-		t.Fatalf("expected incubating stage, got node=%s snap=%s", updated.Stage, snap.Stage)
-	}
-	snaps, err := s.ListSnapshotsByNode("orb_tulip")
-	if err != nil {
-		t.Fatalf("list snapshots: %v", err)
-	}
-	if len(snaps) != 3 {
-		t.Fatalf("expected 3 snapshots after stage update, got %d", len(snaps))
-	}
 }
 
 func TestAssociativeRecallAndCapsuleRoundTrip(t *testing.T) {

@@ -81,9 +81,6 @@ func (a *App) renderArchiveHeader(c *ui.Context, pal SurfacePalette, phone bool)
 				if GhostIconAction(c, "archive_search_btn", IconSearch, "搜索档案", a.ArchiveSearchOpen).
 					Size(28, 28).Clicked() {
 					a.ArchiveSearchOpen = !a.ArchiveSearchOpen
-					if !a.ArchiveSearchOpen && strings.TrimSpace(a.SearchQuery) == "" {
-						a.RecallHits = nil
-					}
 				}
 			}
 
@@ -142,22 +139,18 @@ func (a *App) renderArchiveTitleAndTabs(c *ui.Context, pal SurfacePalette) {
 				Role(ui.RoleSearch).
 				Children(func() {
 					ui.Icon(c, IconSearch).Size(14, 14).TextColor(pal.InkMuted).Shrink(0)
-					if ui.TextInputBase(c, &a.SearchQuery).
+					ui.TextInputBase(c, &a.SearchQuery).
 						Placeholder("筛选标题、内容或标签…").
 						PlaceholderColor(pal.InkMuted).
 						TextColor(pal.Ink).
 						FontSize(13).
 						Label("筛选灵感").
 						Search().
-						Grow(1).MinWidth(0).
-						Changed() {
-						a.refreshRecallHits()
-					}
+						Grow(1).MinWidth(0)
 					if strings.TrimSpace(a.SearchQuery) != "" {
 						if GhostIconAction(c, "arch_search_clear", IconClose, "清空筛选", false).
 							Size(24, 24).Clicked() {
 							a.SearchQuery = ""
-							a.RecallHits = nil
 						}
 					}
 				})
@@ -241,7 +234,6 @@ func (a *App) renderArchiveCards(c *ui.Context, pal SurfacePalette, phone bool) 
 							if PillAction(c, "arch_reset_filter", IconClose, "查看全部", false).Clicked() {
 								a.ActiveTag = ""
 								a.SearchQuery = ""
-								a.RecallHits = nil
 							}
 						}
 					})
@@ -275,7 +267,7 @@ func (a *App) renderArchiveCards(c *ui.Context, pal SurfacePalette, phone bool) 
 						}
 					}).Children(func() {
 						ui.Column(c).FillWidth().Gap(9).Children(func() {
-							// Header: Auto-matched SVG Icon Badge + Title + Single Clean Stage/Date
+							// Header: Auto-matched SVG Icon Badge + Title + Date
 							ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
 								IdeaIconBadge(c, domain.ResolveIdeaIconKey(n), n.Theme, IconBadgeProps{
 									Size:     38,
@@ -284,13 +276,8 @@ func (a *App) renderArchiveCards(c *ui.Context, pal SurfacePalette, phone bool) 
 								})
 								ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 									ui.Text(c, n.Title).FontSize(15).Bold().TextColor(pal.Ink).MaxLines(2)
-									ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-										ui.Box(c).Size(5, 5).Radius(3).Background(orbPal.Mid).Shrink(0)
-										ui.Text(c, n.Stage.Label()).FontSize(11).FontWeight(600).TextColor(orbPal.BadgeText)
-										ui.Text(c, "·").FontSize(11).TextColor(pal.InkMuted)
-										ui.Text(c, formatChineseShortDate(n.UpdatedAt)).
-											FontSize(11).FontFeatures("tnum").TextColor(pal.InkMuted)
-									})
+									ui.Text(c, formatChineseShortDate(n.UpdatedAt)).
+										FontSize(11).FontFeatures("tnum").TextColor(pal.InkMuted)
 								})
 							})
 
@@ -367,10 +354,10 @@ func (a *App) renderArchiveOutline(c *ui.Context, pal SurfacePalette, phone bool
 				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 					ui.Text(c, n.Title).FontSize(14.5).FontWeight(600).TextColor(pal.Ink).MaxLines(2)
 					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Box(c).Size(5, 5).Radius(3).Background(orbPal.Mid).Shrink(0)
-						ui.Text(c, n.Stage.Label()).FontSize(11.5).TextColor(orbPal.BadgeText)
-						ui.Text(c, "·").FontSize(11.5).TextColor(pal.InkMuted)
 						ui.Textf(c, "%d 条原记录", evCount).FontSize(11.5).TextColor(pal.InkMuted)
+						ui.Text(c, "·").FontSize(11.5).TextColor(pal.InkMuted)
+						ui.Text(c, formatChineseShortDate(n.UpdatedAt)).
+							FontSize(11.5).FontFeatures("tnum").TextColor(pal.InkMuted)
 					})
 				})
 				chevronCol := pal.InkMuted

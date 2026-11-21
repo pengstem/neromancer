@@ -504,6 +504,7 @@ func (a *App) submitQuickCapture(targetNodeID string, autoOrganize bool) {
 	mygo.Haptics.Success()
 	_ = a.ReloadVault()
 	a.SelectNode(out.Node.ID)
+	a.TriggerGlobeCaptureRipple(out.Node)
 
 	if !autoOrganize {
 		if out.AIWarning != "" {
@@ -528,6 +529,7 @@ func (a *App) submitQuickCapture(targetNodeID string, autoOrganize bool) {
 		}
 		a.Dispatch(func() {
 			a.SelectNode(organized.ID)
+			a.TriggerGlobeCaptureRipple(organized)
 			if mergedInto != "" {
 				a.setBanner(fmt.Sprintf("已合并到《%s》，当时的原记录也留好了", organized.Title))
 			} else {

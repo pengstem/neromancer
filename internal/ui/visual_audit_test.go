@@ -110,11 +110,17 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	tt := ui.NewTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
-	// 1. Homepage Option B Bento Dashboard + unified bottom-right Vermilion Seal (no duplicates, no bottom nav bar)
-	for _, want := range []string{"AI 灵感画像", "本周积累", "AI 提炼关键词矩阵", "串联与待深化追问"} {
+	// 1. Homepage Bento Dashboard + 3D Inspiration Globe + unified bottom-right Vermilion Seal (no title/icon, no search, no duplicates, no bottom nav bar)
+	for _, want := range []string{"AI 灵感画像", "本周积累", "灵感星云球", "串联与待深化追问"} {
 		if !tt.HasText(want) {
 			t.Fatalf("dashboard missing expected label %q", want)
 		}
+	}
+	if tt.HasText("Neromancer") {
+		t.Fatalf("expected homepage app title \"Neromancer\" to be removed, texts=%v", tt.Texts())
+	}
+	if _, ok := tt.Find("搜索灵感"); ok {
+		t.Fatalf("expected homepage search button \"搜索灵感\" to be removed, texts=%v", tt.Texts())
 	}
 	if tt.HasText("语音速记") || tt.HasText("图文落稿") {
 		t.Fatalf("expected duplicate dashboard capture tiles to be removed, texts=%v", tt.Texts())
@@ -176,19 +182,37 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	}
 	settleAudit(tt)
 
-	// 3. Tapping a keyword cluster tile filters directly into SpaceArchive
-	if len(app.DashboardDigest.Clusters) > 0 {
-		firstCluster := app.DashboardDigest.Clusters[0]
-		if err := tt.Click(firstCluster.Name); err != nil {
-			t.Fatalf("click keyword cluster %q: %v", firstCluster.Name, err)
+	// 3. Tapping a foreground Globe word focuses it and opens the preview card -> "看相关档案" enters SpaceArchive
+	if len(app.DashboardDigest.WordCloud) > 0 {
+		firstTerm := app.DashboardDigest.WordCloud[0]
+		if err := tt.Click(firstTerm.Word); err != nil {
+			t.Fatalf("click globe foreground term %q: %v", firstTerm.Word, err)
+		}
+		for i := 0; i < 10; i++ {
+			tt.Advance(50 * time.Millisecond)
 		}
 		settleAudit(tt)
-		if app.ActiveSpace != SpaceArchive || app.ActiveTag != firstCluster.FilterTag {
-			t.Fatalf("expected SpaceArchive filtered by %q, got space=%v tag=%q", firstCluster.FilterTag, app.ActiveSpace, app.ActiveTag)
+		if app.Globe.FocusedWord != firstTerm.Word {
+			t.Fatalf("expected Globe.FocusedWord=%q, got %q", firstTerm.Word, app.Globe.FocusedWord)
+		}
+		if !tt.HasText("看相关档案") {
+			t.Fatalf("expected globe focus card with \"看相关档案\", texts=%v", tt.Texts())
+		}
+		assertAuditNoEmojis(t, "dashboard_globe_focused", tt.Texts())
+		saveAuditPNG(t, auditDir, tt.Image(), "ui_dashboard_globe_focused.png")
+
+		if err := tt.Click("看相关档案"); err != nil {
+			t.Fatalf("click \"看相关档案\": %v", err)
+		}
+		settleAudit(tt)
+		if app.ActiveSpace != SpaceArchive || (firstTerm.FilterTag != "" && app.ActiveTag != firstTerm.FilterTag) {
+			t.Fatalf("expected SpaceArchive filtered by %q, got space=%v tag=%q", firstTerm.FilterTag, app.ActiveSpace, app.ActiveTag)
 		}
 		if err := tt.Click("回到主页看板"); err != nil {
 			t.Fatalf("back to dashboard: %v", err)
 		}
+		settleAudit(tt)
+		app.Globe.FocusedWord = ""
 		settleAudit(tt)
 	}
 
@@ -205,6 +229,11 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	}
 	if tt.HasText("记灵感") {
 		t.Fatalf("expected duplicate archive capture FAB \"记灵感\" to be removed")
+	}
+	for _, forbidden := range []string{"闪念", "萌芽", "孵化中", "已沉淀", "变化记录"} {
+		if tt.HasText(forbidden) {
+			t.Fatalf("expected idea status/stage label %q to be removed from archive cards, texts=%v", forbidden, tt.Texts())
+		}
 	}
 	assertAuditNoEmojis(t, "archive_cards", tt.Texts())
 	saveAuditPNG(t, auditDir, tt.Image(), "ui_archive_cards.png")
@@ -225,7 +254,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	}
 	settleAudit(tt)
 
-	// 6. Tulip Detail Sheet with close button, stage track & spoken quote
+	// 6. Tulip Detail Sheet with close button & spoken quote
 	if err := tt.Click("用一个蓝色花瓶养一株郁金香"); err != nil {
 		t.Fatalf("click tulip card in archive: %v", err)
 	}
@@ -238,6 +267,11 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	}
 	if _, ok := tt.Find("关闭"); !ok {
 		t.Fatalf("detail sheet missing explicit close button")
+	}
+	for _, forbidden := range []string{"闪念", "萌芽", "孵化中", "已沉淀", "变化记录"} {
+		if tt.HasText(forbidden) {
+			t.Fatalf("expected idea status/stage label %q to be removed from detail sheet, texts=%v", forbidden, tt.Texts())
+		}
 	}
 	assertAuditNoEmojis(t, "detail_sheet", tt.Texts())
 	saveAuditPNG(t, auditDir, tt.Image(), "ui_detail_sheet.png")

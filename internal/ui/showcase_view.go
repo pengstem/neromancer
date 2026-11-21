@@ -8,8 +8,6 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/mobile"
-	"github.com/pengstem/neromancer/internal/domain"
-	"github.com/pengstem/neromancer/internal/service"
 )
 
 func (a *App) renderDashboardView(c *ui.Context) {
@@ -53,12 +51,8 @@ func (a *App) renderDashboardView(c *ui.Context) {
 				ui.Column(c).FillWidth().Padding(padTop, padX, 96+bottomSafe, padX).Gap(12).Children(func() {
 					a.renderDashboardHeader(c, pal)
 
-					if a.DashboardSearchOpen || strings.TrimSpace(a.SearchQuery) != "" {
-						a.renderDashboardSearchCard(c, pal)
-					}
-
 					a.renderDashboardHeroRow(c, pal, phone)
-					a.renderDashboardKeywordMatrix(c, pal)
+					a.renderDashboardWordCloudGlobe(c, pal)
 					a.renderDashboardCluesCard(c, pal)
 					a.renderDashboardArchivePortal(c, pal)
 				})
@@ -86,26 +80,11 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette) {
 	}
 
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(gap).Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
-			ui.Box(c).Size(26, 26).Radius(7).Center().Background(pal.Ink).Children(func() {
-				ui.Icon(c, IconSpark).Size(14, 14).TextColor(pal.Card)
-			})
-			ui.Text(c, "Neromancer").FontSize(16).Bold().TextColor(pal.Ink).SingleLine()
-		})
-
 		ui.Spacer(c).Grow(1)
 
 		ui.Row(c).Gap(gap).AlignItems(ui.Center).Shrink(0).Children(func() {
 			if a.BusyTask != "" {
 				ui.Spinner(c).Size(14, 14)
-			}
-
-			if IconAction(c, "dash_search_btn", IconSearch, "搜索灵感", a.DashboardSearchOpen).Tooltip("搜索灵感").Clicked() {
-				a.CaptureDialOpen = false
-				a.DashboardSearchOpen = !a.DashboardSearchOpen
-				if !a.DashboardSearchOpen && strings.TrimSpace(a.SearchQuery) == "" {
-					a.RecallHits = nil
-				}
 			}
 
 			ui.Box(c).Key("dash_sleep_wrap").Size(32, 32).Shrink(0).Children(func() {
@@ -132,102 +111,6 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette) {
 			})
 		})
 	})
-}
-
-func (a *App) renderDashboardSearchCard(c *ui.Context, pal SurfacePalette) {
-	ui.Column(c).FillWidth().Gap(8).Children(func() {
-		ui.Row(c).FillWidth().Padding(8, 12).Gap(8).AlignItems(ui.Center).
-			Radius(12).Background(pal.Card).Border(1, pal.Border).
-			Role(ui.RoleSearch).
-			Children(func() {
-				ui.Icon(c, IconSearch).Size(15, 15).TextColor(pal.InkMuted).Shrink(0)
-				if ui.TextInputBase(c, &a.SearchQuery).
-					Placeholder("搜搜以前记过的想法…").
-					PlaceholderColor(pal.InkMuted).
-					TextColor(pal.Ink).
-					FontSize(13.5).
-					Label("搜索灵感").
-					Search().
-					Grow(1).MinWidth(0).
-					Changed() {
-					a.refreshRecallHits()
-				}
-				if strings.TrimSpace(a.SearchQuery) != "" || a.DashboardSearchOpen {
-					if GhostIconAction(c, "dash_search_clear", IconClose, "清空搜索", false).
-						Size(26, 26).Clicked() {
-						a.SearchQuery = ""
-						a.RecallHits = nil
-						a.DashboardSearchOpen = false
-					}
-				}
-			})
-
-		if strings.TrimSpace(a.SearchQuery) != "" {
-			a.renderRecallResults(c)
-		}
-	})
-}
-
-func (a *App) refreshRecallHits() {
-	q := strings.TrimSpace(a.SearchQuery)
-	if q == "" {
-		a.RecallHits = nil
-		return
-	}
-	hits, err := a.Deps.Organize.SearchRecall(q, 4)
-	if err == nil {
-		a.RecallHits = hits
-	}
-}
-
-func (a *App) renderRecallResults(c *ui.Context) {
-	pal := a.Palette()
-
-	ui.Column(c).FillWidth().Padding(12).Gap(8).Radius(14).
-		Background(pal.Card).Border(1, pal.Border).
-		Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-				ui.Icon(c, IconSearch).Size(14, 14).TextColor(pal.Ink).Shrink(0)
-				ui.Textf(c, "找到 %d 条相关记录", len(a.RecallHits)).
-					FontSize(12.5).Bold().TextColor(pal.Ink).Grow(1)
-				if PillAction(c, "recall_clear", IconClose, "清除", false).Clicked() {
-					a.SearchQuery = ""
-					a.RecallHits = nil
-				}
-			})
-
-			if len(a.RecallHits) == 0 {
-				ui.Text(c, "还没有关于这个词的记录，随手记一笔吧。").
-					FontSize(12).TextColor(pal.InkSecondary)
-				return
-			}
-
-			for i, hit := range a.RecallHits {
-				h := hit
-				row := ui.ButtonBase(c).Key(fmt.Sprintf("recall_%d_%s", i, h.Node.ID)).
-					FillWidth().Padding(9, 10).Radius(11).Background(pal.SoftPanel).
-					Cursor(ui.CursorPointer).Label(h.Node.Title)
-				mobile.Ink(row)
-				row.OnClick(func() {
-					mygo.Haptics.Selection()
-					a.openNodeDetail(c, h.Node.ID)
-				}).Children(func() {
-					ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-						IdeaIconBadge(c, domain.ResolveIdeaIconKey(h.Node), h.Node.Theme, IconBadgeProps{
-							Size:     30,
-							IconSize: 15,
-							Radius:   8,
-						})
-						ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-							ui.Text(c, h.Node.Title).FontSize(13).Bold().TextColor(pal.Ink).MaxLines(1)
-							ui.Textf(c, "%s · %d 条原记录", h.MatchReason, h.EvidenceCount).
-								FontSize(11).TextColor(pal.InkMuted).MaxLines(1)
-						})
-						ui.Icon(c, IconChevronRight).Size(14, 14).TextColor(pal.InkMuted).Shrink(0)
-					})
-				})
-			}
-		})
 }
 
 func (a *App) renderDashboardHeroRow(c *ui.Context, pal SurfacePalette, phone bool) {
@@ -326,76 +209,6 @@ func drawDashboardSparkline(p *ui.Painter, r ui.Rect, values []float32, strokeCo
 	var dot ui.Path
 	dot.Circle(last[0], last[1], 2.5)
 	p.FillPath(&dot, strokeCol)
-}
-
-func (a *App) renderDashboardKeywordMatrix(c *ui.Context, pal SurfacePalette) {
-	clusters := a.DashboardDigest.Clusters
-
-	ui.Column(c).FillWidth().Padding(14).Gap(11).Radius(16).
-		Background(pal.Card).Border(1, pal.Border).Children(func() {
-		ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "AI 提炼关键词矩阵").FontSize(13.5).Bold().TextColor(pal.Ink)
-			ui.Text(c, "点按过滤档案").FontSize(11).TextColor(pal.InkMuted)
-		})
-
-		if len(clusters) == 0 {
-			ui.Text(c, "记下几条想法后，这里会自动提炼关键词。").
-				FontSize(12).TextColor(pal.InkSecondary).Padding(4, 0)
-			return
-		}
-
-		for rowStart := 0; rowStart < len(clusters); rowStart += 2 {
-			start := rowStart
-			ui.Row(c).FillWidth().Gap(9).Children(func() {
-				for col := 0; col < 2; col++ {
-					idx := start + col
-					if idx >= len(clusters) {
-						ui.Box(c).Grow(1).Basis(0)
-						continue
-					}
-					a.renderKeywordClusterTile(c, pal, idx, clusters[idx])
-				}
-			})
-		}
-	})
-}
-
-func (a *App) renderKeywordClusterTile(c *ui.Context, pal SurfacePalette, idx int, cl service.KeywordCluster) {
-	orbPal := ColorsForTheme(cl.Theme)
-	share := max(float32(0.15), min(float32(1.0), cl.Share))
-
-	tile := ui.ButtonBase(c).Key(fmt.Sprintf("kw_tile_%d_%s", idx, cl.FilterTag)).
-		Grow(1).Basis(0).Padding(11, 12).Radius(12).
-		Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.75)).
-		Cursor(ui.CursorPointer).Label(cl.Name)
-	mobile.Ink(tile)
-	tile.OnClick(func() {
-		mygo.Haptics.Selection()
-		a.enterArchiveWithTag(cl.FilterTag)
-	}).Children(func() {
-		ui.Column(c).FillWidth().Gap(7).Children(func() {
-			ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-				IdeaIconBadge(c, cl.IconKey, cl.Theme, IconBadgeProps{
-					Size:     26,
-					IconSize: 14,
-					Radius:   7,
-				})
-				ui.Textf(c, "%d%%", cl.Percent).
-					FontSize(11.5).Bold().FontFeatures("tnum").TextColor(orbPal.BadgeText).SingleLine()
-			})
-
-			ui.Column(c).FillWidth().Gap(2).Children(func() {
-				ui.Text(c, cl.Name).FontSize(13).Bold().TextColor(pal.Ink).SingleLine()
-				ui.Text(c, cl.SubKeywords).FontSize(10.5).TextColor(pal.InkMuted).SingleLine()
-			})
-
-			ui.Box(c).FillWidth().Height(4).Draw(func(p *ui.Painter, r ui.Rect) {
-				p.Fill(r, pal.Border, 2)
-				fillW := max(float32(6), r.W*share)
-				p.Fill(ui.Rect{X: r.X, Y: r.Y, W: fillW, H: r.H}, orbPal.Mid, 2)
-			})
-		})
-	})
 }
 
 func (a *App) renderDashboardCluesCard(c *ui.Context, pal SurfacePalette) {

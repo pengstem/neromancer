@@ -131,7 +131,6 @@ func (s *CaptureService) CaptureQuick(ctx context.Context, in QuickCaptureInput)
 				Energy:    0.72,
 			},
 			Weight:    0.62,
-			Stage:     domain.StageSpark,
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
@@ -200,7 +199,6 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 			Title:   n.Title,
 			Summary: n.ConversationalSummary,
 			Tags:    n.Tags,
-			Stage:   string(n.Stage),
 		})
 	}
 
@@ -226,9 +224,6 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 			}
 			target.Tags = mergeUniqueStrings(target.Tags, decision.Tags)
 			target.Weight = math.Min(1.0, math.Max(target.Weight, decision.Weight)+0.08)
-			if target.Stage == domain.StageSpark {
-				target.Stage = domain.StageSprouting
-			}
 			if len(decision.GuidingQuestions) > 0 {
 				target.GuidingQuestions = decision.GuidingQuestions
 			}
@@ -238,15 +233,6 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 			if err := s.store.UpsertNode(target); err != nil {
 				return domain.IdeaNode{}, "", err
 			}
-			_ = s.store.AddStageSnapshot(domain.StageSnapshot{
-				ID:        fmt.Sprintf("snap_%d", now.UnixNano()),
-				NodeID:    target.ID,
-				Stage:     target.Stage,
-				Title:     target.Title,
-				Summary:   target.ConversationalSummary,
-				Note:      "AI 自动合并了相近的想法",
-				CreatedAt: now,
-			})
 			return target, target.ID, nil
 		}
 	}
@@ -281,15 +267,6 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 	if err := s.store.UpsertNode(node); err != nil {
 		return domain.IdeaNode{}, "", err
 	}
-	_ = s.store.AddStageSnapshot(domain.StageSnapshot{
-		ID:        fmt.Sprintf("snap_%d", now.UnixNano()),
-		NodeID:    node.ID,
-		Stage:     node.Stage,
-		Title:     node.Title,
-		Summary:   node.ConversationalSummary,
-		Note:      "AI 完成了初次整理",
-		CreatedAt: now,
-	})
 	return node, "", nil
 }
 

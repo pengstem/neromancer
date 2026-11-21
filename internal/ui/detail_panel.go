@@ -66,7 +66,7 @@ func (a *App) renderDetailContent(c *ui.Context) {
 
 	ui.Scroll(c).TrackScroll(&a.DetailScroll).Grow(1).Basis(0).MinHeight(0).FillWidth().Children(func() {
 		ui.Column(c).FillWidth().Padding(16, 18, 36, 18).Gap(18).Children(func() {
-			// Top Identity Hero: 48px auto-matched SVG badge + 20px Bold Title + stage/records caption
+			// Top Identity Hero: 48px auto-matched SVG badge + 20px Bold Title + date/records caption
 			ui.Row(c).FillWidth().Gap(14).AlignItems(ui.Center).Children(func() {
 				IdeaIconBadge(c, domain.ResolveIdeaIconKey(node), node.Theme, IconBadgeProps{
 					Size:     48,
@@ -76,8 +76,8 @@ func (a *App) renderDetailContent(c *ui.Context) {
 				ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
 					ui.Text(c, node.Title).FontSize(20).Bold().LineHeight(1.28).TextColor(pal.Ink).MaxLines(3)
 					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Box(c).Size(6, 6).Radius(99).Background(orbPal.Mid).Shrink(0)
-						ui.Text(c, node.Stage.Label()).FontSize(12).FontWeight(600).TextColor(badgeText)
+						ui.Text(c, formatChineseShortDate(node.UpdatedAt)).
+							FontSize(12).FontFeatures("tnum").TextColor(pal.InkMuted)
 						ui.Text(c, "·").FontSize(12).TextColor(pal.InkMuted)
 						ui.Textf(c, "%d 条原记录", evCount).FontSize(12).TextColor(pal.InkMuted)
 					})
@@ -108,9 +108,6 @@ func (a *App) renderDetailContent(c *ui.Context) {
 				}
 			})
 
-			// Connected 4-stage horizontal stepper track
-			a.renderStageStepper(c, pal, orbPal, node)
-
 			// Tag row & separate italic visual caption row
 			if len(node.Tags) > 0 {
 				ui.Row(c).FillWidth().Wrap().Gap(6).AlignItems(ui.Center).Children(func() {
@@ -140,108 +137,8 @@ func (a *App) renderDetailContent(c *ui.Context) {
 
 			// On-demand "AI 帮忙" section
 			a.renderActionPlanSection(c, pal, node)
-
-			// Hairline vertical timeline for StageSnapshots
-			a.renderStageTimeline(c, pal, badgeBg, badgeText, orbPal)
 		})
 	})
-}
-
-func (a *App) renderStageStepper(c *ui.Context, pal SurfacePalette, orbPal OrbColorSet, node domain.IdeaNode) {
-	curIdx := 0
-	for i, st := range domain.AllStages {
-		if st == node.Stage {
-			curIdx = i
-			break
-		}
-	}
-
-	ui.Row(c).FillWidth().Padding(8, 4).Radius(14).
-		Background(pal.SoftPanel.Alpha(0.55)).
-		Children(func() {
-			for i, st := range domain.AllStages {
-				stage := st
-				idx := i
-				lbl := stage.Label()
-				isCurrent := idx == curIdx
-				isReached := idx <= curIdx
-
-				stepBtn := ui.ButtonBase(c).Key("stg_"+string(stage)).
-					Grow(1).Padding(4, 2).Radius(10).Cursor(ui.CursorPointer).Label(lbl)
-				mobile.Ink(stepBtn)
-				stepBtn.OnClick(func() {
-					if stage == node.Stage {
-						return
-					}
-					mygo.Haptics.Selection()
-					_, _, err := a.Deps.Organize.AdvanceStage(node.ID, stage, "手动切换阶段")
-					if err != nil {
-						a.setErrorBanner(err.Error())
-					} else {
-						a.setBanner(fmt.Sprintf("已切换到「%s」阶段", lbl))
-						_ = a.ReloadVault()
-					}
-				}).Children(func() {
-					ui.Column(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
-						// Hairline track row + stage dot
-						ui.Row(c).FillWidth().Height(16).AlignItems(ui.Center).Children(func() {
-							leftCol := ui.Transparent
-							if idx > 0 {
-								if idx <= curIdx {
-									leftCol = orbPal.Rim
-								} else {
-									leftCol = pal.Border
-								}
-							}
-							ui.Box(c).Grow(1).Height(1.5).Background(leftCol)
-
-							ui.Box(c).Size(14, 14).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
-								cx, cy := r.X+r.W/2, r.Y+r.H/2
-								switch {
-								case isCurrent:
-									var halo ui.Path
-									halo.Circle(cx, cy, 6.8)
-									p.FillPath(&halo, orbPal.Rim.Alpha(0.22))
-									var core ui.Path
-									core.Circle(cx, cy, 4.2)
-									p.FillPath(&core, orbPal.Rim)
-								case isReached:
-									var core ui.Path
-									core.Circle(cx, cy, 3.6)
-									p.FillPath(&core, orbPal.Rim)
-								default:
-									var bgCircle ui.Path
-									bgCircle.Circle(cx, cy, 3.6)
-									p.FillPath(&bgCircle, pal.Card)
-									p.StrokePath(&bgCircle, 1.4, pal.Border)
-								}
-							})
-
-							rightCol := ui.Transparent
-							if idx < len(domain.AllStages)-1 {
-								if idx < curIdx {
-									rightCol = orbPal.Rim
-								} else {
-									rightCol = pal.Border
-								}
-							}
-							ui.Box(c).Grow(1).Height(1.5).Background(rightCol)
-						})
-
-						txtCol := pal.InkMuted
-						weight := 400
-						if isCurrent {
-							txtCol = pal.Ink
-							weight = 700
-						} else if isReached {
-							txtCol = pal.InkSecondary
-							weight = 500
-						}
-						ui.Text(c, lbl).FontSize(11).FontWeight(weight).TextColor(txtCol).SingleLine()
-					})
-				})
-			}
-		})
 }
 
 func (a *App) renderGuidingQuestionsSection(c *ui.Context, pal SurfacePalette, accentNumCol ui.Color, node domain.IdeaNode) {
@@ -302,58 +199,6 @@ func (a *App) renderActionPlanSection(c *ui.Context, pal SurfacePalette, node do
 				markdown.View(c, node.ActionPlanMD, &a.MarkdownOpts).FillWidth()
 			}
 		})
-}
-
-func (a *App) renderStageTimeline(c *ui.Context, pal SurfacePalette, badgeBg, badgeText ui.Color, orbPal OrbColorSet) {
-	ui.Column(c).FillWidth().Gap(10).Children(func() {
-		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "变化记录").FontSize(14).Bold().TextColor(pal.Ink)
-			ui.Textf(c, "%d", len(a.SelectedSnapshots)).FontSize(11).FontWeight(600).
-				Padding(1, 7).Radius(999).Background(pal.SoftPanel).TextColor(pal.InkSecondary)
-		})
-
-		if len(a.SelectedSnapshots) == 0 {
-			ui.Text(c, "每次合并新想法或切换阶段，都会记在这里。").
-				FontSize(12).TextColor(pal.InkMuted)
-			return
-		}
-
-		ui.Column(c).FillWidth().Children(func() {
-			for i, snap := range a.SelectedSnapshots {
-				s := snap
-				isLast := i == len(a.SelectedSnapshots)-1
-
-				ui.Row(c).Key("snap_" + s.ID).FillWidth().Gap(12).AlignItems(ui.Stretch).Children(func() {
-					// Left rail: dot + vertical hairline
-					ui.Column(c).Width(14).AlignItems(ui.Center).Shrink(0).Children(func() {
-						ui.Box(c).Height(5)
-						ui.Box(c).Size(8, 8).Radius(99).Background(orbPal.Rim).Shrink(0)
-						if !isLast {
-							ui.Box(c).Width(1.5).Grow(1).Margin(4, 0, 0, 0).Background(pal.Border)
-						}
-					})
-
-					// Right timeline entry
-					padBot := float32(14)
-					if isLast {
-						padBot = 2
-					}
-					ui.Column(c).Grow(1).MinWidth(0).Padding(0, 0, padBot, 0).Gap(4).Children(func() {
-						ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-							ui.Text(c, s.Stage.Label()).FontSize(10).FontWeight(600).
-								Padding(2, 7).Radius(999).Background(badgeBg).TextColor(badgeText)
-							ui.Text(c, s.CreatedAt.Format("01-02 15:04")).
-								FontSize(11).TextColor(pal.InkMuted)
-						})
-						ui.Text(c, s.Title).FontSize(13).FontWeight(600).TextColor(pal.Ink)
-						if note := strings.TrimSpace(s.Note); note != "" {
-							ui.Text(c, note).FontSize(12).LineHeight(1.45).TextColor(pal.InkSecondary)
-						}
-					})
-				})
-			}
-		})
-	})
 }
 
 func (a *App) renderEvidenceModal(c *ui.Context) {

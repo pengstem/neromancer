@@ -83,11 +83,17 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	// Test at Android phone portrait dimensions (412x892 DIPs)
 	tt := ui.NewTester(app.RootView, 412, 892)
 
-	// 1. Homepage Dashboard renders Option B Bento sections + unified bottom-right capture seal & has NO bottom navigation bar.
-	for _, want := range []string{"AI 灵感画像", "本周积累", "AI 提炼关键词矩阵", "串联与待深化追问"} {
+	// 1. Homepage Dashboard renders Option B Bento sections + unified bottom-right capture seal & has NO bottom navigation bar, app title/icon, or search.
+	for _, want := range []string{"AI 灵感画像", "本周积累", "灵感星云球", "串联与待深化追问"} {
 		if !tt.HasText(want) {
 			t.Fatalf("expected Bento Dashboard text %q, texts=%v", want, tt.Texts())
 		}
+	}
+	if tt.HasText("Neromancer") || tt.HasText("搜搜以前记过的想法…") {
+		t.Fatalf("expected homepage title and search input to be removed, texts=%v", tt.Texts())
+	}
+	if _, ok := tt.Find("搜索灵感"); ok {
+		t.Fatalf("expected homepage search button \"搜索灵感\" to be removed, texts=%v", tt.Texts())
 	}
 	if tt.HasText("语音速记") || tt.HasText("图文落稿") {
 		t.Fatalf("expected duplicate dashboard capture tiles to be removed, texts=%v", tt.Texts())
@@ -158,6 +164,11 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	if !tt.HasText("灵感档案室") || !tt.HasText("用一个蓝色花瓶养一株郁金香") || !tt.HasText("在阳台装一个自动虹吸滴灌棉线") {
 		t.Fatalf("expected archive vault cards, texts=%v", tt.Texts())
 	}
+	for _, forbidden := range []string{"闪念", "萌芽", "孵化中", "已沉淀", "变化记录"} {
+		if tt.HasText(forbidden) {
+			t.Fatalf("expected idea status/stage label %q to be removed from archive cards, texts=%v", forbidden, tt.Texts())
+		}
+	}
 	assertNoEmojis(t, "archive_cards", tt.Texts())
 
 	// Switch Archive mode: Cards -> Outline -> Cards.
@@ -188,6 +199,11 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	}
 	if _, ok := tt.Find("关闭"); !ok {
 		t.Fatalf("expected explicit close button inside detail sheet")
+	}
+	for _, forbidden := range []string{"闪念", "萌芽", "孵化中", "已沉淀", "变化记录"} {
+		if tt.HasText(forbidden) {
+			t.Fatalf("expected idea status/stage label %q to be removed from detail sheet, texts=%v", forbidden, tt.Texts())
+		}
 	}
 	assertNoEmojis(t, "detail_sheet", tt.Texts())
 

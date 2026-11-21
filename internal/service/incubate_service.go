@@ -40,9 +40,6 @@ func (s *IncubateService) RefreshGuidingQuestions(ctx context.Context, nodeID st
 	}
 	if len(questions) > 0 {
 		node.GuidingQuestions = questions
-		if node.Stage == domain.StageSpark {
-			node.Stage = domain.StageSprouting
-		}
 		node.UpdatedAt = time.Now()
 		if err := s.store.UpsertNode(node); err != nil {
 			return domain.IdeaNode{}, err
@@ -67,23 +64,11 @@ func (s *IncubateService) GenerateActionPlan(ctx context.Context, nodeID string)
 		return domain.IdeaNode{}, err
 	}
 	node.ActionPlanMD = planMD
-	if node.Stage == domain.StageSpark || node.Stage == domain.StageSprouting {
-		node.Stage = domain.StageIncubating
-	}
 	node.Weight = min(1.0, node.Weight+0.06)
 	node.UpdatedAt = time.Now()
 	if err := s.store.UpsertNode(node); err != nil {
 		return domain.IdeaNode{}, err
 	}
-	_ = s.store.AddStageSnapshot(domain.StageSnapshot{
-		ID:        fmt.Sprintf("snap_%d", time.Now().UnixNano()),
-		NodeID:    node.ID,
-		Stage:     node.Stage,
-		Title:     node.Title,
-		Summary:   node.ConversationalSummary,
-		Note:      "生成了一份行动方案",
-		CreatedAt: time.Now(),
-	})
 	return node, nil
 }
 
@@ -142,7 +127,6 @@ func (s *IncubateService) CollideWithRoam(ctx context.Context, myNodeID string, 
 			Energy:    0.88,
 		},
 		Weight:       0.80,
-		Stage:        domain.StageSprouting,
 		ActionPlanMD: fmt.Sprintf("### 15 分钟最小试一试\n\n%s", strings.TrimSpace(res.FirstStep)),
 		RelatedIDs:   []string{mine.ID},
 		CreatedAt:    now,
@@ -162,15 +146,6 @@ func (s *IncubateService) CollideWithRoam(ctx context.Context, myNodeID string, 
 			MoodWeather: "灵感碰撞",
 		},
 		CapturedAt: now,
-	})
-	_ = s.store.AddStageSnapshot(domain.StageSnapshot{
-		ID:        fmt.Sprintf("snap_col_%d", now.UnixNano()),
-		NodeID:    hybrid.ID,
-		Stage:     hybrid.Stage,
-		Title:     hybrid.Title,
-		Summary:   hybrid.ConversationalSummary,
-		Note:      "和别人的想法碰撞生成",
-		CreatedAt: now,
 	})
 	return hybrid, res, nil
 }

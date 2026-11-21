@@ -154,14 +154,11 @@ func renderPosterArtCard(c *ui.Context, pal SurfacePalette, node domain.IdeaNode
 	}
 
 	card.Children(func() {
-		// 1. Header: NEROMANCER + Stage pill
+		// 1. Header: NEROMANCER
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Children(func() {
 			ui.Text(c, "NEROMANCER").
 				FontSize(9.5).FontWeight(700).LetterSpacing(1.6).
 				TextColor(badgeText).SingleLine().MinWidth(0)
-			ui.Text(c, node.Stage.Label()).
-				FontSize(10).FontWeight(600).Padding(2, 8).Radius(999).
-				Background(badgeBg).TextColor(badgeText).Shrink(0)
 		})
 
 		ui.Box(c).FillWidth().Height(1).Background(pal.Border.Alpha(0.85))

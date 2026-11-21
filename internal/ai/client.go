@@ -36,7 +36,6 @@ type NodeDigest struct {
 	Title   string   `json:"title"`
 	Summary string   `json:"summary"`
 	Tags    []string `json:"tags"`
-	Stage   string   `json:"stage"`
 }
 
 // OrganizeDecision represents DeepSeek's structured decision to merge or create an IdeaNode.
@@ -482,8 +481,8 @@ func buildNodeContextPrompt(node domain.IdeaNode, evidences []domain.RawEvidence
 			i+1, ev.ModalityBadge(), ev.CapturedAt.Format("2006-01-02 15:04"), ev.Scene.SummaryLine(), ev.RawText))
 	}
 	return fmt.Sprintf(
-		"【灵感节点】\n标题：%s\n当前阶段：%s\n口语化摘要：%s\n标签：%s\n\n【原始证据清单（不可篡改的当时记录）】\n%s",
-		node.Title, node.Stage.Label(), node.ConversationalSummary,
+		"【灵感节点】\n标题：%s\n口语化摘要：%s\n标签：%s\n\n【原始证据清单（不可篡改的当时记录）】\n%s",
+		node.Title, node.ConversationalSummary,
 		strings.Join(node.Tags, "、"), strings.Join(evLines, "\n"),
 	)
 }

@@ -128,6 +128,7 @@ func (a *App) submitFloatingCapture(audioPath string) {
 	a.Dispatch(func() {
 		_ = a.ReloadVault()
 		a.SelectNode(localOut.Node.ID)
+		a.TriggerGlobeCaptureRipple(localOut.Node)
 		a.setBanner(fmt.Sprintf("已记下：《%s》", localOut.Node.Title))
 	})
 
@@ -141,6 +142,7 @@ func (a *App) submitFloatingCapture(audioPath string) {
 			}
 			a.Dispatch(func() {
 				a.SelectNode(organized.ID)
+				a.TriggerGlobeCaptureRipple(organized)
 				a.setBanner(fmt.Sprintf("已整理好：《%s》", organized.Title))
 			})
 			return nil
