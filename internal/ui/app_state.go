@@ -476,7 +476,7 @@ func (a *App) RootView(c *ui.Context) {
 }
 
 func (a *App) renderBanner(c *ui.Context, pal SurfacePalette) {
-	_, topSafe, bottomSafe, _ := c.SafeArea()
+	topSafe, _, bottomSafe, _ := c.SafeArea()
 	phone := a.isPhoneLayout(c)
 	posOverlay := func(el ui.Element) ui.Element {
 		el.Absolute().Left(16).Right(16).ZIndex(90).AlignItems(ui.Center).PassThrough()

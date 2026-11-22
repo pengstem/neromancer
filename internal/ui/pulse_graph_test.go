@@ -199,3 +199,96 @@ func TestObsidianPulseSpringBloomAndElasticIslandDrag(t *testing.T) {
 		tt.Advance(40 * time.Millisecond)
 	}
 }
+
+func TestPulseGraphNeverOverflowsAboveOrBelowStage(t *testing.T) {
+	app, cleanup := newAuditTestApp(t)
+	defer cleanup()
+
+	app.ActiveSpace = SpaceArchive
+	app.ArchiveMode = ArchiveGraph
+	app.ArchiveSearchOpen = true
+	app.Pulse.ShowTags = true
+
+	tt := newFastTester(app.RootView, 412, 892)
+	settleAudit(tt)
+
+	stageRect := app.Pulse.LastStageBounds
+	if stageRect.Y < 40 || stageRect.H < 150 {
+		t.Fatalf("unexpected stage bounds: %+v", stageRect)
+	}
+	baseSrc := tt.Image()
+	if baseSrc == nil {
+		t.Fatalf("expected non-nil tester framebuffer image")
+	}
+	b := baseSrc.Bounds()
+	scale := float32(b.Dx()) / 412.0
+	if scale <= 0 {
+		scale = 1
+	}
+
+	// Copy baseline pixels so subsequent frames cannot mutate baseSrc in place.
+	baseAbove := make([][4]uint8, b.Dx()*b.Dy())
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			c := baseSrc.RGBAAt(x, y)
+			baseAbove[y*b.Dx()+x] = [4]uint8{c.R, c.G, c.B, c.A}
+		}
+	}
+
+	// 1. Pan strongly upward & zoom in so vertices and edges cross well above stage top (SY < 0).
+	app.Pulse.Zoom = 2.4
+	app.Pulse.PanY = -150
+	settleAudit(tt)
+
+	hasAboveTop := false
+	for _, pv := range app.Pulse.LastProj {
+		if pv.SY < -10 {
+			hasAboveTop = true
+			break
+		}
+	}
+	if !hasAboveTop {
+		t.Fatalf("expected upward pan + zoom to push vertices above stage top (SY < -10), proj=%+v", app.Pulse.LastProj)
+	}
+
+	upImg := tt.Image()
+	topCheckMaxY := int((stageRect.Y - 2) * scale)
+	for y := 0; y < topCheckMaxY && y < b.Dy(); y++ {
+		for x := 0; x < b.Dx(); x++ {
+			got := upImg.RGBAAt(x, y)
+			want := baseAbove[y*b.Dx()+x]
+			if got.R != want[0] || got.G != want[1] || got.B != want[2] {
+				t.Fatalf("脉络 graph overflowed above stage at pixel (%d,%d) [stageTop=%.1f]: got RGBA=%+v want RGBA=%v",
+					x, y, stageRect.Y*scale, got, want)
+			}
+		}
+	}
+
+	// 2. Pan strongly downward & zoom in so vertices and edges cross below stage bottom (SY > stageRect.H).
+	app.Pulse.PanY = 160
+	settleAudit(tt)
+
+	hasBelowBottom := false
+	for _, pv := range app.Pulse.LastProj {
+		if pv.SY > stageRect.H+10 {
+			hasBelowBottom = true
+			break
+		}
+	}
+	if !hasBelowBottom {
+		t.Fatalf("expected downward pan + zoom to push vertices below stage bottom")
+	}
+
+	downImg := tt.Image()
+	bottomCheckMinY := int((stageRect.Y + stageRect.H + 6) * scale)
+	for y := bottomCheckMinY; y < b.Dy(); y++ {
+		for x := 0; x < b.Dx(); x++ {
+			got := downImg.RGBAAt(x, y)
+			want := baseAbove[y*b.Dx()+x]
+			if got.R != want[0] || got.G != want[1] || got.B != want[2] {
+				t.Fatalf("脉络 graph overflowed below stage at pixel (%d,%d) [stageBottom=%.1f]: got RGBA=%+v want RGBA=%v",
+					x, y, (stageRect.Y+stageRect.H)*scale, got, want)
+			}
+		}
+	}
+}

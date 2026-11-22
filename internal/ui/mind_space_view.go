@@ -27,10 +27,10 @@ func (a *App) renderArchiveView(c *ui.Context, pushDist, pushThreshold float32) 
 				leftW = 440
 			}
 			ui.Row(c).Key("space_archive_split").Grow(1).FillWidth().MinHeight(0).Background(pal.Canvas).Children(func() {
-				ui.Box(c).Width(leftW).FillHeight().Background(pal.Canvas).
+				ui.Box(c).Width(leftW).FillHeight().Clip().Background(pal.Canvas).
 					BorderWidth(0, 1, 0, 0).BorderColor(pal.Border.Alpha(0.7)).
 					Children(func() {
-						ui.Column(c).Fill().Children(func() {
+						ui.Column(c).Fill().MinHeight(0).Children(func() {
 							a.renderArchiveHeader(c, pal, false)
 							if !isGraph {
 								a.renderArchiveTitleAndTabs(c, pal, false)
@@ -39,12 +39,12 @@ func (a *App) renderArchiveView(c *ui.Context, pushDist, pushThreshold float32) 
 						})
 					})
 
-				ui.Box(c).Grow(1).FillHeight().Background(pal.Card).Children(func() {
+				ui.Box(c).Grow(1).FillHeight().Clip().Background(pal.Card).Children(func() {
 					a.renderDetailContent(c)
 				})
 			})
 		} else {
-			ui.Column(c).Key("space_archive").Grow(1).FillWidth().MinHeight(0).Background(pal.Canvas).Children(func() {
+			ui.Column(c).Key("space_archive").Grow(1).FillWidth().MinHeight(0).Clip().Background(pal.Canvas).Children(func() {
 				a.renderArchiveHeader(c, pal, true)
 				if !isGraph {
 					a.renderArchiveTitleAndTabs(c, pal, true)

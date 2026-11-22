@@ -264,8 +264,8 @@ func (a *App) stepPulsePhysics(
 
 	// 1. Pan coasting inertia when not actively dragging
 	if !p.Dragging && (math.Abs(float64(p.PanVelX)) > 2.0 || math.Abs(float64(p.PanVelY)) > 2.0) {
-		maxPanX := stageW * 0.85 * max(1.0, p.Zoom)
-		maxPanY := stageH * 0.85 * max(1.0, p.Zoom)
+		maxPanX := stageW * 0.65 * max(0.85, p.Zoom)
+		maxPanY := stageH * 0.65 * max(0.85, p.Zoom)
 		p.PanX = min(maxPanX, max(-maxPanX, p.PanX+p.PanVelX*float32(dt)))
 		p.PanY = min(maxPanY, max(-maxPanY, p.PanY+p.PanVelY*float32(dt)))
 		decay := float32(math.Exp(-5.2 * dt))
@@ -425,16 +425,29 @@ func (a *App) renderArchivePulseSplit(c *ui.Context, phone bool) {
 	if !phone {
 		paneW = 440
 	}
-	availH := max(float32(420), winH-118)
-	ratio := min(float32(0.68), max(float32(0.26), a.Pulse.SplitRatio))
-	stageH := max(float32(195), min(availH-170, availH*ratio))
+	showSearch := strings.TrimSpace(a.SearchQuery) != "" || a.ArchiveSearchOpen
+	splitCol := ui.Column(c).Key("pulse_obsidian_split").
+		Grow(1).FillWidth().MinHeight(0).Clip().Background(pulseBgCanvas)
 
-	ui.Column(c).Key("pulse_obsidian_split").Grow(1).FillWidth().MinHeight(0).Background(pulseBgCanvas).Children(func() {
-		if strings.TrimSpace(a.SearchQuery) != "" || a.ArchiveSearchOpen {
+	availH := winH - 118
+	if measuredH := splitCol.Bounds().H; measuredH > 80 {
+		availH = measuredH
+	}
+	if showSearch {
+		availH -= 46
+	}
+	availH = max(float32(240), availH)
+	ratio := min(float32(0.68), max(float32(0.26), a.Pulse.SplitRatio))
+	maxStageH := max(float32(140), availH-140)
+	minStageH := min(float32(195), maxStageH)
+	stageH := max(minStageH, min(maxStageH, availH*ratio))
+
+	splitCol.Children(func() {
+		if showSearch {
 			a.renderLightPulseSearchBar(c)
 		}
 
-		ui.Box(c).FillWidth().Padding(2, 14, 0, 14).Children(func() {
+		ui.Box(c).FillWidth().Padding(2, 14, 0, 14).Shrink(0).Children(func() {
 			a.renderObsidianGraphStage(c, pg, max(float32(200), paneW-28), stageH, phone)
 		})
 		a.renderPulseSplitGrabber(c, availH)
@@ -444,7 +457,7 @@ func (a *App) renderArchivePulseSplit(c *ui.Context, phone bool) {
 
 func (a *App) renderLightPulseSearchBar(c *ui.Context) {
 	pal := a.Palette()
-	ui.Box(c).FillWidth().Padding(2, 14, 6, 14).Background(pal.Canvas).
+	ui.Box(c).FillWidth().Padding(2, 14, 6, 14).Shrink(0).Background(pal.Canvas).
 		Children(func() {
 			RenderSearchBar(c, pal, "pulse_search", "筛选脉络节点与文件夹…", "搜索脉络", &a.SearchQuery)
 		})
@@ -566,7 +579,7 @@ func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, est
 			FocusGlow: sn.FocusGlow,
 			IsFocus:   isFoc,
 			IsNeigh:   isNei,
-			InBounds:  sx >= -30 && sx <= stageW+30 && sy >= -30 && sy <= stageH+30,
+			InBounds:  sx >= 6 && sx <= stageW-6 && sy >= 8 && sy <= stageH-8,
 		}
 	}
 	a.Pulse.LastStageBounds = bounds
@@ -574,6 +587,10 @@ func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, est
 
 	edges := pg.Edges
 	focusPresence := a.Pulse.FocusPresence
+	hasBottomChip := phone && a.SelectedID != ""
+	if hasBottomChip {
+		_, hasBottomChip = a.NodeByID[a.SelectedID]
+	}
 
 	stage.Draggable(&a.Pulse.DragDummy, ui.DraggableOptions{
 		Axis:   ui.Horizontal | ui.Vertical,
@@ -581,19 +598,26 @@ func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, est
 		Rigid:  true,
 	}).HandleInput(func(ev ui.InputEvent) bool {
 		return a.handlePulseGraphInput(ev, pg, proj, stageW, stageH, cx, cy, usableW, usableH, zoom, phone)
-	}).Draw(func(p *ui.Painter, r ui.Rect) {
-		liveT := a.Pulse.BreathTime
-		if !reduceMotion && !animOrigin.IsZero() {
-			if el := p.Now().Sub(animOrigin).Seconds(); el > 0 {
-				liveT = el
-			}
-		}
-		drawPulseObsidianMesh(p, r, stageW, stageH, proj, edges, focusIdx, focusPresence, focusAccent, liveT, reduceMotion)
-		if !kineticActive && breathActive && p.Accelerated() {
-			p.AnimationFrameRate(30)
-		}
 	}).Children(func() {
-		renderPulsePlainLabels(c, stageW, stageH, zoom, proj, focusAccent)
+		// Child canvas layer so stage.Clip() clips panned/zoomed edges and vertices strictly inside the rounded card
+		// (Element.Draw runs before Element.Clip in mygo/ui, whereas Children run inside Clip + under borderOver).
+		ui.Box(c).Key("pulse_graph_mesh").
+			Absolute().Left(0).Top(0).Right(0).Bottom(0).
+			IgnoreInput(true).PassThrough().
+			Draw(func(p *ui.Painter, r ui.Rect) {
+				liveT := a.Pulse.BreathTime
+				if !reduceMotion && !animOrigin.IsZero() {
+					if el := p.Now().Sub(animOrigin).Seconds(); el > 0 {
+						liveT = el
+					}
+				}
+				drawPulseObsidianMesh(p, r, stageW, stageH, proj, edges, focusIdx, focusPresence, focusAccent, liveT, reduceMotion)
+				if !kineticActive && breathActive && p.Accelerated() {
+					p.AnimationFrameRate(30)
+				}
+			})
+
+		renderPulsePlainLabels(c, stageW, stageH, zoom, proj, focusAccent, hasBottomChip)
 
 		// Top-right discreet Bento Studio filter button
 		fltBtn := ui.ButtonBase(c).Key("pulse_filter_btn").
@@ -774,7 +798,7 @@ func (a *App) handlePulseGraphInput(
 		p.StartPanY = p.PanY
 		p.PanVelX = 0
 		p.PanVelY = 0
-		p.HitVertexIdx = hitTestPulseVertex(proj, ev.X, ev.Y)
+		p.HitVertexIdx = hitTestPulseVertex(proj, ev.X, ev.Y, stageW, stageH)
 		p.DraggingNodeIdx = p.HitVertexIdx
 		if p.DraggingNodeIdx >= 0 && p.DraggingNodeIdx < len(p.SimNodes) {
 			p.SimNodes[p.DraggingNodeIdx].Pinned = true
@@ -809,8 +833,8 @@ func (a *App) handlePulseGraphInput(
 						p.PanVelY = 0.55*p.PanVelY + 0.45*vy
 					}
 				}
-				maxPanX := stageW * 0.85 * max(1.0, p.Zoom)
-				maxPanY := stageH * 0.85 * max(1.0, p.Zoom)
+				maxPanX := stageW * 0.65 * max(0.85, p.Zoom)
+				maxPanY := stageH * 0.65 * max(0.85, p.Zoom)
 				p.PanX = min(maxPanX, max(-maxPanX, p.StartPanX+dx))
 				p.PanY = min(maxPanY, max(-maxPanY, p.StartPanY+dy))
 			}
@@ -868,10 +892,13 @@ func (a *App) handlePulseGraphInput(
 	return false
 }
 
-func hitTestPulseVertex(proj []projectedPulseVertex, x, y float32) int {
+func hitTestPulseVertex(proj []projectedPulseVertex, x, y, stageW, stageH float32) int {
 	bestIdx := -1
 	bestScore := float32(9999)
 	for _, pv := range proj {
+		if pv.SX < -4 || pv.SX > stageW+4 || pv.SY < -4 || pv.SY > stageH+4 {
+			continue
+		}
 		dx := pv.SX - x
 		dy := pv.SY - y
 		dist := float32(math.Hypot(float64(dx), float64(dy)))
@@ -961,91 +988,109 @@ func drawPulseObsidianMesh(
 		animY[i] = r.Y + (pv.SY+by)*scaleY
 	}
 
-	// 1. Razor-straight hairline edges (only within connected islands — zero forced cross-island lines!)
-	for _, e := range edges {
-		if e.U >= len(proj) || e.V >= len(proj) {
-			continue
-		}
-		u := proj[e.U]
-		v := proj[e.V]
-		ux, uy := animX[e.U], animY[e.U]
-		vx, vy := animX[e.V], animY[e.V]
-
-		appear := min(u.Appear, v.Appear)
-		activeEdge := focusIdx >= 0 && (e.U == focusIdx || e.V == focusIdx)
-		var col ui.Color
-		width := float32(1.0)
-		if activeEdge {
-			edgePulse := float32(0.68)
-			if !reduceMotion {
-				edgePulse = 0.60 + 0.14*float32(0.5+0.5*math.Sin(breathT*1.8))
-			}
-			col = focusAccent.Alpha(edgePulse * appear)
-			width = 1.32
-		} else {
-			baseAlpha := 0.36 - 0.10*focusPresence
-			col = ui.RGBA(136, 145, 164, baseAlpha*appear)
-		}
-		p.StrokePolyline([][2]float32{{ux, uy}, {vx, vy}}, width, col)
+	clipRect := ui.Rect{
+		X: r.X + 1,
+		Y: r.Y + 1,
+		W: max(0, r.W-2),
+		H: max(0, r.H-2),
 	}
+	minX, maxX := r.X-24, r.X+r.W+24
+	minY, maxY := r.Y-24, r.Y+r.H+24
 
-	// 2. Crisp mineral-colored vertices on Apple white canvas with breathing focus aura
-	for i, pv := range proj {
-		nx, ny := animX[i], animY[i]
-		rad := pv.Radius + 0.6
-		if !reduceMotion && (pv.IsFocus || pv.Node.IsHub) {
-			rad += 0.25 * float32(math.Sin(breathT*1.6+pv.Phase))
-		}
-		dimFactor := 1.0 - 0.24*focusPresence*(1.0-pv.FocusGlow*1.4)
-		if dimFactor < 0.58 {
-			dimFactor = 0.58
-		} else if dimFactor > 1.0 {
-			dimFactor = 1.0
-		}
-		alpha := pv.Appear * dimFactor
-		orbCol := ColorsForTheme(pv.Theme)
-
-		var fill ui.Color
-		switch {
-		case pv.IsFocus:
-			fill = focusAccent.Alpha(pv.Appear)
-		case pv.Node.Kind == "tag":
-			fill = ColorInkSecondary.Alpha(0.75 * alpha)
-		case pv.Node.Kind == "evidence":
-			fill = pulseTextSubtle.Alpha(alpha)
-		case pv.IsNeigh:
-			fill = orbCol.Mid.Alpha(pv.Appear)
-		default:
-			fill = orbCol.Mid.Alpha(0.88 * alpha)
-		}
-
-		if pv.FocusGlow > 0.05 && pv.IsFocus {
-			breathWave := float32(0.5)
-			if !reduceMotion {
-				breathWave = float32(0.5 + 0.5*math.Sin(breathT*1.8))
+	p.Clip(clipRect, max(0, RadiusCard-1), func() {
+		// 1. Razor-straight hairline edges (only within connected islands — zero forced cross-island lines!)
+		for _, e := range edges {
+			if e.U >= len(proj) || e.V >= len(proj) {
+				continue
 			}
-			haloRad := rad + 3.6 + 1.8*breathWave
-			haloAlpha := (0.12 + 0.08*breathWave) * pv.FocusGlow * pv.Appear
-			var halo ui.Path
-			halo.Circle(nx, ny, haloRad)
-			p.FillPath(&halo, focusAccent.Alpha(haloAlpha))
+			ux, uy := animX[e.U], animY[e.U]
+			vx, vy := animX[e.V], animY[e.V]
+			if (ux < minX && vx < minX) || (ux > maxX && vx > maxX) ||
+				(uy < minY && vy < minY) || (uy > maxY && vy > maxY) {
+				continue
+			}
+			u := proj[e.U]
+			v := proj[e.V]
 
-			var ring ui.Path
-			ring.Circle(nx, ny, rad+1.8)
-			p.StrokePath(&ring, 1.2, pulseBgStage.Alpha(pv.Appear))
-		} else {
-			var sep ui.Path
-			sep.Circle(nx, ny, rad+1.3)
-			p.FillPath(&sep, pulseBgStage.Alpha(0.92*pv.Appear))
+			appear := min(u.Appear, v.Appear)
+			activeEdge := focusIdx >= 0 && (e.U == focusIdx || e.V == focusIdx)
+			var col ui.Color
+			width := float32(1.0)
+			if activeEdge {
+				edgePulse := float32(0.68)
+				if !reduceMotion {
+					edgePulse = 0.60 + 0.14*float32(0.5+0.5*math.Sin(breathT*1.8))
+				}
+				col = focusAccent.Alpha(edgePulse * appear)
+				width = 1.32
+			} else {
+				baseAlpha := 0.36 - 0.10*focusPresence
+				col = ui.RGBA(136, 145, 164, baseAlpha*appear)
+			}
+			p.StrokePolyline([][2]float32{{ux, uy}, {vx, vy}}, width, col)
 		}
 
-		var dot ui.Path
-		dot.Circle(nx, ny, rad)
-		p.FillPath(&dot, fill)
-	}
+		// 2. Crisp mineral-colored vertices on Apple white canvas with breathing focus aura
+		for i, pv := range proj {
+			nx, ny := animX[i], animY[i]
+			if nx < minX || nx > maxX || ny < minY || ny > maxY {
+				continue
+			}
+			rad := pv.Radius + 0.6
+			if !reduceMotion && (pv.IsFocus || pv.Node.IsHub) {
+				rad += 0.25 * float32(math.Sin(breathT*1.6+pv.Phase))
+			}
+			dimFactor := 1.0 - 0.24*focusPresence*(1.0-pv.FocusGlow*1.4)
+			if dimFactor < 0.58 {
+				dimFactor = 0.58
+			} else if dimFactor > 1.0 {
+				dimFactor = 1.0
+			}
+			alpha := pv.Appear * dimFactor
+			orbCol := ColorsForTheme(pv.Theme)
+
+			var fill ui.Color
+			switch {
+			case pv.IsFocus:
+				fill = focusAccent.Alpha(pv.Appear)
+			case pv.Node.Kind == "tag":
+				fill = ColorInkSecondary.Alpha(0.75 * alpha)
+			case pv.Node.Kind == "evidence":
+				fill = pulseTextSubtle.Alpha(alpha)
+			case pv.IsNeigh:
+				fill = orbCol.Mid.Alpha(pv.Appear)
+			default:
+				fill = orbCol.Mid.Alpha(0.88 * alpha)
+			}
+
+			if pv.FocusGlow > 0.05 && pv.IsFocus {
+				breathWave := float32(0.5)
+				if !reduceMotion {
+					breathWave = float32(0.5 + 0.5*math.Sin(breathT*1.8))
+				}
+				haloRad := rad + 3.6 + 1.8*breathWave
+				haloAlpha := (0.12 + 0.08*breathWave) * pv.FocusGlow * pv.Appear
+				var halo ui.Path
+				halo.Circle(nx, ny, haloRad)
+				p.FillPath(&halo, focusAccent.Alpha(haloAlpha))
+
+				var ring ui.Path
+				ring.Circle(nx, ny, rad+1.8)
+				p.StrokePath(&ring, 1.2, pulseBgStage.Alpha(pv.Appear))
+			} else {
+				var sep ui.Path
+				sep.Circle(nx, ny, rad+1.3)
+				p.FillPath(&sep, pulseBgStage.Alpha(0.92*pv.Appear))
+			}
+
+			var dot ui.Path
+			dot.Circle(nx, ny, rad)
+			p.FillPath(&dot, fill)
+		}
+	})
 }
 
-func renderPulsePlainLabels(c *ui.Context, stageW, stageH, zoom float32, proj []projectedPulseVertex, focusAccent ui.Color) {
+func renderPulsePlainLabels(c *ui.Context, stageW, stageH, zoom float32, proj []projectedPulseVertex, focusAccent ui.Color, hasBottomChip bool) {
 	var order []int
 	for i, pv := range proj {
 		if pv.IsFocus && pv.InBounds {
@@ -1080,7 +1125,12 @@ func renderPulsePlainLabels(c *ui.Context, stageW, stageH, zoom float32, proj []
 	}
 
 	type rect2d struct{ x0, y0, x1, y1 float32 }
-	var placed []rect2d
+	placed := []rect2d{
+		{stageW - 46, 0, stageW, 44}, // Top-right filter button
+	}
+	if hasBottomChip {
+		placed = append(placed, rect2d{0, stageH - 32, 152, stageH})
+	}
 
 	for _, idx := range order {
 		pv := proj[idx]
@@ -1089,24 +1139,31 @@ func renderPulsePlainLabels(c *ui.Context, stageW, stageH, zoom float32, proj []
 			continue
 		}
 
+		edgeDist := min(min(pv.SX, stageW-pv.SX), min(pv.SY, stageH-pv.SY))
+		edgeFade := min(float32(1.0), max(float32(0.0), (edgeDist-4.0)/16.0))
+		if edgeFade <= 0.05 {
+			continue
+		}
+		alpha := pv.Appear * edgeFade
+
 		fontSize := FontCaption
 		weight := 500
-		fg := pulseTextMuted.Alpha(pv.Appear)
+		fg := pulseTextMuted.Alpha(alpha)
 		switch {
 		case pv.IsFocus:
 			fontSize = FontMeta
 			weight = 700
-			fg = focusAccent.Alpha(pv.Appear)
+			fg = focusAccent.Alpha(alpha)
 		case pv.Node.Kind == "note" && pv.Node.IsHub:
 			fontSize = FontCaption
 			weight = 600
-			fg = pulseTextBright.Alpha(pv.Appear)
+			fg = pulseTextBright.Alpha(alpha)
 		case pv.Node.Kind == "tag":
 			fontSize = FontCaption
-			fg = ColorInkSecondary.Alpha(pv.Appear)
+			fg = ColorInkSecondary.Alpha(alpha)
 		case pv.Node.Kind == "evidence":
 			fontSize = FontCaption
-			fg = pulseTextDim.Alpha(pv.Appear)
+			fg = pulseTextDim.Alpha(alpha)
 		}
 
 		estW := measurePlainLabelWidth(label, fontSize)
@@ -1116,11 +1173,14 @@ func renderPulsePlainLabels(c *ui.Context, stageW, stageH, zoom float32, proj []
 			lx = 6
 		}
 		if lx+estW > stageW-6 {
-			lx = stageW - 6 - estW
+			lx = max(6, stageW-6-estW)
 		}
 		ly := pv.SY + pv.Radius + 4.5
 		if ly+estH > stageH-18 {
 			ly = pv.SY - pv.Radius - estH - 3.0
+		}
+		if ly < 6 {
+			ly = 6
 		}
 
 		cand := rect2d{lx, ly, lx + estW, ly + estH}
@@ -1159,7 +1219,7 @@ func measurePlainLabelWidth(s string, fontSize float32) float32 {
 
 func (a *App) renderPulseSplitGrabber(c *ui.Context, availH float32) {
 	grab := ui.Box(c).Key("pulse_split_grabber").
-		FillWidth().Padding(6, 0, 2, 0).Center().
+		FillWidth().Padding(6, 0, 2, 0).Shrink(0).Center().
 		Background(pulseBgCanvas).Cursor(ui.CursorPointer).
 		Draggable(&a.Pulse.SplitDummy, ui.DraggableOptions{
 			Axis:   ui.Vertical,
