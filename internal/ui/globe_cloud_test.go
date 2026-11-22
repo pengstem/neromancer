@@ -316,3 +316,133 @@ func TestGlobeWordCloudDirectArchiveFilterCoversConceptsAndTags(t *testing.T) {
 		}
 	}
 }
+
+func TestGlobeContinuousMultiTurnDragAcrossBackfaceAndHighRateTouch(t *testing.T) {
+	app, cleanup := newAuditTestApp(t)
+	defer cleanup()
+
+	tt := ui.NewTester(app.RootView, 412, 892)
+	tt.Frame()
+
+	terms := app.DashboardDigest.WordCloud
+	if len(terms) == 0 {
+		t.Fatalf("expected non-empty WordCloud terms")
+	}
+	r, ok := tt.Find(terms[0].Word)
+	if !ok {
+		t.Fatalf("could not locate top globe word %q", terms[0].Word)
+	}
+	cx := r.X + r.W*0.5
+	cy := r.Y + r.H*0.5
+
+	// 1. Start FingerDown directly on terms[0].Word (z = +1) and drag continuously far enough
+	// that terms[0].Word rotates into the backface hemisphere (z < -0.5) and back around.
+	// Regression check: dragging must never drop active pointer capture when a word crosses z = 0.05.
+	tt.FingerDown(cx, cy)
+	sawBackface := false
+	lastRot := app.Globe.Rot
+	for step := 1; step <= 28; step++ {
+		// Use 2ms (500Hz flagship touch digitizer rate) intervals to verify high-rate velocity accumulation.
+		tt.Advance(2 * time.Millisecond)
+		px := cx + float32(step)*15.0
+		py := cy - float32(step)*4.0
+		tt.FingerMove(px, py)
+		if !app.Globe.Dragging {
+			t.Fatalf("step %d: expected Globe.Dragging to remain true across backface crossing", step)
+		}
+		stepDiff := 0.0
+		for k := 0; k < 9; k++ {
+			stepDiff += math.Abs(app.Globe.Rot[k] - lastRot[k])
+		}
+		if stepDiff < 1e-4 {
+			t.Fatalf("step %d: expected Globe.Rot to keep advancing continuously, got stalled diff=%v", step, stepDiff)
+		}
+		lastRot = app.Globe.Rot
+		if mat3Vec(app.Globe.Rot, [3]float64{0, 0, 1})[2] < -0.5 {
+			sawBackface = true
+		}
+	}
+	if !sawBackface {
+		t.Fatalf("expected continuous drag to rotate initial front word deep into backface hemisphere")
+	}
+	tt.Advance(2 * time.Millisecond)
+	tt.FingerUp(cx+420, cy-112)
+	tt.Frame()
+
+	if app.ActiveSpace != SpaceDashboard || app.DashboardScroll.Y != 0 {
+		t.Fatalf("expected continuous globe drag to stay on SpaceDashboard with Scroll.Y=0, got space=%v scrollY=%v", app.ActiveSpace, app.DashboardScroll.Y)
+	}
+	if speed := math.Hypot(app.Globe.VelYaw, app.Globe.VelPitch); speed < 0.5 {
+		t.Fatalf("expected 500Hz touch swipe to preserve smooth release inertia velocity, got %v", speed)
+	}
+
+	// 2. Pausing finger >120ms before lifting should zero stale velocity rather than ghost-flinging.
+	tt.FingerDown(cx, cy)
+	tt.Advance(8 * time.Millisecond)
+	tt.FingerMove(cx-45, cy+20)
+	tt.Advance(8 * time.Millisecond)
+	tt.FingerMove(cx-90, cy+40)
+	tt.Advance(150 * time.Millisecond)
+	tt.FingerUp(cx-90, cy+40)
+	if speed := math.Hypot(app.Globe.VelYaw, app.Globe.VelPitch); speed != 0 {
+		t.Fatalf("expected holding finger still before lift to stop cleanly with 0 inertia, got %v", speed)
+	}
+}
+
+func BenchmarkDashboardGlobeDragFrame(b *testing.B) {
+	b.Run("BuildLayoutGlyphs", func(b *testing.B) {
+		app, cleanup := newAuditTestApp(b)
+		defer cleanup()
+
+		tt := ui.NewTester(app.RootView, 412, 892)
+		tt.SetScale(3.0)
+		tt.Frame()
+
+		cx, cy := float32(206), float32(340)
+		tt.FingerDown(cx, cy)
+		tt.Advance(8 * time.Millisecond)
+		tt.FingerMove(cx+12, cy-6)
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			angle := float64(i) * 0.09
+			px := cx + float32(math.Cos(angle)*75.0)
+			py := cy + float32(math.Sin(angle)*65.0)
+			tt.Advance(8 * time.Millisecond)
+			tt.FingerMove(px, py)
+		}
+		b.StopTimer()
+		tt.FingerUp(cx, cy)
+	})
+
+	b.Run("FullSceneRaster", func(b *testing.B) {
+		app, cleanup := newAuditTestApp(b)
+		defer cleanup()
+
+		tt := ui.NewTester(app.RootView, 412, 892)
+		tt.SetScale(3.0)
+		tt.Frame()
+		_ = tt.Image()
+
+		cx, cy := float32(206), float32(340)
+		tt.FingerDown(cx, cy)
+		tt.Advance(8 * time.Millisecond)
+		tt.FingerMove(cx+12, cy-6)
+		_ = tt.Image()
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			angle := float64(i) * 0.09
+			px := cx + float32(math.Cos(angle)*75.0)
+			py := cy + float32(math.Sin(angle)*65.0)
+			tt.Advance(8 * time.Millisecond)
+			tt.FingerMove(px, py)
+			_ = tt.Image()
+		}
+		b.StopTimer()
+		tt.FingerUp(cx, cy)
+	})
+}
+

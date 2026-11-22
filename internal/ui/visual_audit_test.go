@@ -29,7 +29,7 @@ func newFastTester(view func(c *ui.Context), width, height int) *ui.Tester {
 	})
 }
 
-func newAuditTestApp(t *testing.T) (*App, func()) {
+func newAuditTestApp(t testing.TB) (*App, func()) {
 	t.Helper()
 	tmp := t.TempDir()
 	cfg := config.Config{

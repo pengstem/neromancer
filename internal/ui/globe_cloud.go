@@ -2,7 +2,6 @@ package ui
 
 import (
 	"math"
-	"sort"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -11,8 +10,8 @@ import (
 	"github.com/pengstem/neromancer/internal/service"
 )
 
-// GlobeState stores pure frame-persistent 3D orientation, physics, and interaction state
-// for the Dashboard Inspiration Globe without retaining any ui.Element or *ui.Context handles.
+// GlobeState stores pure frame-persistent 3D orientation, physics, cached layout metrics,
+// and interaction state for the Dashboard Inspiration Globe without retaining any ui.Element or *ui.Context handles.
 type GlobeState struct {
 	Initialized bool
 	Rot         [9]float64
@@ -20,15 +19,17 @@ type GlobeState struct {
 	VelPitch    float64
 	LastTick    time.Time
 
-	DragDummy   ui.Point
-	Dragging    bool
-	DragMoved   bool
-	DragStartX  float32
-	DragStartY  float32
-	LastPtrX    float32
-	LastPtrY    float32
-	LastPtrTime time.Time
-	DownTerm    string
+	DragDummy     ui.Point
+	Dragging      bool
+	DragMoved     bool
+	DragStartX    float32
+	DragStartY    float32
+	LastPtrX      float32
+	LastPtrY      float32
+	VelSampleX    float32
+	VelSampleY    float32
+	VelSampleTime time.Time
+	DownTerm      string
 
 	FocusAnimating bool
 	FocusStart     time.Time
@@ -38,26 +39,44 @@ type GlobeState struct {
 
 	LastBlankTap   time.Time
 	LastHapticWord string
+	LastHapticAt   time.Time
 
 	RipplePending bool
 	RippleStart   time.Time
 	RippleTerm    string
 	RippleTheme   domain.OrbTheme
+
+	// Cached static sphere geometry & base text metrics (rebuilt only when WordCloud or TextScale changes).
+	CacheVaultGen  int
+	CacheTextScale float32
+	CachedPts      [][3]float64
+	CachedMetrics  []globeTermMetric
+	ProjectedBuf   []globeProjectedTerm
+}
+
+type globeTermMetric struct {
+	Word     string
+	BaseFont float32
+	Weight   int
+	PadY     float32
+	BoxW     float32
+	BoxH     float32
+	OrbPal   OrbColorSet
 }
 
 type globeProjectedTerm struct {
-	Term      service.WordCloudTerm
-	BaseVec   [3]float64
-	RotVec    [3]float64
-	StageX    float32
-	StageY    float32
-	Width     float32
-	Height    float32
-	FontSize  float32
-	Opacity   float32
-	BlurSigma float32
-	Backface  bool
-	ZOrder    int
+	Term       service.WordCloudTerm
+	BaseVec    [3]float64
+	RotVec     [3]float64
+	StageX     float32
+	StageY     float32
+	Width      float32
+	Height     float32
+	DepthScale float32
+	Opacity    float32
+	Backface   bool
+	Occluded   bool
+	ZOrder     int
 }
 
 const (
@@ -69,6 +88,76 @@ const (
 	globeFocusDuration = 360 * time.Millisecond
 	globeRippleDur     = 1100 * time.Millisecond
 )
+
+func (a *App) ensureGlobeCache(c *ui.Context, terms []service.WordCloudTerm) {
+	st := &a.Globe
+	n := len(terms)
+	textScale := c.Preferences().TextScale
+	if n == 0 {
+		st.CachedPts = nil
+		st.CachedMetrics = nil
+		st.ProjectedBuf = nil
+		st.CacheVaultGen = a.VaultGen
+		st.CacheTextScale = textScale
+		return
+	}
+	if st.CacheVaultGen == a.VaultGen &&
+		st.CacheTextScale == textScale &&
+		len(st.CachedMetrics) == n &&
+		len(st.CachedPts) == n &&
+		st.CachedMetrics[0].Word == terms[0].Word &&
+		st.CachedMetrics[n-1].Word == terms[n-1].Word {
+		return
+	}
+
+	st.CachedPts = fibonacciSpherePoints(n)
+	if cap(st.CachedMetrics) < n {
+		st.CachedMetrics = make([]globeTermMetric, n)
+	} else {
+		st.CachedMetrics = st.CachedMetrics[:n]
+	}
+	if cap(st.ProjectedBuf) < n {
+		st.ProjectedBuf = make([]globeProjectedTerm, n)
+	} else {
+		st.ProjectedBuf = st.ProjectedBuf[:n]
+	}
+
+	for i, term := range terms {
+		baseFont := float32(12.0) + float32(7.5)*term.NormWeight
+		weight := 400
+		if term.Tier == 0 {
+			weight = 700
+		} else if term.Tier == 1 {
+			weight = 600
+		}
+
+		tw, th := c.MeasureText(0, ui.Span{Text: term.Word, Size: baseFont, Weight: weight})
+		if tw <= 0 {
+			tw = float32(len([]rune(term.Word)))*baseFont + 6
+			th = baseFont * 1.25
+		}
+		padW := float32(14)
+		padH := float32(8)
+		if term.Tier == 2 {
+			padW = 8
+			padH = 4
+		}
+		boxW := tw + padW
+		boxH := max(th, baseFont*1.15) + padH
+
+		st.CachedMetrics[i] = globeTermMetric{
+			Word:     term.Word,
+			BaseFont: baseFont,
+			Weight:   weight,
+			PadY:     max(float32(0), (boxH-th)*0.5),
+			BoxW:     boxW,
+			BoxH:     boxH,
+			OrbPal:   ColorsForTheme(term.Theme),
+		}
+	}
+	st.CacheVaultGen = a.VaultGen
+	st.CacheTextScale = textScale
+}
 
 func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 	terms := a.DashboardDigest.WordCloud
@@ -88,258 +177,226 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 		stageH = 300
 	}
 
-	pts := fibonacciSpherePoints(len(terms))
+	a.ensureGlobeCache(c, terms)
+	pts := a.Globe.CachedPts
 	ambientActive := a.stepGlobePhysics(c, terms, pts)
 
 	ui.Column(c).Key("dash_globe_card").FillWidth().Padding(14).Gap(10).Radius(16).
 		Background(pal.Card).
 		Shadow(0, 2, 10, 0, ui.RGBA(18, 22, 33, 0.04)).
 		Children(func() {
-		ui.Text(c, "灵感星云球").FontSize(13.5).Bold().TextColor(pal.Ink).SingleLine()
+			ui.Text(c, "灵感星云球").FontSize(13.5).Bold().TextColor(pal.Ink).SingleLine()
 
-		if len(terms) == 0 {
-			ui.Text(c, "记下几条想法后，这里会自动浮现你的灵感星云球。").
-				FontSize(12).TextColor(pal.InkSecondary).Padding(8, 0)
-			return
-		}
-
-		cx := stageW * 0.5
-		cy := stageH * 0.5
-		sphereR := min(stageW*0.37, stageH*0.40)
-		hitR := min(stageW*0.44, stageH*0.47)
-		hzLeft := cx - hitR
-		hzTop := cy - hitR
-
-		projected := make([]globeProjectedTerm, len(terms))
-		for i, term := range terms {
-			rv := mat3Vec(a.Globe.Rot, pts[i])
-			z := rv[2]
-			pScale := 3.4 / (3.4 - z)
-			sx := cx + float32(rv[0]*pScale)*sphereR*1.15
-			sy := cy + float32(rv[1]*pScale)*sphereR*0.92
-
-			depth := float32((z + 1.0) * 0.5)
-			depthScale := float32(0.62) + float32(0.50)*depth
-
-			var opacity float32
-			switch {
-			case depth < 0.42:
-				opacity = 0.17 + 0.18*(depth/0.42)
-			case depth < 0.72:
-				opacity = 0.35 + 0.40*((depth-0.42)/0.30)
-			default:
-				opacity = 0.75 + 0.25*((depth-0.72)/0.28)
-			}
-			if opacity > 1 {
-				opacity = 1
-			} else if opacity < 0.14 {
-				opacity = 0.14
+			if len(terms) == 0 {
+				ui.Text(c, "记下几条想法后，这里会自动浮现你的灵感星云球。").
+					FontSize(12).TextColor(pal.InkSecondary).Padding(8, 0)
+				return
 			}
 
-			var blurSigma float32
-			if z < -0.08 {
-				blurFactor := float32((-0.08 - z) / 0.92)
-				if blurFactor > 1 {
-					blurFactor = 1
+			cx := stageW * 0.5
+			cy := stageH * 0.5
+			sphereR := min(stageW*0.37, stageH*0.40)
+			hitR := min(stageW*0.44, stageH*0.47)
+			hzLeft := cx - hitR
+			hzTop := cy - hitR
+
+			metrics := a.Globe.CachedMetrics
+			projected := a.Globe.ProjectedBuf[:len(terms)]
+			rot := a.Globe.Rot
+
+			for i, term := range terms {
+				cm := &metrics[i]
+				rv := mat3Vec(rot, pts[i])
+				z := rv[2]
+				pScale := 3.4 / (3.4 - z)
+				sx := cx + float32(rv[0]*pScale)*sphereR*1.15
+				sy := cy + float32(rv[1]*pScale)*sphereR*0.92
+
+				depth := float32((z + 1.0) * 0.5)
+				rawScale := float32(0.62) + float32(0.50)*depth
+				depthScale := globeScaleBucket(rawScale)
+
+				var opacity float32
+				switch {
+				case depth < 0.42:
+					opacity = 0.17 + 0.18*(depth/0.42)
+				case depth < 0.72:
+					opacity = 0.35 + 0.40*((depth-0.42)/0.30)
+				default:
+					opacity = 0.75 + 0.25*((depth-0.72)/0.28)
 				}
-				blurSigma = 0.45 + 1.20*blurFactor
-			}
-
-			baseFont := float32(12.0) + float32(7.5)*term.NormWeight
-			fontSize := baseFont * depthScale
-
-			weight := 400
-			if term.Tier == 0 {
-				weight = 700
-			} else if term.Tier == 1 {
-				weight = 600
-			}
-
-			tw, th := c.MeasureText(0, ui.Span{Text: term.Word, Size: fontSize, Weight: weight})
-			if tw <= 0 {
-				tw = float32(len([]rune(term.Word)))*fontSize + 6
-				th = fontSize * 1.25
-			}
-			padW := float32(14)
-			padH := float32(8)
-			if term.Tier == 2 {
-				padW = 8
-				padH = 4
-			}
-			w := tw + padW
-			h := max(th, fontSize*1.15) + padH
-
-			backface := z < 0.05 || opacity < 0.30
-			projected[i] = globeProjectedTerm{
-				Term:      term,
-				BaseVec:   pts[i],
-				RotVec:    rv,
-				StageX:    sx,
-				StageY:    sy,
-				Width:     w,
-				Height:    h,
-				FontSize:  fontSize,
-				Opacity:   opacity,
-				BlurSigma: blurSigma,
-				Backface:  backface,
-				ZOrder:    int(math.Round((z + 1.0) * 1000)),
-			}
-		}
-
-		// Paint back-to-front so painter order and ZIndex stay consistent.
-		sortedDraw := make([]globeProjectedTerm, len(projected))
-		copy(sortedDraw, projected)
-		sort.SliceStable(sortedDraw, func(i, j int) bool {
-			return sortedDraw[i].RotVec[2] < sortedDraw[j].RotVec[2]
-		})
-
-		leadTheme := terms[0].Theme
-		leadPal := ColorsForTheme(leadTheme)
-		rippleStart := a.Globe.RippleStart
-		rippleTheme := a.Globe.RippleTheme
-		reduceMotion := c.Preferences().ReduceMotion
-
-		// Stage wrapper: NO wireframe or circle border, soft light atmospheric mist backdrop.
-		ui.Box(c).Key("dash_globe_stage").FillWidth().Height(stageH).
-			Draw(func(p *ui.Painter, r ui.Rect) {
-				p.FillRadialGradient(r, ui.RadialGradient{
-					Center: ui.Point{X: 0.5, Y: 0.5},
-					Radius: min(r.W, r.H) * 0.56,
-					Oklab:  true,
-					Stops: []ui.GradientStop{
-						{Color: leadPal.Mid.Alpha(0.085), At: 0},
-						{Color: leadPal.Core.Alpha(0.055), At: 0.45},
-						{Color: ui.Hex("#CBD5E1").Alpha(0.045), At: 0.78},
-						{Color: leadPal.Core.Alpha(0.0), At: 1},
-					},
-				}, 0)
-
-				if !rippleStart.IsZero() && !reduceMotion {
-					elapsed := p.Now().Sub(rippleStart)
-					if elapsed >= 0 && elapsed < globeRippleDur {
-						prog := float32(elapsed.Seconds() / globeRippleDur.Seconds())
-						ease := 1.0 - (1.0-prog)*(1.0-prog)
-						alpha := (1.0 - prog) * 0.42
-						rCol := ColorsForTheme(rippleTheme).Mid
-						rcx, rcy := r.X+r.W*0.5, r.Y+r.H*0.5
-
-						var ring ui.Path
-						ring.Circle(rcx, rcy, 14+ease*(min(r.W, r.H)*0.44))
-						p.StrokePath(&ring, 2.2*(1.0-0.55*prog), rCol.Alpha(alpha))
-
-						if prog < 0.45 {
-							sp := prog / 0.45
-							sx := r.X + r.W*0.78 - sp*(r.W*0.28)
-							sy := r.Y + r.H*0.18 + sp*(r.H*0.32)
-							var comet ui.Path
-							comet.Circle(sx, sy, 3.6*(1.0-sp*0.6))
-							p.FillPath(&comet, rCol.Alpha((1.0-sp)*0.75))
-						}
-						p.AnimationFrame()
-					}
+				if opacity > 1 {
+					opacity = 1
+				} else if opacity < 0.14 {
+					opacity = 0.14
 				}
 
-				if ambientActive && p.Accelerated() {
-					p.AnimationFrameRate(30)
+				w := cm.BoxW * depthScale
+				h := cm.BoxH * depthScale
+				backface := z < 0.05 || opacity < 0.30
+
+				projected[i] = globeProjectedTerm{
+					Term:       term,
+					BaseVec:    pts[i],
+					RotVec:     rv,
+					StageX:     sx,
+					StageY:     sy,
+					Width:      w,
+					Height:     h,
+					DepthScale: depthScale,
+					Opacity:    opacity,
+					Backface:   backface,
+					ZOrder:     int(math.Round((z + 1.0) * 1000)),
 				}
-			}).
-			Children(func() {
-				// Backface terms sit directly in stage behind the hit-zone so PassThrough
-				// excludes them from both hitZone pointer activation and Tester.Click.
-				for _, item := range sortedDraw {
-					if !item.Backface {
+			}
+
+			// Mark foreground words whose center is occluded by a closer foreground word
+			// so hit-testing and accessibility target selection stay strictly consistent.
+			for i := range projected {
+				pt := &projected[i]
+				if pt.Backface {
+					continue
+				}
+				for j := range projected {
+					if j == i || projected[j].Backface || projected[j].RotVec[2] <= pt.RotVec[2] {
 						continue
 					}
-					pt := item
-					orbPal := ColorsForTheme(pt.Term.Theme)
-					box := ui.Box(c).Key("globe_w_"+pt.Term.Word).
-						Absolute().Left(pt.StageX-pt.Width*0.5).Top(pt.StageY-pt.Height*0.5).
-						Width(pt.Width).Height(pt.Height).
-						Center().ZIndex(pt.ZOrder).
-						Opacity(pt.Opacity).
-						PassThrough()
-					if pt.BlurSigma > 0.05 {
-						box.Blur(pt.BlurSigma).Cache()
+					o := &projected[j]
+					if pt.StageX >= o.StageX-o.Width*0.5 && pt.StageX <= o.StageX+o.Width*0.5 &&
+						pt.StageY >= o.StageY-o.Height*0.5 && pt.StageY <= o.StageY+o.Height*0.5 {
+						pt.Occluded = true
+						break
 					}
-					box.Children(func() {
-						renderGlobeWordText(c, pal, orbPal, pt)
-					})
 				}
+			}
 
-				// Circular hot-zone inside stage: Draggable (Rigid=true) prevents DashboardScroll
-				// from stealing touch drags inside the globe sphere while leaving left/right margins scrollable.
-				hz := ui.Box(c).Key("dash_globe_hitzone").
-					Absolute().Left(hzLeft).Top(hzTop).Size(hitR*2, hitR*2).Radius(hitR).
-					ZIndex(1200).
-					Draggable(&a.Globe.DragDummy, ui.DraggableOptions{
-						Axis:   ui.Horizontal | ui.Vertical,
-						Bounds: &ui.Rect{},
-						Rigid:  true,
-					}).
-					HandleInput(func(ev ui.InputEvent) bool {
-						return a.handleGlobePointer(ev, "", ev.X+hzLeft, ev.Y+hzTop, cx, cy, hitR, terms, pts, projected)
-					})
+			leadPal := metrics[0].OrbPal
+			rippleStart := a.Globe.RippleStart
+			rippleTheme := a.Globe.RippleTheme
+			reduceMotion := c.Preferences().ReduceMotion
 
-				hz.Children(func() {
-					for _, item := range sortedDraw {
-						if item.Backface {
-							continue
+			// Stage wrapper: clipped to isolate repaint damage from outer card shadows.
+			ui.Box(c).Key("dash_globe_stage").FillWidth().Height(stageH).Clip().
+				Draw(func(p *ui.Painter, r ui.Rect) {
+					if !rippleStart.IsZero() && !reduceMotion {
+						elapsed := p.Now().Sub(rippleStart)
+						if elapsed >= 0 && elapsed < globeRippleDur {
+							prog := float32(elapsed.Seconds() / globeRippleDur.Seconds())
+							ease := 1.0 - (1.0-prog)*(1.0-prog)
+							alpha := (1.0 - prog) * 0.42
+							rCol := ColorsForTheme(rippleTheme).Mid
+							rcx, rcy := r.X+r.W*0.5, r.Y+r.H*0.5
+
+							var ring ui.Path
+							ring.Circle(rcx, rcy, 14+ease*(min(r.W, r.H)*0.44))
+							p.StrokePath(&ring, 2.2*(1.0-0.55*prog), rCol.Alpha(alpha))
+
+							if prog < 0.45 {
+								sp := prog / 0.45
+								sx := r.X + r.W*0.78 - sp*(r.W*0.28)
+								sy := r.Y + r.H*0.18 + sp*(r.H*0.32)
+								var comet ui.Path
+								comet.Circle(sx, sy, 3.6*(1.0-sp*0.6))
+								p.FillPath(&comet, rCol.Alpha((1.0-sp)*0.75))
+							}
+							p.AnimationFrame()
 						}
-						pt := item
-						localLeft := pt.StageX - pt.Width*0.5 - hzLeft
-						localTop := pt.StageY - pt.Height*0.5 - hzTop
-						orbPal := ColorsForTheme(pt.Term.Theme)
-
-						btn := ui.ButtonBase(c).Key("globe_w_"+pt.Term.Word).
-							Absolute().Left(localLeft).Top(localTop).
-							Width(pt.Width).Height(pt.Height).
-							Radius(999).Center().ZIndex(pt.ZOrder).
-							Opacity(pt.Opacity).
-							Cursor(ui.CursorPointer).
-							Label(pt.Term.Word).
-							Draggable(&a.Globe.DragDummy, ui.DraggableOptions{
-								Axis:   ui.Horizontal | ui.Vertical,
-								Bounds: &ui.Rect{},
-								Rigid:  true,
-							})
-						btn.HandleInput(func(ev ui.InputEvent) bool {
-							stageX := ev.X + localLeft + hzLeft
-							stageY := ev.Y + localTop + hzTop
-							return a.handleGlobePointer(ev, pt.Term.Word, stageX, stageY, cx, cy, hitR, terms, pts, projected)
-						}).Children(func() {
-							renderGlobeWordText(c, pal, orbPal, pt)
-						})
 					}
+
+					if ambientActive && p.Accelerated() {
+						p.AnimationFrameRate(30)
+					}
+				}).
+				Children(func() {
+					// Cached still backdrop layer: renders the soft radial mist into a GPU bitmap once,
+					// avoiding per-frame radial gradient evaluation while words rotate above it.
+					ui.Box(c).Key("dash_globe_mist").
+						Absolute().Left(0).Top(0).Right(0).Bottom(0).
+						IgnoreInput(true).PassThrough().Cache().
+						Draw(func(p *ui.Painter, r ui.Rect) {
+							p.FillRadialGradient(r, ui.RadialGradient{
+								Center: ui.Point{X: 0.5, Y: 0.5},
+								Radius: min(r.W, r.H) * 0.56,
+								Oklab:  true,
+								Stops: []ui.GradientStop{
+									{Color: leadPal.Mid.Alpha(0.085), At: 0},
+									{Color: leadPal.Core.Alpha(0.055), At: 0.45},
+									{Color: ui.Hex("#CBD5E1").Alpha(0.045), At: 0.78},
+									{Color: leadPal.Core.Alpha(0.0), At: 1},
+								},
+							}, 0)
+						})
+
+					// Single stationary circular hit-zone owns all pointer/touch dragging so words crossing
+					// z = 0 never drop active touch capture, while left/right margins remain scrollable.
+					hz := ui.Box(c).Key("dash_globe_hitzone").
+						Absolute().Left(hzLeft).Top(hzTop).Size(hitR*2, hitR*2).Radius(hitR).
+						Draggable(&a.Globe.DragDummy, ui.DraggableOptions{
+							Axis:   ui.Horizontal | ui.Vertical,
+							Bounds: &ui.Rect{},
+							Rigid:  true,
+						}).
+						HandleInput(func(ev ui.InputEvent) bool {
+							return a.handleGlobePointer(ev, ev.X+hzLeft, ev.Y+hzTop, cx, cy, hitR, terms, pts, projected)
+						})
+
+					// Emit all words in fixed index order with constant layout geometry and font size:
+					// Scale + Translate + ZIndex + TextColor achieve 100% layout-cache & shaped-text reuse.
+					hz.Children(func() {
+						for i := range projected {
+							pt := &projected[i]
+							cm := &metrics[i]
+							fg := resolveGlobeWordColor(pal, cm.OrbPal, pt)
+
+							txt := ui.Text(c, pt.Term.Word).Key("globe_w_" + pt.Term.Word).
+								Absolute().
+								Left(-cm.BoxW * 0.5).Top(-cm.BoxH * 0.5).
+								Width(cm.BoxW).Height(cm.BoxH).
+								Padding(cm.PadY, 0).
+								FontSize(cm.BaseFont).
+								FontWeight(cm.Weight).
+								TextAlign(ui.Center).
+								SingleLine().
+								Scale(pt.DepthScale, pt.DepthScale).
+								Translate(pt.StageX-hzLeft, pt.StageY-hzTop).
+								ZIndex(pt.ZOrder).
+								TextColor(fg)
+							if pt.Backface || pt.Occluded {
+								txt.IgnoreInput(true).PassThrough()
+							} else {
+								txt.Cursor(ui.CursorPointer)
+							}
+						}
+					})
 				})
-			})
-	})
+		})
 }
 
-func renderGlobeWordText(c *ui.Context, pal SurfacePalette, orbPal OrbColorSet, pt globeProjectedTerm) {
+// globeScaleBucket snaps depth perspective scale onto mygo/ui's octave raster-scale buckets (2^(n/8)),
+// ensuring 100% glyph-atlas reuse across frames, pixel-aligned gs.screen glyph blits, and zero settle-frame re-rasterizations.
+func globeScaleBucket(k float32) float32 {
+	n := math.Round(math.Log2(float64(k)) * 8.0)
+	return float32(math.Exp2(n / 8.0))
+}
+
+func resolveGlobeWordColor(pal SurfacePalette, orbPal OrbColorSet, pt *globeProjectedTerm) ui.Color {
 	var fg ui.Color
-	weight := 400
 	switch pt.Term.Tier {
 	case 0:
 		fg = orbPal.Rim
-		weight = 700
 	case 1:
 		fg = orbPal.BadgeText.Mix(pal.InkSecondary, 0.32)
-		weight = 600
 	default:
 		fg = ui.Hex("#7E8594")
-		weight = 400
 	}
-
-	txt := ui.Text(c, pt.Term.Word).
-		FontSize(pt.FontSize).
-		FontWeight(weight).
-		TextColor(fg).
-		SingleLine()
-
-	if pt.Term.Tier == 0 && pt.RotVec[2] > 0.35 {
-		zNorm := float32((pt.RotVec[2] - 0.35) / 0.65)
-		txt.TextShadow(0, 0, 10*zNorm, orbPal.Mid.Alpha(0.26*zNorm))
+	if z := pt.RotVec[2]; z < -0.08 {
+		mist := float32((-0.08 - z) / 0.92)
+		if mist > 1 {
+			mist = 1
+		}
+		fg = fg.Mix(ui.Hex("#94A3B8"), mist*0.42)
 	}
+	return fg.Alpha(pt.Opacity)
 }
 
 func (a *App) stepGlobePhysics(c *ui.Context, terms []service.WordCloudTerm, pts [][3]float64) (ambientActive bool) {
@@ -412,8 +469,8 @@ func (a *App) stepGlobePhysics(c *ui.Context, terms []service.WordCloudTerm, pts
 			decay := math.Exp(-globeFrictionRate * dt)
 			st.VelYaw *= decay
 			st.VelPitch *= decay
-			if speed < 1.8 {
-				a.checkGlobeCenterHaptic(terms, pts)
+			if speed < 1.4 {
+				a.checkGlobeCenterHaptic(now, terms, pts)
 			}
 		}
 		c.AnimationFrame()
@@ -436,7 +493,6 @@ func (a *App) stepGlobePhysics(c *ui.Context, terms []service.WordCloudTerm, pts
 
 func (a *App) handleGlobePointer(
 	ev ui.InputEvent,
-	termWord string,
 	stageX, stageY float32,
 	cx, cy, hitR float32,
 	terms []service.WordCloudTerm,
@@ -445,22 +501,12 @@ func (a *App) handleGlobePointer(
 ) bool {
 	st := &a.Globe
 	switch ev.Kind {
-	case ui.InputKeyDown:
-		if termWord != "" && (ev.Key == ui.KeyEnter || ev.Key == ui.KeySpace) {
-			for _, t := range terms {
-				if t.Word == termWord {
-					a.activateGlobeWord(t)
-					return true
-				}
-			}
-		}
-		return false
-
 	case ui.InputPointerDown:
 		if ev.Button != 0 {
 			return false
 		}
-		if termWord == "" && math.Hypot(float64(stageX-cx), float64(stageY-cy)) > float64(hitR) {
+		hit := hitTestProjectedWord(projected, stageX, stageY)
+		if hit == nil && math.Hypot(float64(stageX-cx), float64(stageY-cy)) > float64(hitR) {
 			return false
 		}
 		st.Dragging = true
@@ -469,8 +515,14 @@ func (a *App) handleGlobePointer(
 		st.DragStartY = stageY
 		st.LastPtrX = stageX
 		st.LastPtrY = stageY
-		st.LastPtrTime = ev.Time
-		st.DownTerm = termWord
+		st.VelSampleX = stageX
+		st.VelSampleY = stageY
+		st.VelSampleTime = ev.Time
+		if hit != nil {
+			st.DownTerm = hit.Term.Word
+		} else {
+			st.DownTerm = ""
+		}
 		st.VelYaw = 0
 		st.VelPitch = 0
 		st.FocusAnimating = false
@@ -482,6 +534,9 @@ func (a *App) handleGlobePointer(
 		}
 		dx := stageX - st.LastPtrX
 		dy := stageY - st.LastPtrY
+		st.LastPtrX = stageX
+		st.LastPtrY = stageY
+
 		if math.Hypot(float64(stageX-st.DragStartX), float64(stageY-st.DragStartY)) > 5.0 {
 			st.DragMoved = true
 		}
@@ -493,19 +548,26 @@ func (a *App) handleGlobePointer(
 			st.Rot = mat3Orthonormalize(mat3Mul(delta, st.Rot))
 		}
 
-		dt := ev.Time.Sub(st.LastPtrTime).Seconds()
-		if dt > 0.002 && dt < 0.2 {
-			instYaw := clampFloat64(dYaw/dt, -12.0, 12.0)
-			instPitch := clampFloat64(dPitch/dt, -12.0, 12.0)
-			st.VelYaw = 0.55*st.VelYaw + 0.45*instYaw
-			st.VelPitch = 0.55*st.VelPitch + 0.45*instPitch
-			if math.Hypot(st.VelYaw, st.VelPitch) < 1.8 {
-				a.checkGlobeCenterHaptic(terms, pts)
+		if !ev.Time.IsZero() {
+			if st.VelSampleTime.IsZero() {
+				st.VelSampleX = stageX
+				st.VelSampleY = stageY
+				st.VelSampleTime = ev.Time
+			} else if vdt := ev.Time.Sub(st.VelSampleTime).Seconds(); vdt >= 0.004 {
+				if vdt < 0.25 {
+					vYaw := clampFloat64(float64(stageX-st.VelSampleX)*globeDragSens/vdt, -12.0, 12.0)
+					vPitch := clampFloat64(float64(stageY-st.VelSampleY)*globeDragSens/vdt, -12.0, 12.0)
+					st.VelYaw = 0.50*st.VelYaw + 0.50*vYaw
+					st.VelPitch = 0.50*st.VelPitch + 0.50*vPitch
+				} else {
+					st.VelYaw = 0
+					st.VelPitch = 0
+				}
+				st.VelSampleX = stageX
+				st.VelSampleY = stageY
+				st.VelSampleTime = ev.Time
 			}
 		}
-		st.LastPtrX = stageX
-		st.LastPtrY = stageY
-		st.LastPtrTime = ev.Time
 		return true
 
 	case ui.InputPointerUp:
@@ -513,6 +575,10 @@ func (a *App) handleGlobePointer(
 			return false
 		}
 		st.Dragging = false
+		if !ev.Time.IsZero() && !st.VelSampleTime.IsZero() && ev.Time.Sub(st.VelSampleTime) > 100*time.Millisecond {
+			st.VelYaw = 0
+			st.VelPitch = 0
+		}
 		if ev.Canceled {
 			st.DownTerm = ""
 			return true
@@ -592,7 +658,10 @@ func (a *App) resetGlobeOrientation(now time.Time) {
 	st.FocusAnimating = true
 }
 
-func (a *App) checkGlobeCenterHaptic(terms []service.WordCloudTerm, pts [][3]float64) {
+func (a *App) checkGlobeCenterHaptic(now time.Time, terms []service.WordCloudTerm, pts [][3]float64) {
+	if !now.IsZero() && !a.Globe.LastHapticAt.IsZero() && now.Sub(a.Globe.LastHapticAt) < 220*time.Millisecond {
+		return
+	}
 	for i, t := range terms {
 		if t.Tier != 0 || i >= len(pts) {
 			continue
@@ -601,6 +670,7 @@ func (a *App) checkGlobeCenterHaptic(terms []service.WordCloudTerm, pts [][3]flo
 		if rv[2] > 0.94 {
 			if a.Globe.LastHapticWord != t.Word {
 				a.Globe.LastHapticWord = t.Word
+				a.Globe.LastHapticAt = now
 				mygo.Haptics.Light()
 			}
 			return
