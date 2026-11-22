@@ -3,11 +3,14 @@ package ui
 import (
 	"context"
 	"fmt"
+	"math"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/plugins/imagepicker"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/mobile"
@@ -15,125 +18,482 @@ import (
 	"github.com/pengstem/neromancer/internal/service"
 )
 
-func (a *App) renderDashboardCaptureSpeedDial(c *ui.Context, pal SurfacePalette, bottomSafe float32, phone bool) {
+const (
+	orbDialHoldThreshold = 150 * time.Millisecond
+	orbDialMainSize      = float32(54)
+	orbDialItemSize      = float32(50)
+	orbDialGap           = float32(10)
+)
+
+// OrbDialState stores pure frame-persistent press, hold, and drag-scrub state
+// shared by the bottom-right circular button across Dashboard (New) and Mind Palace (View Switcher).
+type OrbDialState struct {
+	DragDummy     ui.Point
+	Pressing      bool
+	WasOpen       bool
+	Scrubbing     bool
+	EnteredOption bool
+	HoverIdx      int
+	DownX         float32
+	DownY         float32
+	DownAt        time.Time
+}
+
+type orbDialOption struct {
+	key      string
+	label    string
+	icon     *ui.SVG
+	iconTint ui.Color
+	active   bool
+	onSelect func()
+}
+
+func lerpColor(a, b ui.Color, t float32) ui.Color {
+	if t <= 0 {
+		return a
+	}
+	if t >= 1 {
+		return b
+	}
+	inv := 1.0 - t
+	return ui.Color{
+		R: uint8(float32(a.R)*inv + float32(b.R)*t + 0.5),
+		G: uint8(float32(a.G)*inv + float32(b.G)*t + 0.5),
+		B: uint8(float32(a.B)*inv + float32(b.B)*t + 0.5),
+		A: uint8(float32(a.A)*inv + float32(b.A)*t + 0.5),
+	}
+}
+
+func hitOrbDialOption(localX, localY float32, count int) int {
+	if count <= 0 {
+		return -1
+	}
+	const centerX = orbDialMainSize * 0.5
+	if math.Abs(float64(localX-centerX)) > 48 {
+		return -1
+	}
+	step := orbDialItemSize + orbDialGap
+	bestIdx := -1
+	bestDist := float32(1e9)
+	for i := 0; i < count; i++ {
+		stepsUp := float32(count - 1 - i)
+		centerY := -(orbDialGap + orbDialItemSize*0.5) - stepsUp*step
+		dy := float32(math.Abs(float64(localY - centerY)))
+		if dy <= step*0.52 && dy < bestDist {
+			bestDist = dy
+			bestIdx = i
+		}
+	}
+	return bestIdx
+}
+
+func (a *App) renderFloatingOrbDial(c *ui.Context, pal SurfacePalette, archiveProgress float32) {
 	if a.DetailSheetOpen || a.CaptureModalOpen || a.EvidenceModalOpen || a.SettingsModalOpen || a.SleepModalOpen || a.ShareModalOpen {
 		return
 	}
 
-	ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).Height(68 + bottomSafe).PassThrough().
-		LinearGradient(ui.LinearGradient{
-			From:  pal.Canvas.Alpha(0.0),
-			To:    pal.Canvas,
-			Angle: 180,
-			Oklab: true,
-		})
+	phone := a.isPhoneLayout(c)
+	_, _, bottomSafe, _ := c.SafeArea()
+	t := max(float32(0), min(float32(1), archiveProgress))
+	inArchive := t >= 0.5
+	appleBlue := ui.Hex("#007AFF")
 
-	if a.CaptureDialOpen {
+	if t < 0.99 {
+		ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).Height(68 + bottomSafe).
+			Opacity(1.0 - t).PassThrough().
+			LinearGradient(ui.LinearGradient{
+				From:  pal.Canvas.Alpha(0.0),
+				To:    pal.Canvas,
+				Angle: 180,
+				Oklab: true,
+			})
+	}
+
+	dialOpen := a.CaptureDialOpen
+	backdropLabel := "收起速记菜单"
+	if inArchive {
+		dialOpen = a.ArchiveDialOpen
+		backdropLabel = "收起视窗选择"
+	}
+
+	setDialOpen := func(open bool) {
+		if inArchive {
+			a.ArchiveDialOpen = open
+			a.CaptureDialOpen = false
+		} else {
+			a.CaptureDialOpen = open
+			a.ArchiveDialOpen = false
+		}
+		if !open {
+			a.OrbDial.HoverIdx = -1
+		}
+	}
+
+	var options []orbDialOption
+	if inArchive {
+		options = []orbDialOption{
+			{
+				key:      "arch_orb_graph",
+				label:    "脉络",
+				icon:     IconConstellation,
+				iconTint: appleBlue,
+				active:   a.ArchiveMode == ArchiveGraph,
+				onSelect: func() {
+					a.ArchiveMode = ArchiveGraph
+				},
+			},
+			{
+				key:      "arch_orb_cards",
+				label:    "卡片",
+				icon:     IconCards,
+				iconTint: appleBlue,
+				active:   a.ArchiveMode == ArchiveCards,
+				onSelect: func() {
+					a.ArchiveMode = ArchiveCards
+				},
+			},
+		}
+	} else {
+		options = []orbDialOption{
+			{
+				key:      "dash_dial_image",
+				label:    "图文",
+				icon:     IconImage,
+				iconTint: ColorsForTheme(domain.ThemeAmber).BadgeText,
+				onSelect: func() {
+					a.CaptureModalityIdx = 2
+					a.CaptureModalOpen = true
+				},
+			},
+			{
+				key:      "dash_dial_text",
+				label:    "文字",
+				icon:     IconQuill,
+				iconTint: ColorsForTheme(domain.ThemeSky).BadgeText,
+				onSelect: func() {
+					a.CaptureModalityIdx = 1
+					a.CaptureModalOpen = true
+				},
+			},
+			{
+				key:      "dash_dial_voice",
+				label:    "语音",
+				icon:     IconMic,
+				iconTint: ColorsForTheme(domain.ThemeMint).BadgeText,
+				onSelect: func() {
+					a.CaptureModalityIdx = 0
+					a.CaptureModalOpen = true
+				},
+			},
+		}
+	}
+
+	// Hold-still wakeup: if finger stays pressed >= 150ms without moving yet, pop out the circles automatically!
+	d := &a.OrbDial
+	if d.Pressing && !d.Scrubbing {
+		now := c.Now()
+		if !d.DownAt.IsZero() && now.Sub(d.DownAt) >= orbDialHoldThreshold {
+			d.Scrubbing = true
+			if !dialOpen {
+				mygo.Haptics.Medium()
+				setDialOpen(true)
+				dialOpen = true
+			}
+		} else {
+			c.AnimationFrame()
+		}
+	}
+
+	if dialOpen {
 		backdrop := ui.ButtonBase(c).Key("capture_dial_backdrop").
 			Absolute().Fill().
-			Background(ui.RGBA(242, 243, 246, 0.56)).
+			Background(ui.RGBA(242, 243, 246, 0.50)).
 			Cursor(ui.CursorDefault).
-			Label("收起速记菜单")
+			Label(backdropLabel)
 		backdrop.OnClick(func() {
 			mygo.Haptics.Selection()
-			a.CaptureDialOpen = false
+			a.closeOrbDials()
 		})
 	}
 
-	rightPad := float32(18)
-	bottomPad := float32(20)
+	winW, _ := c.Size()
+	dashRight := float32(18)
+	archRight := float32(18)
+	dashBottom := float32(20)
+	archBottom := float32(46)
 	if !phone {
-		rightPad = 28
-		bottomPad = 26
+		dashRight = 28
+		leftW := float32(420)
+		if a.ArchiveMode == ArchiveGraph {
+			leftW = 440
+		}
+		if winW > leftW {
+			archRight = winW - leftW + 18
+		} else {
+			archRight = 28
+		}
+		dashBottom = 26
+		archBottom = 48
 	}
+	rightPad := dashRight + (archRight-dashRight)*t
+	bottomPad := dashBottom + (archBottom-dashBottom)*t + bottomSafe
 
-	ui.Column(c).Key("dash_capture_speed_dial").
-		Absolute().Right(rightPad).Bottom(bottomPad + bottomSafe).
-		AlignItems(ui.End).Gap(10).
+	ui.Column(c).Key("floating_orb_dial_col").
+		Absolute().Right(rightPad).Bottom(bottomPad).
+		AlignItems(ui.Center).Gap(orbDialGap).
 		Children(func() {
-			if a.CaptureDialOpen {
-				dialItems := []struct {
-					key         string
-					label       string
-					icon        *ui.SVG
-					theme       domain.OrbTheme
-					modalityIdx int
-				}{
-					{"dash_dial_image", "图文", IconImage, domain.ThemeAmber, 2},
-					{"dash_dial_text", "文字", IconQuill, domain.ThemeSky, 1},
-					{"dash_dial_voice", "语音", IconMic, domain.ThemeMint, 0},
-				}
+			if dialOpen {
+				for i, opt := range options {
+					idx := i
+					item := opt
+					isHovered := d.Pressing && d.HoverIdx == idx
 
-				for _, item := range dialItems {
-					idx := item.modalityIdx
-					orbPal := ColorsForTheme(item.theme)
-					pill := ui.ButtonBase(c).Key(item.key)
-					pressTarget := float32(1.0)
-					if pill.Pressed() {
-						pressTarget = 0.96
+					orbBtn := ui.ButtonBase(c).Key(item.key)
+					scaleTarget := float32(1.0)
+					if isHovered {
+						scaleTarget = 1.14
+					} else if orbBtn.Pressed() {
+						scaleTarget = 0.94
 					}
-					scale := pill.Spring("press", pressTarget)
+					scale := orbBtn.Spring("orb_scale", scaleTarget)
 
-					pill.Padding(8, 13).Radius(999).
-						Background(pal.Card).
-						Shadow(0, 4, 14, 0, ui.RGBA(20, 21, 25, 0.10)).
+					bg := ui.RGBA(255, 255, 255, 0.94)
+					borderCol := ui.Hex("#E1E4EC")
+					icCol := item.iconTint
+					txtCol := pal.Ink
+					shadowCol := ui.RGBA(18, 22, 33, 0.11)
+					shadowBlur := float32(16)
+
+					if isHovered {
+						bg = appleBlue
+						borderCol = appleBlue
+						icCol = ui.Hex("#FFFFFF")
+						txtCol = ui.Hex("#FFFFFF")
+						shadowCol = ui.RGBA(0, 122, 255, 0.30)
+						shadowBlur = 20
+					} else if item.active && d.HoverIdx < 0 {
+						bg = ui.Hex("#EDF4FF")
+						borderCol = appleBlue.Alpha(0.45)
+						icCol = appleBlue
+						txtCol = appleBlue
+					}
+
+					orbBtn.Size(orbDialItemSize, orbDialItemSize).Radius(orbDialItemSize * 0.5).Center().
+						Background(bg).
+						Border(1, borderCol).
+						Shadow(0, 5, shadowBlur, 0, shadowCol).
 						Scale(scale, scale).
-						Cursor(ui.CursorPointer).Label(item.label)
-					mobile.Ink(pill)
-					pill.OnClick(func() {
-						mygo.Haptics.Light()
-						a.CaptureDialOpen = false
-						a.CaptureModalityIdx = idx
-						a.CaptureModalOpen = true
+						Cursor(ui.CursorPointer).
+						Label(item.label)
+					if !isHovered {
+						orbBtn.Material(glass.Glass{Tint: bg})
+					}
+					mobile.Ink(orbBtn)
+					orbBtn.OnClick(func() {
+						mygo.Haptics.Selection()
+						a.closeOrbDials()
+						item.onSelect()
 					}).Children(func() {
-						ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-							ui.Icon(c, item.icon).Size(15, 15).TextColor(orbPal.BadgeText)
-							ui.Text(c, item.label).FontSize(12.5).Bold().TextColor(pal.Ink).SingleLine()
+						ui.Column(c).Center().Gap(1.5).Children(func() {
+							ui.Icon(c, item.icon).Size(17, 17).TextColor(icCol)
+							ui.Text(c, item.label).FontSize(9.5).Bold().TextColor(txtCol).SingleLine()
 						})
 					})
 				}
 			}
 
 			sealBtn := ui.ButtonBase(c).Key("dash_capture_fab")
-			bg := ColorVermilion
-			if sealBtn.Pressed() {
-				bg = ui.Hex("#A63922")
+
+			dashBg := ColorVermilion
+			if d.Pressing || sealBtn.Pressed() {
+				dashBg = ui.Hex("#A63922")
 			} else if sealBtn.Hovered() {
-				bg = ui.Hex("#B8422A")
+				dashBg = ui.Hex("#B8422A")
 			}
 
+			archBg := ui.RGBA(255, 255, 255, 0.95)
+			if d.Pressing || sealBtn.Pressed() {
+				archBg = ui.Hex("#EEF2F8")
+			} else if sealBtn.Hovered() {
+				archBg = ui.Hex("#F7F9FC")
+			}
+
+			bg := lerpColor(dashBg, archBg, t)
+			borderCol := lerpColor(ui.RGBA(255, 255, 255, 0.20), ui.Hex("#DCE0EA"), t)
+			shadowCol := lerpColor(ui.RGBA(200, 75, 49, 0.34), ui.RGBA(18, 22, 33, 0.13), t)
+
 			pressTarget := float32(1.0)
-			if sealBtn.Pressed() {
+			if d.Pressing || sealBtn.Pressed() {
 				pressTarget = 0.94
 			}
 			pressScale := sealBtn.Spring("press", pressTarget)
 
 			rotTarget := float32(0)
-			if a.CaptureDialOpen {
+			if dialOpen {
 				rotTarget = 45
 			}
-			iconAngle := sealBtn.Spring("dial_rot", rotTarget)
+			plusAngle := sealBtn.Spring("dial_rot", rotTarget)
 
-			sealLabel := "记一笔"
-			if a.CaptureDialOpen {
+			var sealLabel string
+			if dialOpen {
 				sealLabel = "收起"
+			} else if inArchive {
+				if a.ArchiveMode == ArchiveGraph {
+					sealLabel = "切换视窗（当前脉络）"
+				} else {
+					sealLabel = "切换视窗（当前卡片）"
+				}
+			} else {
+				sealLabel = "记一笔"
 			}
 
-			sealBtn.Size(54, 54).Radius(27).Center().
+			sealBtn.Size(orbDialMainSize, orbDialMainSize).Radius(orbDialMainSize * 0.5).Center().
 				Background(bg).
-				Border(1, ui.RGBA(255, 255, 255, 0.18)).
-				Shadow(0, 8, 22, 0, ui.RGBA(200, 75, 49, 0.34)).
+				Border(1, borderCol).
+				Shadow(0, 8, 22, 0, shadowCol).
 				Scale(pressScale, pressScale).
-				Cursor(ui.CursorPointer).Label(sealLabel)
-			if !a.CaptureDialOpen {
-				sealBtn.Tooltip("记一笔")
+				Cursor(ui.CursorPointer).
+				Label(sealLabel).
+				Draggable(&d.DragDummy, ui.DraggableOptions{
+					Axis:   ui.Horizontal | ui.Vertical,
+					Bounds: &ui.Rect{},
+					Rigid:  true,
+				}).
+				HandleInput(func(ev ui.InputEvent) bool {
+					switch ev.Kind {
+					case ui.InputPointerDown:
+						if ev.Button != 0 {
+							return false
+						}
+						d.Pressing = true
+						d.WasOpen = dialOpen
+						d.Scrubbing = false
+						d.EnteredOption = false
+						d.HoverIdx = -1
+						d.DownX = ev.X
+						d.DownY = ev.Y
+						if !ev.Time.IsZero() {
+							d.DownAt = ev.Time
+						} else {
+							d.DownAt = c.Now()
+						}
+						return true
+
+					case ui.InputPointerMove:
+						if !d.Pressing {
+							return false
+						}
+						moved := float32(math.Hypot(float64(ev.X-d.DownX), float64(ev.Y-d.DownY)))
+						now := ev.Time
+						if now.IsZero() {
+							now = c.Now()
+						}
+						held := !d.DownAt.IsZero() && now.Sub(d.DownAt) >= orbDialHoldThreshold
+						if !d.Scrubbing && (moved >= 8 || held) {
+							d.Scrubbing = true
+							if !dialOpen {
+								mygo.Haptics.Medium()
+								setDialOpen(true)
+								dialOpen = true
+							}
+						}
+						if dialOpen {
+							hit := hitOrbDialOption(ev.X, ev.Y, len(options))
+							if hit >= 0 {
+								d.EnteredOption = true
+							}
+							if hit != d.HoverIdx {
+								d.HoverIdx = hit
+								if hit >= 0 {
+									mygo.Haptics.Selection()
+								}
+							}
+						}
+						return true
+
+					case ui.InputPointerUp:
+						if !d.Pressing {
+							return false
+						}
+						wasScrubbing := d.Scrubbing
+						wasOpen := d.WasOpen
+						enteredOpt := d.EnteredOption
+						hoverIdx := d.HoverIdx
+						if dialOpen && hoverIdx < 0 && wasScrubbing {
+							hoverIdx = hitOrbDialOption(ev.X, ev.Y, len(options))
+						}
+						d.Pressing = false
+						d.Scrubbing = false
+						d.EnteredOption = false
+						d.HoverIdx = -1
+
+						if ev.Canceled {
+							if !wasOpen {
+								setDialOpen(false)
+							}
+							return true
+						}
+						if dialOpen && hoverIdx >= 0 && hoverIdx < len(options) {
+							mygo.Haptics.Selection()
+							a.closeOrbDials()
+							options[hoverIdx].onSelect()
+							return true
+						}
+						if !wasScrubbing {
+							mygo.Haptics.Light()
+							setDialOpen(!wasOpen)
+							return true
+						}
+						if enteredOpt {
+							mygo.Haptics.Selection()
+							setDialOpen(false)
+						}
+						return true
+
+					case ui.InputKeyDown:
+						if ev.Key == ui.KeyEnter || ev.Key == ui.KeySpace {
+							mygo.Haptics.Light()
+							setDialOpen(!dialOpen)
+							return true
+						}
+					}
+					return false
+				})
+
+			if t >= 0.85 {
+				sealBtn.Material(glass.Glass{Tint: archBg})
+			}
+			if !dialOpen {
+				if inArchive {
+					sealBtn.Tooltip("切换卡片 / 脉络视窗")
+				} else {
+					sealBtn.Tooltip("记一笔")
+				}
 			}
 			mobile.Ink(sealBtn)
-			sealBtn.OnClick(func() {
-				mygo.Haptics.Light()
-				a.CaptureDialOpen = !a.CaptureDialOpen
-			}).Children(func() {
-				ui.Icon(c, IconPlus).Size(22, 22).TextColor(ui.Hex("#FFFFFF")).Rotate(iconAngle)
+
+			archIcon := IconCards
+			if a.ArchiveMode == ArchiveGraph {
+				archIcon = IconConstellation
+			}
+
+			sealBtn.Children(func() {
+				if t < 0.99 {
+					dashScale := 1.0 - 0.28*t
+					ui.Box(c).Absolute().Fill().Center().Opacity(1.0 - t).Scale(dashScale, dashScale).PassThrough().Children(func() {
+						ui.Icon(c, IconPlus).Size(22, 22).TextColor(ui.Hex("#FFFFFF")).Rotate(plusAngle)
+					})
+				}
+				if t > 0.01 {
+					archScale := 0.72 + 0.28*t
+					ui.Box(c).Absolute().Fill().Center().Opacity(t).Scale(archScale, archScale).PassThrough().Children(func() {
+						if dialOpen && inArchive {
+							ui.Icon(c, IconPlus).Size(21, 21).TextColor(pal.InkSecondary).Rotate(45)
+						} else {
+							ui.Icon(c, archIcon).Size(21, 21).TextColor(appleBlue)
+						}
+					})
+				}
 			})
 		})
 }

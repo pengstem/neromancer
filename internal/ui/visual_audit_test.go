@@ -238,23 +238,47 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	assertAuditNoHashPrefixes(t, "archive_cards", tt.Texts())
 	maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_cards.png")
 
-	// 5. Mind Palace Obsidian Graph & AI File Explorer ("脉络") — and verify "漫游" is completely gone!
+	// 5. Mind Palace Apple Light Graph & AI File Explorer ("脉络") via bottom-right morphed view orb — and verify "漫游" & old header tabs are gone!
 	if tt.HasText("漫游") {
 		t.Fatalf("expected '漫游' tab to be removed, texts=%v", tt.Texts())
 	}
-	if err := tt.Click("脉络"); err != nil {
-		t.Fatalf("switch mind palace mode to graph: %v", err)
+	if tt.HasText("脉络") {
+		t.Fatalf("expected top-right header '脉络' tab to be removed before opening bottom-right orb dial, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("切换视窗（当前卡片）"); err != nil {
+		t.Fatalf("open bottom-right archive view orb dial: %v", err)
 	}
 	settleAudit(tt)
-	if app.ArchiveMode != ArchiveGraph {
-		t.Fatalf("expected ArchiveGraph, got %v", app.ArchiveMode)
+	if !app.ArchiveDialOpen {
+		t.Fatalf("expected ArchiveDialOpen=true after tapping view orb")
+	}
+	if err := tt.Click("脉络"); err != nil {
+		t.Fatalf("switch mind palace mode to graph via circular orb: %v", err)
+	}
+	settleAudit(tt)
+	if app.ArchiveMode != ArchiveGraph || app.ArchiveDialOpen {
+		t.Fatalf("expected ArchiveGraph & dial closed, got mode=%v open=%v", app.ArchiveMode, app.ArchiveDialOpen)
+	}
+	if _, ok := tt.Find("切换视窗（当前脉络）"); !ok {
+		t.Fatalf("expected bottom-right circle icon/state to switch to 脉络")
 	}
 	if !tt.HasText("AI 归档目录") || !tt.HasText("器物与光影美学") {
-		t.Fatalf("expected Obsidian AI File Explorer folders in 脉络 view, texts=%v", tt.Texts())
+		t.Fatalf("expected AI File Explorer folders in 脉络 view, texts=%v", tt.Texts())
+	}
+	// Verify Graph stage renders in crisp Apple daylight white (never black!)
+	if img := tt.Image(); img != nil {
+		px := img.RGBAAt(40, 90)
+		if px.R < 230 || px.G < 230 || px.B < 230 {
+			t.Fatalf("expected Apple light surface in 脉络 graph stage, got dark pixel RGBA=%+v", px)
+		}
 	}
 	assertAuditNoEmojis(t, "archive_graph", tt.Texts())
 	maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_graph.png")
 
+	if err := tt.Click("切换视窗（当前脉络）"); err != nil {
+		t.Fatalf("re-open bottom-right archive view orb dial: %v", err)
+	}
+	settleAudit(tt)
 	if err := tt.Click("卡片"); err != nil {
 		t.Fatalf("switch mind palace mode back to cards: %v", err)
 	}
@@ -399,8 +423,8 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	app.ActiveSpace = SpaceArchive
 	app.ArchiveMode = ArchiveCards
 	settleAudit(ttMin)
-	if r, ok := ttMin.Find("脉络"); !ok || r.X+r.W > 360 {
-		t.Fatalf("360px archive header mode switch clipped: ok=%v rect=%+v", ok, r)
+	if r, ok := ttMin.Find("切换视窗（当前卡片）"); !ok || r.X+r.W > 360 || r.Y+r.H > 620 {
+		t.Fatalf("360px archive bottom-right view orb clipped: ok=%v rect=%+v", ok, r)
 	}
 	maybeSaveAuditPNG(t, auditDir, ttMin, "ui_360x620_archive.png")
 
@@ -480,6 +504,110 @@ func TestDashboardCaptureSpeedDialInteractions(t *testing.T) {
 	settleAudit(tt)
 	if app.CaptureDialOpen || !app.CaptureModalOpen || app.CaptureModalityIdx != 2 {
 		t.Fatalf("expected image capture sheet open, got dial=%v modal=%v idx=%d", app.CaptureDialOpen, app.CaptureModalOpen, app.CaptureModalityIdx)
+	}
+	if err := tt.Click("收起"); err != nil {
+		t.Fatalf("close image capture sheet: %v", err)
+	}
+	settleAudit(tt)
+
+	// 5. Continuous press-hold-drag on "记一笔": hold still pops out 3 circles, gliding finger switches hovered circle, releasing opens it!
+	fabRect, ok := tt.Find("记一笔")
+	if !ok {
+		t.Fatalf("missing 记一笔 circular FAB")
+	}
+	cx := fabRect.X + fabRect.W*0.5
+	cy := fabRect.Y + fabRect.H*0.5
+
+	tt.FingerDown(cx, cy)
+	tt.Advance(170 * time.Millisecond) // hold still past 150ms threshold -> pops out 3 circles!
+	tt.Frame()
+	if !app.CaptureDialOpen {
+		t.Fatalf("expected CaptureDialOpen=true after holding down on 记一笔")
+	}
+	// Verify each popped-out option is a standalone 50x50 square/circle (W == H)
+	for _, lbl := range []string{"语音", "文字", "图文"} {
+		optR, found := tt.Find(lbl)
+		if !found {
+			t.Fatalf("missing popped-out circular option %q", lbl)
+		}
+		if optR.W < 44 || optR.H < 44 || optR.W-optR.H > 2 || optR.H-optR.W > 2 {
+			t.Fatalf("expected %q to be a standalone circle (W≈H), got rect=%+v", lbl, optR)
+		}
+	}
+
+	// Keep holding and glide finger across 语音 -> 图文 -> back to 文字, then release!
+	voiceR, _ := tt.Find("语音")
+	imgR, _ := tt.Find("图文")
+	txtR, _ := tt.Find("文字")
+
+	tt.FingerMove(voiceR.X+voiceR.W*0.5, voiceR.Y+voiceR.H*0.5)
+	tt.Frame()
+	if app.OrbDial.HoverIdx != 2 {
+		t.Fatalf("expected HoverIdx=2 (语音) when holding over 语音 circle, got %d", app.OrbDial.HoverIdx)
+	}
+
+	tt.FingerMove(imgR.X+imgR.W*0.5, imgR.Y+imgR.H*0.5)
+	tt.Frame()
+	if app.OrbDial.HoverIdx != 0 {
+		t.Fatalf("expected HoverIdx=0 (图文) when holding over 图文 circle, got %d", app.OrbDial.HoverIdx)
+	}
+
+	tt.FingerMove(txtR.X+txtR.W*0.5, txtR.Y+txtR.H*0.5)
+	tt.Frame()
+	if app.OrbDial.HoverIdx != 1 {
+		t.Fatalf("expected HoverIdx=1 (文字) when gliding back over 文字 circle, got %d", app.OrbDial.HoverIdx)
+	}
+
+	tt.FingerUp(txtR.X+txtR.W*0.5, txtR.Y+txtR.H*0.5)
+	settleAudit(tt)
+	if app.CaptureDialOpen || !app.CaptureModalOpen || app.CaptureModalityIdx != 1 {
+		t.Fatalf("expected releasing held finger on 文字 circle to open text capture, got dial=%v modal=%v idx=%d",
+			app.CaptureDialOpen, app.CaptureModalOpen, app.CaptureModalityIdx)
+	}
+	if err := tt.Click("收起"); err != nil {
+		t.Fatalf("close text capture modal: %v", err)
+	}
+	settleAudit(tt)
+
+	// 6. Transition to Mind Palace & verify identical press-drag feel on the morphed view switcher circle!
+	if err := tt.Click("进入思维宫殿"); err != nil {
+		t.Fatalf("enter Mind Palace: %v", err)
+	}
+	settleAudit(tt)
+
+	archOrbRect, ok := tt.Find("切换视窗（当前卡片）")
+	if !ok {
+		t.Fatalf("missing morphed bottom-right view switcher circle in Mind Palace")
+	}
+	ax := archOrbRect.X + archOrbRect.W*0.5
+	ay := archOrbRect.Y + archOrbRect.H*0.5
+
+	// Press and drag upward directly onto "脉络" circle and release to switch from default 卡片 to 脉络!
+	tt.FingerDown(ax, ay)
+	tt.Advance(30 * time.Millisecond)
+	tt.FingerMove(ax, ay-35) // drag > 8px immediately pops out [脉络, 卡片] circles!
+	tt.Frame()
+	if !app.ArchiveDialOpen {
+		t.Fatalf("expected ArchiveDialOpen=true on upward drag from view switcher circle")
+	}
+	graphOrbR, ok := tt.Find("脉络")
+	if !ok {
+		t.Fatalf("missing popped-out 脉络 circle")
+	}
+	tt.FingerMove(graphOrbR.X+graphOrbR.W*0.5, graphOrbR.Y+graphOrbR.H*0.5)
+	tt.Frame()
+	if app.OrbDial.HoverIdx != 0 {
+		t.Fatalf("expected HoverIdx=0 (脉络) while dragging over 脉络 circle, got %d", app.OrbDial.HoverIdx)
+	}
+	tt.FingerUp(graphOrbR.X+graphOrbR.W*0.5, graphOrbR.Y+graphOrbR.H*0.5)
+	settleAudit(tt)
+
+	if app.ArchiveMode != ArchiveGraph || app.ArchiveDialOpen {
+		t.Fatalf("expected ArchiveMode=ArchiveGraph after press-drag release on 脉络 circle, got mode=%v open=%v",
+			app.ArchiveMode, app.ArchiveDialOpen)
+	}
+	if _, ok := tt.Find("切换视窗（当前脉络）"); !ok {
+		t.Fatalf("expected main circle icon/state to update to 切换视窗（当前脉络）")
 	}
 }
 

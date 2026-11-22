@@ -34,6 +34,7 @@ var (
 	IconClose         = mustIconSVG(`<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>`)
 	IconCheck         = mustIconSVG(`<polyline points="5 12.5 10 17.5 19 7.5"/>`)
 	IconOutline       = mustIconSVG(`<line x1="4" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="5" cy="12" r="1"/><circle cx="5" cy="18" r="1"/>`)
+	IconCards         = mustIconSVG(`<rect x="3.5" y="4" width="7.2" height="7.2" rx="2"/><rect x="13.3" y="4" width="7.2" height="7.2" rx="2"/><rect x="3.5" y="13" width="7.2" height="7.2" rx="2"/><rect x="13.3" y="13" width="7.2" height="7.2" rx="2"/>`)
 	IconConstellation = mustIconSVG(`<circle cx="6" cy="16" r="1.8"/><circle cx="10.5" cy="7.5" r="1.8"/><circle cx="18" cy="10" r="1.8"/><circle cx="15.5" cy="17.5" r="1.8"/><path d="M7.1 14.5 9.5 9.1"/><path d="M12.2 8.1 16.3 9.4"/><path d="M17.4 11.7 16.1 15.8"/>`)
 	IconFilmstrip     = mustIconSVG(`<rect x="3" y="5" width="18" height="14" rx="2"/><line x1="7.5" y1="5" x2="7.5" y2="19"/><line x1="16.5" y1="5" x2="16.5" y2="19"/><line x1="3" y1="9.5" x2="7.5" y2="9.5"/><line x1="3" y1="14.5" x2="7.5" y2="14.5"/><line x1="16.5" y1="9.5" x2="21" y2="9.5"/><line x1="16.5" y1="14.5" x2="21" y2="14.5"/>`)
 	IconArchive       = mustIconSVG(`<rect x="3" y="4" width="18" height="4.5" rx="1"/><path d="M5 8.5v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-10"/><line x1="10" y1="13" x2="14" y2="13"/>`)

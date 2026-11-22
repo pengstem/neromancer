@@ -118,9 +118,13 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 		t.Fatalf("expected newly captured & seeded cards in archive, texts=%v", tt.Texts())
 	}
 
-	// 3. Switch to Obsidian Graph & AI File Explorer ("脉络") and verify auto-clustering + pure Share poster export.
+	// 3. Switch to Apple Light Graph & AI File Explorer ("脉络") via bottom-right morphed view orb and verify auto-clustering + pure Share poster export.
+	if err := tt.Click("切换视窗（当前卡片）"); err != nil {
+		t.Fatalf("open bottom-right view orb in archive: %v", err)
+	}
+	settleSheet(tt)
 	if err := tt.Click("脉络"); err != nil {
-		t.Fatalf("switch to graph tab in archive: %v", err)
+		t.Fatalf("switch to graph mode via circular orb: %v", err)
 	}
 	settleSheet(tt)
 	if app.ArchiveMode != appui.ArchiveGraph {
@@ -179,23 +183,5 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	settleSheet(tt)
 	if app.ActiveSpace != appui.SpaceDashboard {
 		t.Fatalf("expected SpaceDashboard after returning, got %v", app.ActiveSpace)
-	}
-}
-
-func TestFloatingOrbWindowWidget(t *testing.T) {
-	app, cleanup := newTestApp(t)
-	defer cleanup()
-
-	ft := ui.NewTesterWith(app.FloatingOrbView, 96, 96, ui.TesterOptions{
-		Preferences: ui.Preferences{ReduceMotion: true},
-	})
-	ft.ClickAt(48, 48)
-	if !app.FloatExpanded {
-		t.Fatalf("expected clicking floating companion to expand quick capture")
-	}
-	ft.SetSize(360, 250)
-	ft.Frame()
-	if !ft.HasText("随手记") || !ft.HasText("记下来") {
-		t.Fatalf("expected expanded floating widget UI, texts=%v", ft.Texts())
 	}
 }

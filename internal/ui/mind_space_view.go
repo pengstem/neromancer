@@ -17,31 +17,22 @@ func (a *App) renderArchiveView(c *ui.Context, pushDist, pushThreshold float32) 
 	pal := a.Palette()
 	phone := a.isPhoneLayout(c)
 	_, _, bottomSafe, _ := c.SafeArea()
-	isDarkPulse := a.ArchiveMode == ArchiveGraph
+	isGraph := a.ArchiveMode == ArchiveGraph
 
-	rootBg := pal.Canvas
-	if isDarkPulse && phone {
-		rootBg = obsBgTree
-	}
-
-	ui.Column(c).Key("space_archive_root").Fill().Background(rootBg).Children(func() {
+	ui.Column(c).Key("space_archive_root").Fill().Background(pal.Canvas).Children(func() {
 		if !phone {
 			// Wide Desktop: Master-Detail Split above the unified bottom return bar.
 			leftW := float32(420)
-			leftBg := pal.Canvas
-			leftBorder := pal.Border.Alpha(0.7)
-			if isDarkPulse {
+			if isGraph {
 				leftW = 440
-				leftBg = obsBgTree
-				leftBorder = obsBorder
 			}
 			ui.Row(c).Key("space_archive_split").Grow(1).FillWidth().MinHeight(0).Background(pal.Canvas).Children(func() {
-				ui.Box(c).Width(leftW).FillHeight().Background(leftBg).
-					BorderWidth(0, 1, 0, 0).BorderColor(leftBorder).
+				ui.Box(c).Width(leftW).FillHeight().Background(pal.Canvas).
+					BorderWidth(0, 1, 0, 0).BorderColor(pal.Border.Alpha(0.7)).
 					Children(func() {
 						ui.Column(c).Fill().Children(func() {
 							a.renderArchiveHeader(c, pal, false)
-							if !isDarkPulse {
+							if !isGraph {
 								a.renderArchiveTitleAndTabs(c, pal, false)
 							}
 							a.renderArchiveBody(c, pal, false)
@@ -53,9 +44,9 @@ func (a *App) renderArchiveView(c *ui.Context, pushDist, pushThreshold float32) 
 				})
 			})
 		} else {
-			ui.Column(c).Key("space_archive").Grow(1).FillWidth().MinHeight(0).Background(rootBg).Children(func() {
+			ui.Column(c).Key("space_archive").Grow(1).FillWidth().MinHeight(0).Background(pal.Canvas).Children(func() {
 				a.renderArchiveHeader(c, pal, true)
-				if !isDarkPulse {
+				if !isGraph {
 					a.renderArchiveTitleAndTabs(c, pal, true)
 				}
 				a.renderArchiveBody(c, pal, true)
@@ -63,7 +54,7 @@ func (a *App) renderArchiveView(c *ui.Context, pushDist, pushThreshold float32) 
 		}
 
 		// Bottom Pull-Up Handle Bar docked at the lower edge of the Mind Palace floor.
-		a.renderArchiveBottomHandle(c, pal, pushDist, pushThreshold, bottomSafe, isDarkPulse && phone)
+		a.renderArchiveBottomHandle(c, pal, pushDist, pushThreshold, bottomSafe)
 	})
 }
 
@@ -72,32 +63,12 @@ func (a *App) renderArchiveHeader(c *ui.Context, pal SurfacePalette, phone bool)
 	if !phone {
 		padX = 18
 	}
-	isDark := a.ArchiveMode == ArchiveGraph
 
-	headerBg := pal.Canvas
-	titleFg := pal.Ink
-	countFg := pal.InkMuted
-	iconFg := pal.InkMuted
-	segTrackBg := ui.Hex("#E4E6EC")
-	if isDark {
-		headerBg = obsBgGraph
-		titleFg = obsTextBright
-		countFg = obsTextDim
-		iconFg = ui.Hex("#8E8E98")
-		segTrackBg = ui.Hex("#25252A")
-	}
-
-	row := ui.Row(c).FillWidth().Padding(13, padX, 9, padX).Gap(8).AlignItems(ui.Center).Background(headerBg)
-	if isDark {
-		row.BorderWidth(0, 0, 1, 0).BorderColor(obsBorder)
-	}
-	row.Children(func() {
+	ui.Row(c).FillWidth().Padding(13, padX, 9, padX).Gap(8).AlignItems(ui.Center).Background(pal.Canvas).Children(func() {
 		ui.Row(c).Gap(6).AlignItems(ui.Baseline).Shrink(1).MinWidth(0).Children(func() {
-			ui.Text(c, "思维宫殿").FontSize(19).Bold().TextColor(titleFg).SingleLine()
-			if !isDark {
-				ui.Textf(c, "%d", len(a.Nodes)).FontSize(12).FontWeight(600).
-					FontFeatures("tnum").TextColor(countFg).SingleLine()
-			}
+			ui.Text(c, "思维宫殿").FontSize(19).Bold().TextColor(pal.Ink).SingleLine()
+			ui.Textf(c, "%d", len(a.Nodes)).FontSize(12).FontWeight(600).
+				FontFeatures("tnum").TextColor(pal.InkMuted).SingleLine()
 		})
 
 		ui.Spacer(c).Grow(1)
@@ -111,13 +82,9 @@ func (a *App) renderArchiveHeader(c *ui.Context, pal SurfacePalette, phone bool)
 				mygo.Haptics.Selection()
 				a.ArchiveSearchOpen = !a.ArchiveSearchOpen
 			}).Children(func() {
-				icCol := iconFg
+				icCol := pal.InkMuted
 				if a.ArchiveSearchOpen {
-					if isDark {
-						icCol = obsTextBright
-					} else {
-						icCol = pal.Ink
-					}
+					icCol = pal.Ink
 				}
 				ui.Icon(c, IconSearch).Size(15.5, 15.5).TextColor(icCol)
 			})
@@ -130,51 +97,13 @@ func (a *App) renderArchiveHeader(c *ui.Context, pal SurfacePalette, phone bool)
 				mygo.Haptics.Light()
 				a.importCapsuleAsync()
 			}).Children(func() {
-				ui.Icon(c, IconUpload).Size(15, 15).TextColor(iconFg)
-			})
-
-			// Clean 2-Mode Segmented Switch: ONLY [卡片 | 脉络] ("漫游" completely removed!)
-			ui.Row(c).Padding(2.5).Gap(2).Radius(8).Background(segTrackBg).AlignItems(ui.Center).Shrink(0).Children(func() {
-				a.renderArchiveModeTab(c, pal, "arch_mode_cards", "卡片", ArchiveCards, isDark)
-				a.renderArchiveModeTab(c, pal, "arch_mode_graph", "脉络", ArchiveGraph, isDark)
+				ui.Icon(c, IconUpload).Size(15, 15).TextColor(pal.InkMuted)
 			})
 		})
 	})
 }
 
-func (a *App) renderArchiveModeTab(c *ui.Context, pal SurfacePalette, key, label string, mode ArchiveViewMode, darkHeader bool) {
-	active := a.ArchiveMode == mode
-	bg := ui.Transparent
-	fg := pal.InkSecondary
-	weight := 500
-	if darkHeader {
-		fg = ui.Hex("#8E8E98")
-		if active {
-			bg = ui.Hex("#36363E")
-			fg = obsTextBright
-			weight = 700
-		}
-	} else if active {
-		bg = pal.Card
-		fg = pal.Ink
-		weight = 700
-	}
-
-	tab := ui.ButtonBase(c).Key(key).
-		Padding(4, 10).Radius(6).Center().Shrink(0).
-		Background(bg).Cursor(ui.CursorPointer).Label(label)
-	mobile.Ink(tab)
-	tab.OnClick(func() {
-		if a.ArchiveMode != mode {
-			mygo.Haptics.Selection()
-			a.ArchiveMode = mode
-		}
-	}).Children(func() {
-		ui.Text(c, label).FontSize(12).FontWeight(weight).TextColor(fg).SingleLine()
-	})
-}
-
-func (a *App) renderArchiveBottomHandle(c *ui.Context, pal SurfacePalette, pushDist, pushThreshold, bottomSafe float32, darkSurface bool) {
+func (a *App) renderArchiveBottomHandle(c *ui.Context, pal SurfacePalette, pushDist, pushThreshold, bottomSafe float32) {
 	progress := float32(0)
 	if pushThreshold > 0 {
 		progress = min(float32(1), max(float32(0), pushDist/pushThreshold))
@@ -188,28 +117,17 @@ func (a *App) renderArchiveBottomHandle(c *ui.Context, pal SurfacePalette, pushD
 		label = "继续上拉回到主页"
 	}
 
-	barBg := pal.Canvas
 	fg := pal.InkMuted
 	grabberCol := pal.InkMuted.Alpha(0.30 + 0.35*progress)
-	if darkSurface {
-		barBg = obsBgTree
-		fg = ui.Hex("#71717A")
-		grabberCol = ui.Hex("#3A3A42")
-	}
 	if ready {
-		if darkSurface {
-			fg = obsAccent
-			grabberCol = obsAccent.Alpha(0.82)
-		} else {
-			fg = ColorVermilion
-			grabberCol = ColorVermilion.Alpha(0.78)
-		}
+		fg = ColorVermilion
+		grabberCol = ColorVermilion.Alpha(0.78)
 	}
 
 	bar := ui.ButtonBase(c).Key("archive_back_home").
 		FillWidth().
 		Padding(8, 16, 10+bottomSafe, 16).
-		Background(barBg).
+		Background(pal.Canvas).
 		Cursor(ui.CursorPointer).
 		Label("回到主页看板")
 	mobile.Ink(bar)
@@ -488,7 +406,7 @@ func (a *App) renderArchiveCards(c *ui.Context, pal SurfacePalette, phone bool) 
 			return a.handleSpaceBoundaryScroll(ev, SpaceDashboard, a.ArchiveScroll.Y >= a.ArchiveScroll.MaxY-1)
 		}).
 		Children(func() {
-			ui.Column(c).FillWidth().Padding(6, 16, 28, 16).Gap(10).Children(func() {
+			ui.Column(c).FillWidth().Padding(6, 16, 68, 16).Gap(10).Children(func() {
 				if len(filtered) == 0 {
 					ui.Column(c).FillWidth().Padding(28, 16).Center().Gap(10).Radius(16).
 						Background(pal.Card).

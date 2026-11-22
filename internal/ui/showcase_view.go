@@ -57,8 +57,6 @@ func (a *App) renderDashboardView(c *ui.Context, pullDist, pullThreshold float32
 				})
 			})
 		})
-
-		a.renderDashboardCaptureSpeedDial(c, pal, bottomSafe, phone)
 	})
 }
 
@@ -131,7 +129,7 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette, padX, pul
 
 				ui.Box(c).Key("dash_sleep_wrap").Size(32, 32).Shrink(0).Children(func() {
 					if GhostIconAction(c, "dash_sleep_btn", IconMoon, "灵感串联", a.SleepModalOpen).Tooltip("灵感串联").Clicked() {
-						a.CaptureDialOpen = false
+						a.closeOrbDials()
 						a.SleepModalOpen = true
 					}
 					if len(a.SleepInsights) > 0 {
@@ -143,7 +141,7 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette, padX, pul
 				configured := a.Deps.AI != nil && a.Deps.AI.Configured()
 				ui.Box(c).Key("dash_settings_wrap").Size(32, 32).Shrink(0).Children(func() {
 					if GhostIconAction(c, "dash_settings_btn", IconSliders, "DeepSeek 设置", a.SettingsModalOpen).Tooltip("DeepSeek 设置").Clicked() {
-						a.CaptureDialOpen = false
+						a.closeOrbDials()
 						a.SettingsModalOpen = true
 					}
 					if configured {

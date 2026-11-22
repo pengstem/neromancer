@@ -87,6 +87,7 @@ type App struct {
 	Globe           GlobeState
 	SpaceDeck       SpaceDeckState
 	Pulse           PulseViewState
+	OrbDial         OrbDialState
 
 	// Optional AI spark prompt refreshed on pull-to-refresh
 	ShowcaseSpark string
@@ -94,6 +95,7 @@ type App struct {
 	// Mobile & Desktop Sheets / Drawers
 	DetailSheetOpen     bool
 	CaptureDialOpen     bool
+	ArchiveDialOpen     bool
 	CaptureModalOpen    bool
 	EvidenceModalOpen   bool
 	SettingsModalOpen   bool
@@ -157,6 +159,7 @@ func NewApp(deps Deps) (*App, error) {
 		SettingsAPIKey:     deps.Config.DeepSeekAPIKey,
 		SettingsModel:      deps.Config.DeepSeekModel,
 		Pulse:              newPulseViewState(),
+		OrbDial:            OrbDialState{HoverIdx: -1},
 	}
 
 	if deps.Share != nil {
@@ -248,15 +251,24 @@ func (a *App) ReloadVault() error {
 	return nil
 }
 
+// closeOrbDials resets any expanded bottom-right radial circle menu and drag scrub state.
+func (a *App) closeOrbDials() {
+	a.CaptureDialOpen = false
+	a.ArchiveDialOpen = false
+	a.OrbDial.Pressing = false
+	a.OrbDial.Scrubbing = false
+	a.OrbDial.HoverIdx = -1
+}
+
 // returnToDashboard transitions smoothly from the Archive Vault back to the Home Dashboard.
 func (a *App) returnToDashboard() {
-	a.CaptureDialOpen = false
+	a.closeOrbDials()
 	a.ActiveSpace = SpaceDashboard
 }
 
 // enterArchiveWithTag transitions smoothly from Dashboard into the Mind Palace with an optional tag filter.
 func (a *App) enterArchiveWithTag(tag string) {
-	a.CaptureDialOpen = false
+	a.closeOrbDials()
 	a.ActiveTag = cleanTagLabel(tag)
 	a.SearchQuery = ""
 	a.ArchiveSearchOpen = false
@@ -274,7 +286,7 @@ func (a *App) filterByTagFromDetail(tag string) {
 
 // enterArchiveWithTerm transitions directly from a tapped Globe word into the Mind Palace filtered by tag or search query.
 func (a *App) enterArchiveWithTerm(term service.WordCloudTerm) {
-	a.CaptureDialOpen = false
+	a.closeOrbDials()
 	a.ActiveSpace = SpaceArchive
 	a.ArchiveMode = ArchiveCards
 	a.ArchiveScroll.Y = 0
@@ -321,7 +333,7 @@ func (a *App) TriggerGlobeCaptureRipple(node domain.IdeaNode) {
 
 // openNodeDetail opens the selected node in Detail Sheet (phone) or Archive Master-Detail split (desktop).
 func (a *App) openNodeDetail(c *ui.Context, id string) {
-	a.CaptureDialOpen = false
+	a.closeOrbDials()
 	a.SelectNode(id)
 	phone := true
 	if c != nil {

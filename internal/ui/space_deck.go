@@ -132,7 +132,7 @@ func (a *App) renderSpaceDeck(c *ui.Context, pal SurfacePalette) {
 		}
 		dragging := track.Dragging() || deck.ScrollPulling
 		if dragging {
-			a.CaptureDialOpen = false
+			a.closeOrbDials()
 			activeDist := pullDist
 			if a.ActiveSpace == SpaceArchive {
 				activeDist = pushDist
@@ -153,7 +153,7 @@ func (a *App) renderSpaceDeck(c *ui.Context, pal SurfacePalette) {
 			}
 			if next != a.ActiveSpace {
 				mygo.Haptics.Selection()
-				a.CaptureDialOpen = false
+				a.closeOrbDials()
 				a.ActiveSpace = next
 				deck.LastSpace = next
 				c.AnimationFrame()
@@ -182,6 +182,14 @@ func (a *App) renderSpaceDeck(c *ui.Context, pal SurfacePalette) {
 				})
 			}
 		})
+
+		archiveProgress := float32(0)
+		if h > 0 {
+			archiveProgress = max(float32(0), min(float32(1), (shownY+h)/h))
+		} else if a.ActiveSpace == SpaceArchive {
+			archiveProgress = 1
+		}
+		a.renderFloatingOrbDial(c, pal, archiveProgress)
 	})
 }
 
@@ -245,7 +253,7 @@ func (a *App) handleSpaceBoundaryScroll(ev ui.InputEvent, target Space, atBounda
 	}
 
 	if target == SpaceArchive && a.ActiveSpace == SpaceDashboard && dy < 0 {
-		a.CaptureDialOpen = false
+		a.closeOrbDials()
 		deck.ScrollPulling = true
 		deck.ScrollFrom = SpaceDashboard
 		deck.ScrollVelY = 0
@@ -300,7 +308,7 @@ func (a *App) commitSpaceScrollPull(h float32) {
 
 	if next != a.ActiveSpace {
 		mygo.Haptics.Selection()
-		a.CaptureDialOpen = false
+		a.closeOrbDials()
 		a.ActiveSpace = next
 		deck.LastSpace = next
 	}
