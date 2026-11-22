@@ -84,28 +84,35 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette, padX, pul
 		pullLabel = "继续下拉打开思维宫殿"
 	}
 
-	pillBg := pal.Card.Alpha(0.75)
+	pillBg := pal.Card
+	pillBorder := pal.Border.Alpha(0.75)
 	pillFg := pal.InkSecondary
-	grabberCol := pal.InkMuted.Alpha(0.28 + 0.35*progress)
+	grabberCol := pal.InkMuted.Alpha(0.45 * progress)
 	if ready {
-		pillBg = ColorVermilion.Alpha(0.12)
+		pillBg = ColorVermilion.Alpha(0.10)
+		pillBorder = ColorVermilion.Alpha(0.35)
 		pillFg = ColorVermilion
-		grabberCol = ColorVermilion.Alpha(0.75)
+		grabberCol = ColorVermilion.Alpha(0.80)
 	}
 
-	headerCol := ui.Column(c).Key("dash_top_pull_header").FillWidth().Padding(6, padX, 8, padX).Gap(6)
+	headerCol := ui.Column(c).Key("dash_top_pull_header").FillWidth().Padding(11, padX, 8, padX).Gap(5)
 	if pullDist > 0.5 {
 		headerCol.BorderWidth(1, 0, 0, 0).BorderColor(pal.Border.Alpha(0.6))
 	}
 	headerCol.Children(func() {
-		// Subtle centered pull-down grabber bar signaling the upper Mind Palace floor.
-		ui.Box(c).Width(34 + 12*progress).Height(3.5).Radius(2).
-			Background(grabberCol).AlignSelf(ui.Center)
+		// Only surface the pull-down damping bar once the user actively drags downward,
+		// so at rest the Dashboard doesn't look like a half-open bottom sheet.
+		if pullDist > 2.0 {
+			ui.Box(c).Width(32 + 14*progress).Height(3.5).Radius(2).
+				Background(grabberCol).AlignSelf(ui.Center)
+		}
 
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(gap).Children(func() {
 			portal := ui.ButtonBase(c).Key("dash_enter_archive").
-				Padding(6, 11).Radius(999).
-				Background(pillBg).Cursor(ui.CursorPointer).
+				Padding(6, 12).Radius(RadiusPill).
+				Background(pillBg).Border(1, pillBorder).
+				Shadow(0, 1, 4, 0, ui.RGBA(18, 22, 33, 0.03)).
+				Cursor(ui.CursorPointer).
 				Shrink(1).MinWidth(0).
 				Label("进入思维宫殿")
 			mobile.Ink(portal)
@@ -114,9 +121,9 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette, padX, pul
 				a.enterArchiveWithTag("")
 			}).Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
-					ui.Icon(c, IconChevronDown).Size(13, 13).TextColor(pillFg).Shrink(0)
+					ui.Icon(c, IconChevronDown).Size(14, 14).TextColor(pillFg).Shrink(0)
 					ui.Text(c, pullLabel).
-						FontSize(11.5).FontWeight(600).TextColor(pillFg).SingleLine().MinWidth(0)
+						FontSize(FontMeta).FontWeight(600).TextColor(pillFg).SingleLine().MinWidth(0)
 				})
 			})
 
@@ -158,56 +165,55 @@ func (a *App) renderDashboardHeroRow(c *ui.Context, pal SurfacePalette, phone bo
 	digest := a.DashboardDigest
 	winW, _ := c.Size()
 
-	rightW := float32(124)
+	rightW := float32(126)
 	if !phone {
 		rightW = 168
 	} else if winW > 0 && winW < 380 {
-		rightW = 112
+		rightW = 114
 	}
 
 	ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Stretch).Children(func() {
-		// Left card: AI Persona Insight (borderless soft-shadow sheet, no inner badge box)
-		ui.Column(c).Grow(1).Basis(0).Padding(14).Gap(8).Radius(16).
-			Background(pal.Card).
-			Shadow(0, 2, 10, 0, ui.RGBA(18, 22, 33, 0.04)).
-			Children(func() {
-				ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Box(c).Size(6, 6).Radius(3).Background(ColorSuccessInk).Shrink(0)
-						ui.Text(c, "AI 灵感画像").FontSize(11).FontWeight(700).TextColor(ColorSuccessInk).SingleLine()
-					})
-					if a.Deps.AI != nil && a.Deps.AI.Configured() {
-						if GhostIconAction(c, "dash_spark_refresh", IconRefresh, "刷新洞察", false).
-							Size(22, 22).Clicked() {
-							a.RunAsync("正在刷新灵感看板…", func(ctx context.Context) error {
-								spark, err := a.Deps.Incubate.SuggestShowcaseSpark(ctx)
-								if err != nil {
-									return err
-								}
-								a.Dispatch(func() { a.ShowcaseSpark = spark })
-								return nil
-							})
-						}
-					}
+		// Left card: AI Persona Insight harmonized with Vermilion & Obsidian tokens
+		StyleSurfaceCard(
+			ui.Column(c).Grow(1).Basis(0).Padding(14, 15).Gap(8),
+			pal,
+		).Children(func() {
+			ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					ui.Box(c).Size(6, 6).Radius(3).Background(ColorVermilion).Shrink(0)
+					ui.Text(c, "AI 灵感画像").FontSize(FontCaption).FontWeight(700).TextColor(ColorVermilion).SingleLine()
 				})
-
-				ui.Text(c, digest.PersonaHeadline).FontSize(16).Bold().LineHeight(1.28).
-					TextColor(pal.Ink).MaxLines(2)
-
-				summaryText := digest.PersonaSummary
-				if strings.TrimSpace(a.ShowcaseSpark) != "" {
-					summaryText = a.ShowcaseSpark
+				if a.Deps.AI != nil && a.Deps.AI.Configured() {
+					if GhostIconAction(c, "dash_spark_refresh", IconRefresh, "刷新洞察", false).
+						Size(24, 24).Clicked() {
+						a.RunAsync("正在刷新灵感看板…", func(ctx context.Context) error {
+							spark, err := a.Deps.Incubate.SuggestShowcaseSpark(ctx)
+							if err != nil {
+								return err
+							}
+							a.Dispatch(func() { a.ShowcaseSpark = spark })
+							return nil
+						})
+					}
 				}
-				ui.Text(c, summaryText).FontSize(12).LineHeight(1.48).
-					TextColor(pal.InkSecondary).MaxLines(3)
 			})
 
-		// Right card: Pulse-style Weekly Metric & Sparkline
-		metricBtn := ui.ButtonBase(c).Key("dash_metric_tile").
-			Width(rightW).Shrink(0).Padding(14).Radius(16).
-			Background(pal.Card).
-			Shadow(0, 2, 10, 0, ui.RGBA(18, 22, 33, 0.04)).
-			Cursor(ui.CursorPointer).Label("打开思维宫殿")
+			ui.Text(c, digest.PersonaHeadline).FontSize(FontCardTitle).Bold().LineHeight(1.32).
+				TextColor(pal.Ink).MaxLines(2)
+
+			summaryText := digest.PersonaSummary
+			if strings.TrimSpace(a.ShowcaseSpark) != "" {
+				summaryText = a.ShowcaseSpark
+			}
+			ui.Text(c, summaryText).FontSize(FontMeta).LineHeight(1.48).
+				TextColor(pal.InkSecondary).MaxLines(3)
+		})
+
+		// Right card: Weekly Metric & Sparkline harmonized with Ink + Vermilion live dot
+		metricBtn := StyleSurfaceCard(
+			ui.ButtonBase(c).Key("dash_metric_tile").Width(rightW).Shrink(0).Padding(14),
+			pal,
+		).Cursor(ui.CursorPointer).Label("打开思维宫殿")
 		mobile.Ink(metricBtn)
 		metricBtn.OnClick(func() {
 			mygo.Haptics.Selection()
@@ -215,27 +221,27 @@ func (a *App) renderDashboardHeroRow(c *ui.Context, pal SurfacePalette, phone bo
 		}).Children(func() {
 			ui.Column(c).Fill().Justify(ui.SpaceBetween).Gap(6).Children(func() {
 				ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "本周积累").FontSize(11).FontWeight(600).TextColor(pal.InkMuted).SingleLine()
-					ui.Box(c).Size(6, 6).Radius(3).Background(ColorSuccessInk).Shrink(0)
+					ui.Text(c, "本周积累").FontSize(FontCaption).FontWeight(600).TextColor(pal.InkMuted).SingleLine()
+					ui.Box(c).Size(6, 6).Radius(3).Background(ColorVermilion.Alpha(0.75)).Shrink(0)
 				})
 
 				ui.Row(c).FillWidth().AlignItems(ui.End).Gap(4).Children(func() {
 					ui.Text(c, fmt.Sprintf("%02d", digest.TotalNodes)).
-						FontSize(28).Bold().FontFeatures("tnum").TextColor(pal.Ink).SingleLine()
+						FontSize(FontMetric).Bold().FontFeatures("tnum").TextColor(pal.Ink).SingleLine()
 					ui.Textf(c, "篇 / %d 条", digest.TotalEvidences).
-						FontSize(10.5).Padding(0, 0, 4, 0).TextColor(pal.InkMuted).SingleLine().MinWidth(0)
+						FontSize(FontCaption).Padding(0, 0, 4, 0).TextColor(pal.InkMuted).SingleLine().MinWidth(0)
 				})
 
 				ptsNorm := digest.Sparkline
 				ui.Box(c).FillWidth().Height(26).Draw(func(p *ui.Painter, r ui.Rect) {
-					drawDashboardSparkline(p, r, ptsNorm, ColorSuccessInk)
+					drawDashboardSparkline(p, r, ptsNorm, pal.Ink.Alpha(0.72), ColorVermilion)
 				})
 			})
 		})
 	})
 }
 
-func drawDashboardSparkline(p *ui.Painter, r ui.Rect, values []float32, strokeCol ui.Color) {
+func drawDashboardSparkline(p *ui.Painter, r ui.Rect, values []float32, strokeCol, tipCol ui.Color) {
 	if p == nil || r.W < 12 || r.H < 8 || len(values) < 2 {
 		return
 	}
@@ -249,60 +255,67 @@ func drawDashboardSparkline(p *ui.Painter, r ui.Rect, values []float32, strokeCo
 		y := r.Y + r.H*(1.0-clamped)
 		pts[i] = [2]float32{x, y}
 	}
-	p.StrokePolyline(pts, 2.0, strokeCol)
+	p.StrokePolyline(pts, 1.8, strokeCol)
 	last := pts[len(pts)-1]
 	var dot ui.Path
-	dot.Circle(last[0], last[1], 2.5)
-	p.FillPath(&dot, strokeCol)
+	dot.Circle(last[0], last[1], 2.6)
+	p.FillPath(&dot, tipCol)
 }
 
 func (a *App) renderDashboardCluesCard(c *ui.Context, pal SurfacePalette) {
 	clues := a.DashboardDigest.Clues
+	badgeCol := pal.InkMuted
+	badgeBg := pal.SoftPanel
+	if len(clues) > 0 {
+		badgeCol = ColorVermilion
+		badgeBg = ColorDangerSoft
+	}
 
-	ui.Column(c).FillWidth().Padding(15, 16).Gap(6).Radius(16).
-		Background(pal.Card).
-		Shadow(0, 2, 10, 0, ui.RGBA(18, 22, 33, 0.04)).
-		Children(func() {
-			ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Padding(0, 0, 4, 0).Children(func() {
-				ui.Text(c, "串联与待深化追问").FontSize(13.5).Bold().TextColor(pal.Ink)
-				ui.Textf(c, "%d 条新线索", len(clues)).FontSize(11).FontWeight(600).
-					FontFeatures("tnum").TextColor(ui.Hex("#D97706"))
-			})
-
-			if len(clues) == 0 {
-				ui.Text(c, "暂无新线索，记录更多想法或点击右上角「灵感串联」试试。").
-					FontSize(12).TextColor(pal.InkSecondary).Padding(4, 0)
-				return
-			}
-
-			for i, clue := range clues {
-				cl := clue
-				orbPal := ColorsForTheme(cl.Theme)
-				if i > 0 {
-					ui.Box(c).FillWidth().Height(1).Background(pal.Border.Alpha(0.55))
-				}
-				rowBtn := ui.ButtonBase(c).Key(fmt.Sprintf("dash_clue_%d_%s", i, cl.Kind)).
-					FillWidth().Padding(9, 2).Radius(8).
-					Background(ui.Transparent).Cursor(ui.CursorPointer).Label(cl.Text)
-				mobile.Ink(rowBtn)
-				rowBtn.OnClick(func() {
-					mygo.Haptics.Selection()
-					if cl.Kind == "sleep" {
-						a.SleepModalOpen = true
-						return
-					}
-					if cl.NodeID != "" {
-						a.openNodeDetail(c, cl.NodeID)
-					}
-				}).Children(func() {
-					ui.Row(c).FillWidth().Gap(9).AlignItems(ui.Center).Children(func() {
-						ui.Icon(c, SVGForIconKey(cl.IconKey)).Size(15, 15).TextColor(orbPal.BadgeText).Shrink(0)
-						ui.Text(c, cl.Text).FontSize(12.5).TextColor(pal.Ink).Grow(1).MinWidth(0).SingleLine()
-						ui.Icon(c, IconChevronRight).Size(13, 13).TextColor(pal.InkMuted).Shrink(0)
-					})
-				})
-			}
+	StyleSurfaceCard(
+		ui.Column(c).FillWidth().Padding(14, 16).Gap(6),
+		pal,
+	).Children(func() {
+		ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Padding(0, 0, 4, 0).Children(func() {
+			ui.Text(c, "串联与待深化追问").FontSize(FontBody).Bold().TextColor(pal.Ink)
+			ui.Textf(c, "%d 条新线索", len(clues)).FontSize(FontCaption).FontWeight(600).
+				FontFeatures("tnum").Padding(2, 8).Radius(RadiusPill).
+				Background(badgeBg).TextColor(badgeCol)
 		})
+
+		if len(clues) == 0 {
+			ui.Text(c, "暂无新线索，记录更多想法或点击右上角「灵感串联」试试。").
+				FontSize(FontMeta).TextColor(pal.InkSecondary).Padding(4, 0)
+			return
+		}
+
+		for i, clue := range clues {
+			cl := clue
+			orbPal := ColorsForTheme(cl.Theme)
+			if i > 0 {
+				ui.Box(c).FillWidth().Height(1).Background(pal.Border.Alpha(0.55))
+			}
+			rowBtn := ui.ButtonBase(c).Key(fmt.Sprintf("dash_clue_%d_%s", i, cl.Kind)).
+				FillWidth().Padding(9, 2).Radius(RadiusControl).
+				Background(ui.Transparent).Cursor(ui.CursorPointer).Label(cl.Text)
+			mobile.Ink(rowBtn)
+			rowBtn.OnClick(func() {
+				mygo.Haptics.Selection()
+				if cl.Kind == "sleep" {
+					a.SleepModalOpen = true
+					return
+				}
+				if cl.NodeID != "" {
+					a.openNodeDetail(c, cl.NodeID)
+				}
+			}).Children(func() {
+				ui.Row(c).FillWidth().Gap(9).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, SVGForIconKey(cl.IconKey)).Size(16, 16).TextColor(orbPal.BadgeText).Shrink(0)
+					ui.Text(c, cl.Text).FontSize(FontBody).TextColor(pal.Ink).Grow(1).MinWidth(0).SingleLine()
+					ui.Icon(c, IconChevronRight).Size(14, 14).TextColor(pal.InkMuted).Shrink(0)
+				})
+			})
+		}
+	})
 }
 
 func trimText(s string, maxRunes int) string {

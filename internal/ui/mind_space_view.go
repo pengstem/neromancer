@@ -64,41 +64,36 @@ func (a *App) renderArchiveHeader(c *ui.Context, pal SurfacePalette, phone bool)
 		padX = 18
 	}
 
-	ui.Row(c).FillWidth().Padding(13, padX, 9, padX).Gap(8).AlignItems(ui.Center).Background(pal.Canvas).Children(func() {
-		ui.Row(c).Gap(6).AlignItems(ui.Baseline).Shrink(1).MinWidth(0).Children(func() {
-			ui.Text(c, "思维宫殿").FontSize(19).Bold().TextColor(pal.Ink).SingleLine()
-			ui.Textf(c, "%d", len(a.Nodes)).FontSize(12).FontWeight(600).
-				FontFeatures("tnum").TextColor(pal.InkMuted).SingleLine()
+	ui.Row(c).FillWidth().Padding(12, padX, 8, padX).Gap(8).AlignItems(ui.Center).Background(pal.Canvas).Children(func() {
+		ui.Row(c).Gap(7).AlignItems(ui.Center).Shrink(1).MinWidth(0).Children(func() {
+			ui.Text(c, "思维宫殿").FontSize(FontTitle).Bold().TextColor(pal.Ink).SingleLine()
+			ui.Textf(c, "%d", len(a.Nodes)).FontSize(FontCaption).FontWeight(600).
+				FontFeatures("tnum").Padding(2, 7).Radius(RadiusPill).
+				Background(pal.Card).Border(1, pal.Border.Alpha(0.65)).
+				TextColor(pal.InkSecondary).SingleLine()
 		})
 
 		ui.Spacer(c).Grow(1)
 
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-			searchBtn := ui.ButtonBase(c).Key("archive_search_btn").
-				Size(30, 30).Radius(8).Center().
-				Background(ui.Transparent).Cursor(ui.CursorPointer).Label("搜索宫殿")
-			mobile.Ink(searchBtn)
-			searchBtn.OnClick(func() {
+			if GhostIconAction(c, "archive_search_btn", IconSearch, "搜索宫殿", a.ArchiveSearchOpen).
+				Tooltip("搜索宫殿").Clicked() {
 				mygo.Haptics.Selection()
 				a.ArchiveSearchOpen = !a.ArchiveSearchOpen
-			}).Children(func() {
-				icCol := pal.InkMuted
-				if a.ArchiveSearchOpen {
-					icCol = pal.Ink
-				}
-				ui.Icon(c, IconSearch).Size(15.5, 15.5).TextColor(icCol)
-			})
+			}
 
-			importBtn := ui.ButtonBase(c).Key("archive_import_btn").
-				Size(30, 30).Radius(8).Center().
-				Background(ui.Transparent).Cursor(ui.CursorPointer).Label("导入备份")
-			mobile.Ink(importBtn)
-			importBtn.OnClick(func() {
+			if GhostIconAction(c, "archive_import_btn", IconUpload, "导入备份", false).
+				Tooltip("导入备份").Clicked() {
 				mygo.Haptics.Light()
 				a.importCapsuleAsync()
-			}).Children(func() {
-				ui.Icon(c, IconUpload).Size(15, 15).TextColor(pal.InkMuted)
-			})
+			}
+
+			if GhostIconAction(c, "archive_quick_add_btn", IconPlus, "随手记一笔", false).
+				Tooltip("随手记一笔").Clicked() {
+				mygo.Haptics.Light()
+				a.closeOrbDials()
+				a.CaptureModalOpen = true
+			}
 		})
 	})
 }
@@ -157,27 +152,7 @@ func (a *App) renderArchiveTitleAndTabs(c *ui.Context, pal SurfacePalette, phone
 
 	ui.Column(c).FillWidth().Padding(2, padX, 8, padX).Gap(8).Children(func() {
 		if showSearch {
-			ui.Row(c).FillWidth().Padding(8, 12).Gap(8).AlignItems(ui.Center).
-				Radius(12).Background(pal.Card).
-				Shadow(0, 2, 8, 0, ui.RGBA(18, 22, 33, 0.04)).
-				Role(ui.RoleSearch).
-				Children(func() {
-					ui.Icon(c, IconSearch).Size(14, 14).TextColor(pal.InkMuted).Shrink(0)
-					ui.TextInputBase(c, &a.SearchQuery).
-						Placeholder("搜索想法、内容或主题…").
-						PlaceholderColor(pal.InkMuted).
-						TextColor(pal.Ink).
-						FontSize(13).
-						Label("搜索想法").
-						Search().
-						Grow(1).MinWidth(0)
-					if q != "" {
-						if GhostIconAction(c, "arch_search_clear", IconClose, "清空搜索", false).
-							Size(24, 24).Clicked() {
-							a.SearchQuery = ""
-						}
-					}
-				})
+			RenderSearchBar(c, pal, "arch_search", "搜索想法、内容或主题…", "搜索想法", &a.SearchQuery)
 		}
 
 		maxInline := 3
@@ -216,20 +191,23 @@ func (a *App) renderArchiveTitleAndTabs(c *ui.Context, pal SurfacePalette, phone
 					moreBg = pal.Card
 				}
 				moreBtn := ui.ButtonBase(c).Key("arch_more_tags_btn").
-					Padding(5, 8).Radius(999).Gap(4).AlignItems(ui.Center).Shrink(0).
+					Padding(5, 8).Radius(RadiusPill).Gap(4).AlignItems(ui.Center).Shrink(0).
 					Background(moreBg).Cursor(ui.CursorPointer).
 					Label("展开全部主题")
+				if a.ArchiveTagDrawerOpen {
+					moreBtn.Border(1, pal.Border.Alpha(0.75))
+				}
 				mobile.Ink(moreBtn)
 				moreBtn.OnClick(func() {
 					mygo.Haptics.Selection()
 					a.ArchiveTagDrawerOpen = !a.ArchiveTagDrawerOpen
 				}).Children(func() {
-					ui.Icon(c, IconSliders).Size(12.5, 12.5).TextColor(moreFg)
+					ui.Icon(c, IconSliders).Size(13, 13).TextColor(moreFg)
 					if overflowCount > 0 {
-						ui.Textf(c, "+%d", overflowCount).FontSize(11.5).FontWeight(600).
+						ui.Textf(c, "+%d", overflowCount).FontSize(FontMeta).FontWeight(600).
 							FontFeatures("tnum").TextColor(moreFg).SingleLine()
 					} else {
-						ui.Text(c, "收起").FontSize(11.5).FontWeight(600).TextColor(moreFg).SingleLine()
+						ui.Text(c, "收起").FontSize(FontMeta).FontWeight(600).TextColor(moreFg).SingleLine()
 					}
 				})
 			}
@@ -305,63 +283,66 @@ func (a *App) renderArchiveTagDrawer(c *ui.Context, pal SurfacePalette, tags []s
 	if searchSuggestOnly && len(tags) > 10 {
 		tags = tags[:10]
 	}
-	ui.Column(c).Key("arch_tag_drawer").FillWidth().Padding(11, 13).Gap(8).Radius(14).
-		Background(pal.Card).
-		Shadow(0, 3, 12, 0, ui.RGBA(18, 22, 33, 0.05)).
-		Children(func() {
-			ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-				headerText := fmt.Sprintf("全部主题 · 共 %d 个", len(a.Tags))
-				if searchSuggestOnly {
-					headerText = "匹配的主题"
-				}
-				ui.Text(c, headerText).FontSize(11).FontWeight(600).TextColor(pal.InkMuted)
-				if a.ArchiveTagDrawerOpen {
-					if GhostTextAction(c, "arch_close_tag_drawer", IconChevronUp, "收起主题").Clicked() {
-						a.ArchiveTagDrawerOpen = false
-					}
-				}
-			})
-
-			if len(tags) == 0 {
-				ui.Text(c, "没有匹配的主题词").FontSize(12).TextColor(pal.InkMuted)
-				return
+	StyleSurfaceCard(
+		ui.Column(c).Key("arch_tag_drawer").FillWidth().Padding(11, 13).Gap(8),
+		pal,
+	).Children(func() {
+		ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
+			headerText := fmt.Sprintf("全部主题 · 共 %d 个", len(a.Tags))
+			if searchSuggestOnly {
+				headerText = "匹配的主题"
 			}
+			ui.Text(c, headerText).FontSize(FontCaption).FontWeight(600).TextColor(pal.InkMuted)
+			if a.ArchiveTagDrawerOpen {
+				if GhostTextAction(c, "arch_close_tag_drawer", IconChevronUp, "收起主题").Clicked() {
+					a.ArchiveTagDrawerOpen = false
+				}
+			}
+		})
 
-			ui.Scroll(c).FillWidth().MaxHeight(184).Children(func() {
-				ui.Row(c).FillWidth().Wrap().Gap(6).Children(func() {
-					for _, tc := range tags {
-						tName := tc.Tag
-						tCount := tc.Count
-						active := cleanTagLabel(a.ActiveTag) == tName
-						bg := pal.SoftPanel
-						fg := pal.Ink
-						cntCol := pal.InkMuted
-						if active {
-							bg = pal.Ink
-							fg = pal.Card
-							cntCol = pal.Card.Alpha(0.72)
-						}
+		if len(tags) == 0 {
+			ui.Text(c, "没有匹配的主题词").FontSize(FontMeta).TextColor(pal.InkMuted)
+			return
+		}
 
-						chip := ui.ButtonBase(c).Key("drawer_tag_" + tName).
-							Padding(4.5, 10).Radius(999).Gap(4).AlignItems(ui.Center).
-							Background(bg).Cursor(ui.CursorPointer).Label(tName)
-						mobile.Ink(chip)
-						chip.OnClick(func() {
-							mygo.Haptics.Selection()
-							if active {
-								a.ActiveTag = ""
-							} else {
-								a.ActiveTag = tName
-							}
-							a.ArchiveTagDrawerOpen = false
-						}).Children(func() {
-							ui.Text(c, tName).FontSize(11.5).FontWeight(500).TextColor(fg).SingleLine()
-							ui.Textf(c, "%d", tCount).FontSize(10).FontFeatures("tnum").TextColor(cntCol).SingleLine()
-						})
+		ui.Scroll(c).FillWidth().MaxHeight(184).Children(func() {
+			ui.Row(c).FillWidth().Wrap().Gap(6).Children(func() {
+				for _, tc := range tags {
+					tName := tc.Tag
+					tCount := tc.Count
+					active := cleanTagLabel(a.ActiveTag) == tName
+					bg := pal.SoftPanel
+					fg := pal.Ink
+					cntCol := pal.InkMuted
+					if active {
+						bg = pal.Ink
+						fg = pal.Card
+						cntCol = pal.Card.Alpha(0.72)
 					}
-				})
+
+					chip := ui.ButtonBase(c).Key("drawer_tag_" + tName).
+						Padding(5, 10).Radius(RadiusPill).Gap(4).AlignItems(ui.Center).
+						Background(bg).Cursor(ui.CursorPointer).Label(tName)
+					if !active {
+						chip.Border(1, pal.Border.Alpha(0.65))
+					}
+					mobile.Ink(chip)
+					chip.OnClick(func() {
+						mygo.Haptics.Selection()
+						if active {
+							a.ActiveTag = ""
+						} else {
+							a.ActiveTag = tName
+						}
+						a.ArchiveTagDrawerOpen = false
+					}).Children(func() {
+						ui.Text(c, tName).FontSize(FontMeta).FontWeight(500).TextColor(fg).SingleLine()
+						ui.Textf(c, "%d", tCount).FontSize(FontCaption).FontFeatures("tnum").TextColor(cntCol).SingleLine()
+					})
+				}
 			})
 		})
+	})
 }
 
 func (a *App) renderTopFilterCapsule(c *ui.Context, pal SurfacePalette, key, label string, active bool, onTap func()) {
@@ -375,17 +356,17 @@ func (a *App) renderTopFilterCapsule(c *ui.Context, pal SurfacePalette, key, lab
 	}
 
 	pill := ui.ButtonBase(c).Key(key).
-		Padding(5, 11).Radius(999).Center().Shrink(0).
+		Padding(5, 11).Radius(RadiusPill).Center().Shrink(0).
 		Background(bg).Cursor(ui.CursorPointer).Label(label)
 	if !active {
-		pill.Shadow(0, 1, 4, 0, ui.RGBA(18, 22, 33, 0.03))
+		pill.Border(1, pal.Border.Alpha(0.65)).Shadow(0, 1, 4, 0, ui.RGBA(18, 22, 33, 0.025))
 	}
 	mobile.Ink(pill)
 	pill.OnClick(func() {
 		mygo.Haptics.Selection()
 		onTap()
 	}).Children(func() {
-		ui.Text(c, label).FontSize(11.5).FontWeight(weight).TextColor(fg).SingleLine()
+		ui.Text(c, label).FontSize(FontMeta).FontWeight(weight).TextColor(fg).SingleLine()
 	})
 }
 
@@ -401,19 +382,20 @@ func (a *App) renderArchiveBody(c *ui.Context, pal SurfacePalette, phone bool) {
 func (a *App) renderArchiveCards(c *ui.Context, pal SurfacePalette, phone bool) {
 	filtered := a.filteredArchiveNodes()
 
-	ui.Scroll(c).Key("archive_cards_scroll").TrackScroll(&a.ArchiveScroll).Grow(1).FillWidth().
-		HandleInput(func(ev ui.InputEvent) bool {
-			return a.handleSpaceBoundaryScroll(ev, SpaceDashboard, a.ArchiveScroll.Y >= a.ArchiveScroll.MaxY-1)
-		}).
-		Children(func() {
-			ui.Column(c).FillWidth().Padding(6, 16, 68, 16).Gap(10).Children(func() {
-				if len(filtered) == 0 {
-					ui.Column(c).FillWidth().Padding(28, 16).Center().Gap(10).Radius(16).
-						Background(pal.Card).
-						Shadow(0, 2, 10, 0, ui.RGBA(18, 22, 33, 0.04)).
-						Children(func() {
-							ui.Icon(c, IconBulb).Size(22, 22).TextColor(pal.InkMuted)
-							ui.Text(c, "还没有匹配的灵感记录").FontSize(14).FontWeight(600).TextColor(pal.InkSecondary)
+	ui.Box(c).Key("archive_cards_wrap").Grow(1).FillWidth().MinHeight(0).Children(func() {
+		ui.Scroll(c).Key("archive_cards_scroll").TrackScroll(&a.ArchiveScroll).Fill().
+			HandleInput(func(ev ui.InputEvent) bool {
+				return a.handleSpaceBoundaryScroll(ev, SpaceDashboard, a.ArchiveScroll.Y >= a.ArchiveScroll.MaxY-1)
+			}).
+			Children(func() {
+				ui.Column(c).FillWidth().Padding(6, 16, 86, 16).Gap(10).Children(func() {
+					if len(filtered) == 0 {
+						StyleSurfaceCard(
+							ui.Column(c).FillWidth().Padding(28, 16).Center().Gap(10),
+							pal,
+						).Children(func() {
+							ui.Icon(c, IconBulb).Size(20, 20).TextColor(pal.InkMuted)
+							ui.Text(c, "还没有匹配的灵感记录").FontSize(FontBody).FontWeight(600).TextColor(pal.InkSecondary)
 							if a.ActiveTag != "" || strings.TrimSpace(a.SearchQuery) != "" {
 								if PillAction(c, "arch_reset_filter", IconClose, "查看全部", false).Clicked() {
 									a.ActiveTag = ""
@@ -421,86 +403,87 @@ func (a *App) renderArchiveCards(c *ui.Context, pal SurfacePalette, phone bool) 
 								}
 							}
 						})
-					return
-				}
-
-				for _, node := range filtered {
-					n := node
-					orbPal := ColorsForTheme(n.Theme)
-					isSel := !phone && n.ID == a.SelectedID
-					evCount := max(1, a.EvCounts[n.ID])
-
-					cardBg := pal.Card
-					if isSel {
-						cardBg = orbPal.CardTint
+						return
 					}
 
-					card := ui.ButtonBase(c).Key("arch_card_"+n.ID).FillWidth().
-						Padding(15, 16).Radius(16).
-						Background(cardBg).
-						Shadow(0, 2, 10, 0, ui.RGBA(18, 22, 33, 0.04)).
-						Cursor(ui.CursorPointer).Label(n.Title)
-					if isSel {
-						card.Border(1.5, orbPal.Mid.Alpha(0.45))
-					}
-					mobile.Ink(card)
+					for _, node := range filtered {
+						n := node
+						orbPal := ColorsForTheme(n.Theme)
+						isSel := !phone && n.ID == a.SelectedID
+						evCount := max(1, a.EvCounts[n.ID])
 
-					card.OnClick(func() {
-						mygo.Haptics.Selection()
-						a.SelectNode(n.ID)
-						if phone {
-							a.DetailSheetOpen = true
+						card := StyleSurfaceCard(
+							ui.ButtonBase(c).Key("arch_card_"+n.ID).FillWidth().Padding(15, 16),
+							pal,
+						).Cursor(ui.CursorPointer).Label(n.Title)
+						if isSel {
+							card.Background(orbPal.CardTint).Border(1.5, orbPal.Mid.Alpha(0.50))
 						}
-					}).Children(func() {
-						ui.Column(c).FillWidth().Gap(8).Children(func() {
-							// Header: Naked auto-matched semantic SVG Icon + Title
-							ui.Row(c).FillWidth().Gap(8.5).AlignItems(ui.Start).Children(func() {
-								ui.Box(c).Padding(2.5, 0, 0, 0).Shrink(0).Children(func() {
-									ui.Icon(c, SVGForIconKey(domain.ResolveIdeaIconKey(n))).
-										Size(17.5, 17.5).TextColor(orbPal.BadgeText)
+						mobile.Ink(card)
+
+						card.OnClick(func() {
+							mygo.Haptics.Selection()
+							a.SelectNode(n.ID)
+							if phone {
+								a.DetailSheetOpen = true
+							}
+						}).Children(func() {
+							ui.Column(c).FillWidth().Gap(8).Children(func() {
+								ui.Row(c).FillWidth().Gap(8.5).AlignItems(ui.Start).Children(func() {
+									ui.Box(c).Padding(2.5, 0, 0, 0).Shrink(0).Children(func() {
+										ui.Icon(c, SVGForIconKey(domain.ResolveIdeaIconKey(n))).
+											Size(18, 18).TextColor(orbPal.BadgeText)
+									})
+									ui.Text(c, n.Title).FontSize(FontCardTitle).Bold().LineHeight(1.34).
+										TextColor(pal.Ink).Grow(1).MinWidth(0).MaxLines(2)
 								})
-								ui.Text(c, n.Title).FontSize(15).Bold().LineHeight(1.34).
-									TextColor(pal.Ink).Grow(1).MinWidth(0).MaxLines(2)
-							})
 
-							// Clean 2-line spoken prose excerpt
-							ui.Text(c, n.ConversationalSummary).
-								FontSize(13).LineHeight(1.54).TextColor(pal.InkSecondary).MaxLines(2)
+								ui.Text(c, n.ConversationalSummary).
+									FontSize(FontBody).LineHeight(1.54).TextColor(pal.InkSecondary).MaxLines(2)
 
-							// Footer: Tonal soft-tint tag chips WITHOUT '#' + Tabular date/evidence count
-							ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Gap(8).Padding(2, 0, 0, 0).Children(func() {
-								ui.Row(c).Gap(6).AlignItems(ui.Center).Grow(1).MinWidth(0).Wrap().Children(func() {
-									shown := 0
-									for _, rawTag := range n.Tags {
-										tg := cleanTagLabel(rawTag)
-										if tg == "" {
-											continue
+								ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Gap(8).Padding(2, 0, 0, 0).Children(func() {
+									ui.Row(c).Gap(6).AlignItems(ui.Center).Grow(1).MinWidth(0).Wrap().Children(func() {
+										shown := 0
+										for _, rawTag := range n.Tags {
+											tg := cleanTagLabel(rawTag)
+											if tg == "" {
+												continue
+											}
+											ui.Box(c).Padding(2.5, 8).Radius(RadiusTag).
+												Background(orbPal.BadgeBg.Alpha(0.82)).
+												Children(func() {
+													ui.Text(c, tg).FontSize(FontCaption).FontWeight(500).
+														TextColor(orbPal.BadgeText).SingleLine()
+												})
+											shown++
+											if shown >= 3 {
+												break
+											}
 										}
-										ui.Box(c).Padding(2.5, 8).Radius(6).
-											Background(orbPal.BadgeBg.Alpha(0.78)).
-											Children(func() {
-												ui.Text(c, tg).FontSize(11).FontWeight(500).
-													TextColor(orbPal.BadgeText).SingleLine()
-											})
-										shown++
-										if shown >= 3 {
-											break
-										}
+									})
+
+									metaNote := fmt.Sprintf("%s · %d 条", formatChineseShortDate(n.UpdatedAt), evCount)
+									if strings.TrimSpace(n.ActionPlanMD) != "" {
+										metaNote = fmt.Sprintf("含方案 · %s · %d 条", formatChineseShortDate(n.UpdatedAt), evCount)
 									}
+									ui.Text(c, metaNote).FontSize(FontCaption).FontFeatures("tnum").
+										TextColor(pal.InkMuted).SingleLine().Shrink(0)
 								})
-
-								metaNote := fmt.Sprintf("%s · %d 条", formatChineseShortDate(n.UpdatedAt), evCount)
-								if strings.TrimSpace(n.ActionPlanMD) != "" {
-									metaNote = fmt.Sprintf("含方案 · %s · %d 条", formatChineseShortDate(n.UpdatedAt), evCount)
-								}
-								ui.Text(c, metaNote).FontSize(11).FontFeatures("tnum").
-									TextColor(pal.InkMuted).SingleLine().Shrink(0)
 							})
 						})
-					})
-				}
+					}
+				})
 			})
-		})
+
+		// Soft bottom canvas fade so cards gently recede above the bottom bar and view-switcher orb
+		ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).Height(42).PassThrough().
+			LinearGradient(ui.LinearGradient{
+				From:  pal.Canvas.Alpha(0.0),
+				To:    pal.Canvas,
+				Angle: 180,
+				Oklab: true,
+			})
+	})
 }
 
 func (a *App) filteredArchiveNodes() []domain.IdeaNode {

@@ -449,8 +449,6 @@ func (a *App) RootView(c *ui.Context) {
 
 	ui.Themed(c, NeromancerTheme()).Fill().Children(func() {
 		ui.Column(c).Fill().Background(pal.Canvas).Children(func() {
-			a.renderBanner(c, pal)
-
 			if a.QuickOrbOverlayOpen {
 				a.renderInAppQuickOrbBar(c, pal)
 			}
@@ -458,23 +456,41 @@ func (a *App) RootView(c *ui.Context) {
 			a.renderSpaceDeck(c, pal)
 		})
 
-		// Mobile-friendly bottom sheets & drawers
-		a.renderDetailSheet(c)
-		a.renderCaptureModal(c)
-		a.renderEvidenceModal(c)
-		a.renderSettingsModal(c)
-		a.renderSleepModal(c)
-		a.renderShareModal(c)
+		// Non-shifting floating capsule toast overlay
+		a.renderBanner(c, pal)
+
+		// Mobile-friendly bottom sheets & drawers (key-isolated so sheet-on-sheet deferral stays deterministic)
+		ui.Box(c).Key("modal_slot_detail").Children(func() { a.renderDetailSheet(c) })
+		ui.Box(c).Key("modal_slot_capture").Children(func() { a.renderCaptureModal(c) })
+		ui.Box(c).Key("modal_slot_evidence").Children(func() { a.renderEvidenceModal(c) })
+		ui.Box(c).Key("modal_slot_settings").Children(func() { a.renderSettingsModal(c) })
+		ui.Box(c).Key("modal_slot_sleep").Children(func() { a.renderSleepModal(c) })
+		ui.Box(c).Key("modal_slot_share").Children(func() { a.renderShareModal(c) })
 	})
 }
 
 func (a *App) renderBanner(c *ui.Context, pal SurfacePalette) {
+	_, topSafe, bottomSafe, _ := c.SafeArea()
+	phone := a.isPhoneLayout(c)
+	posOverlay := func(el ui.Element) ui.Element {
+		el.Absolute().Left(16).Right(16).ZIndex(90).AlignItems(ui.Center).PassThrough()
+		if phone {
+			return el.Top(52 + topSafe)
+		}
+		return el.Bottom(48 + bottomSafe)
+	}
+
 	if a.BusyTask != "" && a.BannerText == "" {
-		ui.Row(c).FillWidth().Padding(8, 12).Margin(10, 16, 0, 16).Gap(8).AlignItems(ui.Center).
-			Radius(10).Background(pal.Card).Border(1, pal.Border).Children(func() {
-			ui.Spinner(c).Size(14, 14)
-			ui.Text(c, a.BusyTask).FontSize(12).TextColor(pal.InkSecondary).Grow(1)
-		})
+		posOverlay(ui.Column(c).Key("banner_busy_overlay")).
+			Children(func() {
+				ui.Row(c).Padding(7, 14).Gap(8).AlignItems(ui.Center).MaxWidth(420).
+					Radius(RadiusPill).Background(pal.Card).Border(1, pal.Border).
+					Shadow(0, 6, 18, 0, ui.RGBA(18, 22, 33, 0.08)).
+					Children(func() {
+						ui.Spinner(c).Size(14, 14)
+						ui.Text(c, a.BusyTask).FontSize(FontMeta).FontWeight(500).TextColor(pal.Ink).SingleLine()
+					})
+			})
 		return
 	}
 	if a.BannerText == "" {
@@ -482,40 +498,45 @@ func (a *App) renderBanner(c *ui.Context, pal SurfacePalette) {
 	}
 
 	th := c.Theme()
-	bg := th.Success.Alpha(0.10)
-	border := th.Success.Alpha(0.32)
-	fg := th.Success
+	dotCol := th.Success
+	border := pal.Border
+	fg := pal.Ink
 	if a.BannerIsErr {
-		bg = th.Danger.Alpha(0.10)
+		dotCol = th.Danger
 		border = th.Danger.Alpha(0.35)
 		fg = th.Danger
 	}
-	ui.Row(c).FillWidth().Padding(8, 12).Margin(10, 16, 0, 16).Gap(8).AlignItems(ui.Center).
-		Radius(10).Background(bg).Border(1, border).
+	posOverlay(ui.Column(c).Key("banner_toast_overlay")).
 		Children(func() {
-			ui.Text(c, a.BannerText).FontSize(12).TextColor(fg).Grow(1).MinWidth(0)
-			if a.BannerShowAI {
-				if PillAction(c, "banner_ai_cfg", IconSliders, "去设置", true).Clicked() {
-					a.SettingsModalOpen = true
-				}
-			}
-			if GhostIconAction(c, "banner_close", IconClose, "关闭提示", false).Clicked() {
-				a.BannerText = ""
-				a.BannerShowAI = false
-			}
+			ui.Row(c).Padding(6, 8, 6, 13).Gap(8).AlignItems(ui.Center).MaxWidth(440).
+				Radius(RadiusPill).Background(pal.Card).Border(1, border).
+				Shadow(0, 6, 18, 0, ui.RGBA(18, 22, 33, 0.09)).
+				Children(func() {
+					ui.Box(c).Size(7, 7).Radius(4).Background(dotCol).Shrink(0)
+					ui.Text(c, a.BannerText).FontSize(FontMeta).FontWeight(500).TextColor(fg).SingleLine()
+					if a.BannerShowAI {
+						if PillAction(c, "banner_ai_cfg", IconSliders, "去设置", true).Clicked() {
+							a.SettingsModalOpen = true
+						}
+					}
+					if GhostIconAction(c, "banner_close", IconClose, "关闭提示", false).Size(24, 24).Clicked() {
+						a.BannerText = ""
+						a.BannerShowAI = false
+					}
+				})
 		})
 }
 
 func (a *App) renderInAppQuickOrbBar(c *ui.Context, pal SurfacePalette) {
-	ui.Row(c).FillWidth().Padding(8, 12).Margin(10, 16, 0, 16).Gap(8).AlignItems(ui.Center).
-		Radius(14).Background(pal.Card).
-		Shadow(0, 2, 10, 0, ui.RGBA(18, 22, 33, 0.05)).
-		Children(func() {
-			ui.Icon(c, IconBulb).Size(17, 17).TextColor(ColorsForTheme(domain.ThemeAmber).BadgeText).Shrink(0)
-			ui.TextInput(c, &a.FloatQuickText).Placeholder("随手记一句…").Grow(1)
-			if PillAction(c, "quick_orb_submit", IconPlus, "记下来", true).Clicked() && strings.TrimSpace(a.FloatQuickText) != "" {
-				a.submitFloatingCapture("")
-				a.QuickOrbOverlayOpen = false
-			}
-		})
+	StyleSurfaceCard(
+		ui.Row(c).FillWidth().Padding(8, 12).Margin(10, 16, 0, 16).Gap(8).AlignItems(ui.Center),
+		pal,
+	).Children(func() {
+		ui.Icon(c, IconBulb).Size(16, 16).TextColor(ColorVermilion).Shrink(0)
+		ui.TextInput(c, &a.FloatQuickText).Placeholder("随手记一句…").Background(pal.SoftPanel).Grow(1)
+		if PillAction(c, "quick_orb_submit", IconPlus, "记下来", true).Clicked() && strings.TrimSpace(a.FloatQuickText) != "" {
+			a.submitFloatingCapture("")
+			a.QuickOrbOverlayOpen = false
+		}
+	})
 }

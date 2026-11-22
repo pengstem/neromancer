@@ -181,17 +181,22 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 	pts := a.Globe.CachedPts
 	ambientActive := a.stepGlobePhysics(c, terms, pts)
 
-	ui.Column(c).Key("dash_globe_card").FillWidth().Padding(14).Gap(10).Radius(16).
-		Background(pal.Card).
-		Shadow(0, 2, 10, 0, ui.RGBA(18, 22, 33, 0.04)).
-		Children(func() {
-			ui.Text(c, "灵感星云球").FontSize(13.5).Bold().TextColor(pal.Ink).SingleLine()
-
-			if len(terms) == 0 {
-				ui.Text(c, "记下几条想法后，这里会自动浮现你的灵感星云球。").
-					FontSize(12).TextColor(pal.InkSecondary).Padding(8, 0)
-				return
+	StyleSurfaceCard(
+		ui.Column(c).Key("dash_globe_card").FillWidth().Padding(14, 16).Gap(8),
+		pal,
+	).Children(func() {
+		ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "灵感星云球").FontSize(FontBody).Bold().TextColor(pal.Ink).SingleLine()
+			if len(terms) > 0 {
+				ui.Text(c, "拖拽旋转 · 点词筛选").FontSize(FontCaption).TextColor(pal.InkMuted).SingleLine()
 			}
+		})
+
+		if len(terms) == 0 {
+			ui.Text(c, "记下几条想法后，这里会自动浮现你的灵感星云球。").
+				FontSize(FontMeta).TextColor(pal.InkSecondary).Padding(8, 0)
+			return
+		}
 
 			cx := stageW * 0.5
 			cy := stageH * 0.5
@@ -250,11 +255,60 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 				}
 			}
 
-			// Mark foreground words whose center is occluded by a closer foreground word
-			// so hit-testing and accessibility target selection stay strictly consistent.
+			// Zero-alloc 2D soft collision separation among foreground words + backface ghost-bleed suppression.
+			for pass := 0; pass < 2; pass++ {
+				for i := range projected {
+					pt := &projected[i]
+					if pt.Backface {
+						continue
+					}
+					for j := range projected {
+						if j == i || projected[j].Backface || projected[j].RotVec[2] < pt.RotVec[2] {
+							continue
+						}
+						if projected[j].RotVec[2] == pt.RotVec[2] && j > i {
+							continue
+						}
+						o := &projected[j]
+						dx := pt.StageX - o.StageX
+						dy := pt.StageY - o.StageY
+						minW := (pt.Width + o.Width) * 0.44
+						minH := (pt.Height + o.Height) * 0.46
+						ox := minW - float32(math.Abs(float64(dx)))
+						oy := minH - float32(math.Abs(float64(dy)))
+						if ox > 0 && oy > 0 {
+							dirY := float32(1.0)
+							if dy < 0 || (dy == 0 && i%2 == 0) {
+								dirY = -1.0
+							}
+							pushY := oy * 0.58 * dirY
+							pt.StageY = max(cy-hitR*0.86, min(cy+hitR*0.86, pt.StageY+pushY))
+							dirX := float32(1.0)
+							if dx < 0 {
+								dirX = -1.0
+							}
+							pt.StageX = max(cx-hitR*0.88, min(cx+hitR*0.88, pt.StageX+ox*0.16*dirX))
+						}
+					}
+				}
+			}
+
+			// Mark foreground words whose center is still occluded by a closer foreground word,
+			// and dim backface words that sit directly behind a foreground word so they never smudge text.
 			for i := range projected {
 				pt := &projected[i]
 				if pt.Backface {
+					for j := range projected {
+						if projected[j].Backface {
+							continue
+						}
+						o := &projected[j]
+						if float32(math.Abs(float64(pt.StageX-o.StageX))) < (pt.Width+o.Width)*0.45 &&
+							float32(math.Abs(float64(pt.StageY-o.StageY))) < (pt.Height+o.Height)*0.48 {
+							pt.Opacity *= 0.24
+							break
+						}
+					}
 					continue
 				}
 				for j := range projected {
@@ -308,23 +362,31 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 					}
 				}).
 				Children(func() {
-					// Cached still backdrop layer: renders the soft radial mist into a GPU bitmap once,
-					// avoiding per-frame radial gradient evaluation while words rotate above it.
+					// Cached still backdrop layer: renders the soft radial mist and orbital rings into a GPU bitmap once,
+					// avoiding per-frame evaluation while words rotate above it.
 					ui.Box(c).Key("dash_globe_mist").
 						Absolute().Left(0).Top(0).Right(0).Bottom(0).
 						IgnoreInput(true).PassThrough().Cache().
 						Draw(func(p *ui.Painter, r ui.Rect) {
 							p.FillRadialGradient(r, ui.RadialGradient{
 								Center: ui.Point{X: 0.5, Y: 0.5},
-								Radius: min(r.W, r.H) * 0.56,
+								Radius: min(r.W, r.H) * 0.54,
 								Oklab:  true,
 								Stops: []ui.GradientStop{
-									{Color: leadPal.Mid.Alpha(0.085), At: 0},
-									{Color: leadPal.Core.Alpha(0.055), At: 0.45},
-									{Color: ui.Hex("#CBD5E1").Alpha(0.045), At: 0.78},
-									{Color: leadPal.Core.Alpha(0.0), At: 1},
+									{Color: leadPal.Mid.Alpha(0.075), At: 0},
+									{Color: leadPal.Core.Alpha(0.055), At: 0.48},
+									{Color: pal.Border.Alpha(0.18), At: 0.80},
+									{Color: pal.Card.Alpha(0.0), At: 1},
 								},
 							}, 0)
+
+							mcx, mcy := r.X+r.W*0.5, r.Y+r.H*0.5
+							outerR := min(r.W, r.H) * 0.43
+							var outerRing, innerRing ui.Path
+							outerRing.Circle(mcx, mcy, outerR)
+							innerRing.Circle(mcx, mcy, outerR*0.60)
+							p.StrokePath(&outerRing, 1.0, pal.Border.Alpha(0.52))
+							p.StrokePath(&innerRing, 1.0, pal.Border.Alpha(0.32))
 						})
 
 					// Single stationary circular hit-zone owns all pointer/touch dragging so words crossing
@@ -385,16 +447,16 @@ func resolveGlobeWordColor(pal SurfacePalette, orbPal OrbColorSet, pt *globeProj
 	case 0:
 		fg = orbPal.Rim
 	case 1:
-		fg = orbPal.BadgeText.Mix(pal.InkSecondary, 0.32)
+		fg = orbPal.BadgeText.Mix(pal.InkSecondary, 0.28)
 	default:
-		fg = ui.Hex("#7E8594")
+		fg = pal.InkSecondary
 	}
 	if z := pt.RotVec[2]; z < -0.08 {
 		mist := float32((-0.08 - z) / 0.92)
 		if mist > 1 {
 			mist = 1
 		}
-		fg = fg.Mix(ui.Hex("#94A3B8"), mist*0.42)
+		fg = fg.Mix(pal.InkMuted, mist*0.48)
 	}
 	return fg.Alpha(pt.Opacity)
 }

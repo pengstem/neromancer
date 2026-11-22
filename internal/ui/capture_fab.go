@@ -96,7 +96,6 @@ func (a *App) renderFloatingOrbDial(c *ui.Context, pal SurfacePalette, archivePr
 	_, _, bottomSafe, _ := c.SafeArea()
 	t := max(float32(0), min(float32(1), archiveProgress))
 	inArchive := t >= 0.5
-	appleBlue := ui.Hex("#007AFF")
 
 	if t < 0.99 {
 		ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).Height(68 + bottomSafe).
@@ -136,7 +135,7 @@ func (a *App) renderFloatingOrbDial(c *ui.Context, pal SurfacePalette, archivePr
 				key:      "arch_orb_graph",
 				label:    "脉络",
 				icon:     IconConstellation,
-				iconTint: appleBlue,
+				iconTint: pal.Ink,
 				active:   a.ArchiveMode == ArchiveGraph,
 				onSelect: func() {
 					a.ArchiveMode = ArchiveGraph
@@ -146,7 +145,7 @@ func (a *App) renderFloatingOrbDial(c *ui.Context, pal SurfacePalette, archivePr
 				key:      "arch_orb_cards",
 				label:    "卡片",
 				icon:     IconCards,
-				iconTint: appleBlue,
+				iconTint: pal.Ink,
 				active:   a.ArchiveMode == ArchiveCards,
 				onSelect: func() {
 					a.ArchiveMode = ArchiveCards
@@ -216,22 +215,13 @@ func (a *App) renderFloatingOrbDial(c *ui.Context, pal SurfacePalette, archivePr
 		})
 	}
 
-	winW, _ := c.Size()
 	dashRight := float32(18)
 	archRight := float32(18)
 	dashBottom := float32(20)
 	archBottom := float32(46)
 	if !phone {
 		dashRight = 28
-		leftW := float32(420)
-		if a.ArchiveMode == ArchiveGraph {
-			leftW = 440
-		}
-		if winW > leftW {
-			archRight = winW - leftW + 18
-		} else {
-			archRight = 28
-		}
+		archRight = 28
 		dashBottom = 26
 		archBottom = 48
 	}
@@ -257,25 +247,32 @@ func (a *App) renderFloatingOrbDial(c *ui.Context, pal SurfacePalette, archivePr
 					}
 					scale := orbBtn.Spring("orb_scale", scaleTarget)
 
-					bg := ui.RGBA(255, 255, 255, 0.94)
-					borderCol := ui.Hex("#E1E4EC")
+					bg := pal.Card.Alpha(0.95)
+					borderCol := pal.Border
 					icCol := item.iconTint
 					txtCol := pal.Ink
-					shadowCol := ui.RGBA(18, 22, 33, 0.11)
+					shadowCol := ui.RGBA(18, 22, 33, 0.10)
 					shadowBlur := float32(16)
 
+					hoverAccent := ColorVermilion
+					hoverShadow := ColorVermilion.Alpha(0.28)
+					if inArchive {
+						hoverAccent = pal.Ink
+						hoverShadow = ui.RGBA(20, 21, 25, 0.22)
+					}
+
 					if isHovered {
-						bg = appleBlue
-						borderCol = appleBlue
-						icCol = ui.Hex("#FFFFFF")
-						txtCol = ui.Hex("#FFFFFF")
-						shadowCol = ui.RGBA(0, 122, 255, 0.30)
+						bg = hoverAccent
+						borderCol = hoverAccent
+						icCol = pal.Card
+						txtCol = pal.Card
+						shadowCol = hoverShadow
 						shadowBlur = 20
 					} else if item.active && d.HoverIdx < 0 {
-						bg = ui.Hex("#EDF4FF")
-						borderCol = appleBlue.Alpha(0.45)
-						icCol = appleBlue
-						txtCol = appleBlue
+						bg = pal.SoftPanel
+						borderCol = pal.Ink.Alpha(0.32)
+						icCol = pal.Ink
+						txtCol = pal.Ink
 					}
 
 					orbBtn.Size(orbDialItemSize, orbDialItemSize).Radius(orbDialItemSize * 0.5).Center().
@@ -295,8 +292,8 @@ func (a *App) renderFloatingOrbDial(c *ui.Context, pal SurfacePalette, archivePr
 						item.onSelect()
 					}).Children(func() {
 						ui.Column(c).Center().Gap(1.5).Children(func() {
-							ui.Icon(c, item.icon).Size(17, 17).TextColor(icCol)
-							ui.Text(c, item.label).FontSize(9.5).Bold().TextColor(txtCol).SingleLine()
+							ui.Icon(c, item.icon).Size(16, 16).TextColor(icCol)
+							ui.Text(c, item.label).FontSize(10).Bold().TextColor(txtCol).SingleLine()
 						})
 					})
 				}
@@ -306,21 +303,21 @@ func (a *App) renderFloatingOrbDial(c *ui.Context, pal SurfacePalette, archivePr
 
 			dashBg := ColorVermilion
 			if d.Pressing || sealBtn.Pressed() {
-				dashBg = ui.Hex("#A63922")
+				dashBg = ColorVermilionAct
 			} else if sealBtn.Hovered() {
-				dashBg = ui.Hex("#B8422A")
+				dashBg = ColorVermilionHov
 			}
 
-			archBg := ui.RGBA(255, 255, 255, 0.95)
+			archBg := pal.Card.Alpha(0.96)
 			if d.Pressing || sealBtn.Pressed() {
-				archBg = ui.Hex("#EEF2F8")
+				archBg = ColorSecondaryHov
 			} else if sealBtn.Hovered() {
-				archBg = ui.Hex("#F7F9FC")
+				archBg = pal.SoftPanel
 			}
 
 			bg := lerpColor(dashBg, archBg, t)
-			borderCol := lerpColor(ui.RGBA(255, 255, 255, 0.20), ui.Hex("#DCE0EA"), t)
-			shadowCol := lerpColor(ui.RGBA(200, 75, 49, 0.34), ui.RGBA(18, 22, 33, 0.13), t)
+			borderCol := lerpColor(ui.RGBA(255, 255, 255, 0.22), pal.Border, t)
+			shadowCol := lerpColor(ColorVermilion.Alpha(0.32), ui.RGBA(18, 22, 33, 0.11), t)
 
 			pressTarget := float32(1.0)
 			if d.Pressing || sealBtn.Pressed() {
@@ -488,9 +485,9 @@ func (a *App) renderFloatingOrbDial(c *ui.Context, pal SurfacePalette, archivePr
 					archScale := 0.72 + 0.28*t
 					ui.Box(c).Absolute().Fill().Center().Opacity(t).Scale(archScale, archScale).PassThrough().Children(func() {
 						if dialOpen && inArchive {
-							ui.Icon(c, IconPlus).Size(21, 21).TextColor(pal.InkSecondary).Rotate(45)
+							ui.Icon(c, IconPlus).Size(20, 20).TextColor(pal.InkSecondary).Rotate(45)
 						} else {
-							ui.Icon(c, archIcon).Size(21, 21).TextColor(appleBlue)
+							ui.Icon(c, archIcon).Size(20, 20).TextColor(pal.Ink)
 						}
 					})
 				}
@@ -508,11 +505,14 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 	}, func() {
 		ui.Scroll(c).Fill().Children(func() {
 			ui.Column(c).FillWidth().Padding(14, 18, 28, 18).Gap(14).Children(func() {
-				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, "记一条灵感").FontSize(18).Bold().TextColor(pal.Ink).Grow(1)
-					if GhostIconAction(c, "capture_close", IconClose, "收起", false).Clicked() {
+				RenderSheetHeader(c, pal, SheetHeaderProps{
+					Icon:       IconQuill,
+					Title:      "记一条灵感",
+					CloseKey:   "capture_close",
+					CloseLabel: "收起",
+					OnClose: func() {
 						a.CaptureModalOpen = false
-					}
+					},
 				})
 
 				a.renderCaptureModalityTabs(c, pal)
@@ -525,13 +525,14 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 					a.renderImageCaptureBar(c, pal)
 				}
 
-				ui.Box(c).FillWidth().Padding(12, 14).Radius(14).
-					Background(pal.SoftPanel).
+				ui.Box(c).FillWidth().Padding(12, 14).Radius(RadiusCard).
+					Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.65)).
 					Children(func() {
 						ta := ui.TextAreaBase(c, &a.CaptureText).
 							Placeholder("想到什么直接记下来…").
 							PlaceholderColor(pal.InkMuted).
 							TextColor(pal.Ink).
+							FontSize(FontBody).
 							Label("灵感内容").
 							Height(96).FillWidth()
 						if a.CaptureModalityIdx == 1 {
@@ -547,12 +548,12 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 				if len(a.CaptureRecallHits) > 0 && strings.TrimSpace(a.CaptureText) != "" {
 					hit := a.CaptureRecallHits[0]
 					hitPal := ColorsForTheme(hit.Node.Theme)
-					ui.Row(c).FillWidth().Padding(10, 12).Gap(9).AlignItems(ui.Center).Radius(12).
-						Background(pal.SoftPanel).Children(func() {
+					ui.Row(c).FillWidth().Padding(10, 12).Gap(9).AlignItems(ui.Center).Radius(RadiusControl).
+						Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.65)).Children(func() {
 						ui.Icon(c, SVGForIconKey(domain.ResolveIdeaIconKey(hit.Node))).
 							Size(16, 16).TextColor(hitPal.BadgeText).Shrink(0)
 						ui.Textf(c, "之前记过：《%s》", hit.Node.Title).
-							FontSize(12.5).Bold().TextColor(pal.Ink).Grow(1).MinWidth(0).MaxLines(1)
+							FontSize(FontMeta).Bold().TextColor(pal.Ink).Grow(1).MinWidth(0).MaxLines(1)
 						if PillAction(c, "capture_merge_hit", IconCheck, "合并进去", false).Clicked() {
 							a.submitQuickCapture(hit.Node.ID, false)
 						}
@@ -565,23 +566,23 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 					}
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 						ui.Icon(c, IconSpark).Size(14, 14).TextColor(pal.InkSecondary)
-						ui.Text(c, "AI 自动整理").FontSize(12.5).TextColor(pal.InkSecondary)
+						ui.Text(c, "AI 自动整理").FontSize(FontMeta).TextColor(pal.InkSecondary)
 						ui.Switch(c, &a.CaptureAutoOrg).Label("AI 自动整理")
 					})
 				})
 
 				if a.CaptureShowScene {
 					ui.Column(c).FillWidth().Gap(8).Children(func() {
-						ui.TextInput(c, &a.CaptureSceneLoc).Placeholder("地点，如：花店门口").FillWidth()
+						ui.TextInput(c, &a.CaptureSceneLoc).Placeholder("地点，如：花店门口").Background(pal.SoftPanel).FillWidth()
 						ui.Row(c).FillWidth().Gap(8).Children(func() {
-							ui.TextInput(c, &a.CaptureSceneMood).Placeholder("心情或天气").Grow(1).MinWidth(0)
-							ui.TextInput(c, &a.CaptureSceneMusic).Placeholder("在听的歌").Grow(1).MinWidth(0)
+							ui.TextInput(c, &a.CaptureSceneMood).Placeholder("心情或天气").Background(pal.SoftPanel).Grow(1).MinWidth(0)
+							ui.TextInput(c, &a.CaptureSceneMusic).Placeholder("在听的歌").Background(pal.SoftPanel).Grow(1).MinWidth(0)
 						})
 					})
 				}
 
 				submitBtn := ui.ButtonBase(c).Key("capture_submit").
-					FillWidth().Padding(12, 16).Radius(12).Center().
+					FillWidth().Padding(12, 16).Radius(RadiusControl).Center().
 					Background(pal.Ink).TextColor(pal.Card).
 					Cursor(ui.CursorPointer).Label("记下来")
 				mobile.Ink(submitBtn)
@@ -589,8 +590,8 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 					a.submitQuickCapture("", a.CaptureAutoOrg)
 				}).Children(func() {
 					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Icon(c, IconCheck).Size(15, 15).TextColor(pal.Card)
-						ui.Text(c, "记下来").FontSize(14).Bold().TextColor(pal.Card).SingleLine()
+						ui.Icon(c, IconCheck).Size(16, 16).TextColor(pal.Card)
+						ui.Text(c, "记下来").FontSize(FontBody).Bold().TextColor(pal.Card).SingleLine()
 					})
 				})
 			})
@@ -609,14 +610,15 @@ func (a *App) renderCaptureModalityTabs(c *ui.Context, pal SurfacePalette) {
 	}
 
 	seg := ui.SegmentedBase(c, &a.CaptureModalityIdx, len(modes))
-	seg.Track.FillWidth().Padding(4).Gap(4).Radius(999).Background(pal.SoftPanel).
+	seg.Track.FillWidth().Padding(4).Gap(4).Radius(RadiusPill).Background(pal.SoftPanel).
+		Border(1, pal.Border.Alpha(0.65)).
 		Label("记录方式").Children(func() {
 		for i, m := range modes {
 			active := i == a.CaptureModalityIdx
-			s := seg.Segment(i).Padding(7, 12).Radius(999).Gap(6).
+			s := seg.Segment(i).Padding(7, 12).Radius(RadiusPill).Gap(6).
 				AlignItems(ui.Center).Justify(ui.Center).Cursor(ui.CursorPointer).Label(m.label)
 			if active {
-				s.Background(pal.Card).Shadow(0, 1, 4, 0, ui.RGBA(0, 0, 0, 0.08))
+				s.Background(pal.Card).Border(1, pal.Border.Alpha(0.65)).Shadow(0, 1, 4, 0, ui.RGBA(0, 0, 0, 0.06))
 			}
 			mobile.Ink(s)
 			fg := pal.InkSecondary
@@ -625,7 +627,7 @@ func (a *App) renderCaptureModalityTabs(c *ui.Context, pal SurfacePalette) {
 			}
 			s.Children(func() {
 				ui.Icon(c, m.icon).Size(14, 14).TextColor(fg)
-				ui.Text(c, m.label).FontSize(13).Bold().TextColor(fg).SingleLine()
+				ui.Text(c, m.label).FontSize(FontMeta).Bold().TextColor(fg).SingleLine()
 			})
 		}
 	}).FillEqually()
@@ -636,23 +638,23 @@ func (a *App) renderVoiceCaptureBar(c *ui.Context) {
 	phase := a.Phase(c)
 	recording := a.Deps.Media != nil && a.Deps.Media.IsRecording()
 
-	energy := float32(0.42)
+	energy := float32(0.32)
 	btnLabel := "开始录音"
 	caption := "点一下开始说话"
-	pulseColor := ColorSuccessInk
+	pulseColor := ColorVermilion.Alpha(0.55)
 	btnBg := pal.Ink
 	centerIcon := IconMic
 	if recording {
 		energy = 1.0
 		btnLabel = "结束录音"
 		caption = "正在听你说，点一下结束"
-		pulseColor = ColorDangerInk
-		btnBg = ColorDangerInk
+		pulseColor = ColorVermilion
+		btnBg = ColorVermilion
 		centerIcon = IconStop
 	}
 
-	ui.Column(c).FillWidth().Padding(14, 12).Gap(8).Center().Radius(18).
-		Background(pal.SoftPanel).Border(1, pal.Border).Children(func() {
+	ui.Column(c).FillWidth().Padding(14, 12).Gap(8).Center().Radius(RadiusCard).
+		Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.75)).Children(func() {
 		ui.Box(c).Size(156, 142).Center().
 			Draw(func(p *ui.Painter, r ui.Rect) {
 				DrawVoicePulse(p, r, phase, energy, pulseColor)
@@ -660,7 +662,7 @@ func (a *App) renderVoiceCaptureBar(c *ui.Context) {
 			Children(func() {
 				micBtn := ui.ButtonBase(c).Key("voice_centerpiece_btn").Size(84, 84).Radius(42).
 					Center().Background(btnBg).
-					Shadow(0, 8, 20, 0, ui.RGBA(20, 21, 25, 0.18)).
+					Shadow(0, 8, 20, 0, ui.RGBA(20, 21, 25, 0.16)).
 					Cursor(ui.CursorPointer).Label(btnLabel)
 				mobile.Ink(micBtn)
 				micBtn.Children(func() {
@@ -672,16 +674,16 @@ func (a *App) renderVoiceCaptureBar(c *ui.Context) {
 				}
 			})
 
-		ui.Text(c, caption).FontSize(12.5).Bold().TextColor(pal.InkSecondary)
+		ui.Text(c, caption).FontSize(FontMeta).Bold().TextColor(pal.InkSecondary)
 
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Center().Children(func() {
 			if PillAction(c, "pick_audio_btn", IconArchive, "导入录音", false).Clicked() {
 				a.pickFileAsync(true)
 			}
 			if a.CaptureAudioPath != "" {
-				ui.Row(c).Gap(4).Padding(4, 8).Radius(999).Background(ColorSuccessSoft).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Gap(4).Padding(4, 8).Radius(RadiusPill).Background(ColorSuccessSoft).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, IconCheck).Size(12, 12).TextColor(ColorSuccessInk)
-					ui.Text(c, "已添加录音").FontSize(11.5).Bold().TextColor(ColorSuccessInk)
+					ui.Text(c, "已添加录音").FontSize(FontCaption).Bold().TextColor(ColorSuccessInk)
 					if GhostIconAction(c, "clear_audio_btn", IconClose, "清除录音", false).
 						Size(20, 20).Clicked() {
 						a.CaptureAudioPath = ""

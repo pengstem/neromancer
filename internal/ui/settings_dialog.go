@@ -28,26 +28,22 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 		Label:      "DeepSeek 设置",
 	}, func() {
 		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).FillWidth().Padding(18).Gap(14).Children(func() {
-				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
-					ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
-						ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
-							ui.Icon(c, IconSliders).Size(17, 17).TextColor(pal.Accent).Shrink(0)
-							ui.Text(c, "DeepSeek 设置").FontSize(18).Bold().TextColor(pal.Ink)
-							a.renderConnectionBadge(c, pal, configured)
-						})
-						ui.Text(c, "填好 API Key 即可使用语音转文字、自动整理与追问").
-							FontSize(11.5).TextColor(pal.InkSecondary)
-					})
-					if GhostIconAction(c, "settings_close", IconClose, "关闭", false).Clicked() {
+			ui.Column(c).FillWidth().Padding(14, 18, 22, 18).Gap(14).Children(func() {
+				RenderSheetHeader(c, pal, SheetHeaderProps{
+					Icon:     IconSliders,
+					Title:    "DeepSeek 设置",
+					Subtitle: "填好 API Key 即可使用语音转文字、自动整理与追问",
+					ExtraBadge: func() {
+						a.renderConnectionBadge(c, pal, configured)
+					},
+					CloseKey: "settings_close",
+					OnClose: func() {
 						a.SettingsModalOpen = false
-					}
+					},
 				})
 
-				ui.Box(c).FillWidth().Height(1).Background(pal.Border)
-
 				ui.Column(c).FillWidth().Gap(6).Children(func() {
-					ui.Text(c, "服务地址").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary)
+					ui.Text(c, "服务地址").FontSize(FontMeta).FontWeight(600).TextColor(pal.InkSecondary)
 					ui.TextInput(c, &a.SettingsBaseURL).
 						Placeholder("https://api.deepseek.com").
 						Label("服务地址").
@@ -56,7 +52,7 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 				})
 
 				ui.Column(c).FillWidth().Gap(6).Children(func() {
-					ui.Text(c, "API Key").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary)
+					ui.Text(c, "API Key").FontSize(FontMeta).FontWeight(600).TextColor(pal.InkSecondary)
 					ui.TextInput(c, &a.SettingsAPIKey).
 						Password().
 						Placeholder("sk-...").
@@ -66,7 +62,7 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 				})
 
 				ui.Column(c).FillWidth().Gap(6).Children(func() {
-					ui.Text(c, "选用模型").FontSize(12).FontWeight(600).TextColor(pal.InkSecondary)
+					ui.Text(c, "选用模型").FontSize(FontMeta).FontWeight(600).TextColor(pal.InkSecondary)
 					modelOpts := make([]selectOption, 0, len(deepSeekModelChoices))
 					for _, m := range deepSeekModelChoices {
 						lbl := m
@@ -90,10 +86,10 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 						stBorder = c.Theme().Danger.Alpha(0.32)
 						stFg = c.Theme().Danger
 					}
-					ui.Row(c).FillWidth().Padding(10, 12).Radius(10).Gap(8).AlignItems(ui.Center).
+					ui.Row(c).FillWidth().Padding(10, 12).Radius(RadiusControl).Gap(8).AlignItems(ui.Center).
 						Background(stBg).Border(1, stBorder).
 						Children(func() {
-							ui.Text(c, status).FontSize(12).LineHeight(1.45).TextColor(stFg).Grow(1).MinWidth(0)
+							ui.Text(c, status).FontSize(FontMeta).LineHeight(1.45).TextColor(stFg).Grow(1).MinWidth(0)
 						})
 				}
 
@@ -136,10 +132,10 @@ func (a *App) renderConnectionBadge(c *ui.Context, pal SurfacePalette, configure
 		fg = c.Theme().Success
 		text = "已就绪"
 	}
-	ui.Row(c).Padding(3, 8).Gap(5).Radius(999).AlignItems(ui.Center).Shrink(0).
+	ui.Row(c).Padding(3, 8).Gap(5).Radius(RadiusPill).AlignItems(ui.Center).Shrink(0).
 		Background(bg).Children(func() {
 		ui.Box(c).Size(6, 6).Radius(3).Background(dotCol).Shrink(0)
-		ui.Text(c, text).FontSize(10.5).FontWeight(600).TextColor(fg).SingleLine()
+		ui.Text(c, text).FontSize(FontCaption).FontWeight(600).TextColor(fg).SingleLine()
 	})
 }
 
@@ -156,6 +152,10 @@ func (a *App) persistDeepSeekSettings() {
 
 func (a *App) renderSleepModal(c *ui.Context) {
 	pal := a.Palette()
+	badgeTxt := ""
+	if len(a.SleepInsights) > 0 {
+		badgeTxt = fmt.Sprintf("%d 条", len(a.SleepInsights))
+	}
 
 	sheetBg := pal.Card
 	mobile.Sheet(c, &a.SleepModalOpen, mobile.SheetOptions{
@@ -163,20 +163,16 @@ func (a *App) renderSleepModal(c *ui.Context) {
 		Background: &sheetBg,
 		Label:      "灵感串联",
 	}, func() {
-		ui.Column(c).Grow(1).Basis(0).MinHeight(0).FillWidth().Padding(18).Gap(14).Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
-				ui.Row(c).Grow(1).MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, IconMoon).Size(17, 17).TextColor(pal.Accent).Shrink(0)
-					ui.Text(c, "灵感串联").FontSize(18).Bold().TextColor(pal.Ink)
-					if len(a.SleepInsights) > 0 {
-						ui.Text(c, fmt.Sprintf("%d", len(a.SleepInsights))).
-							FontSize(11).FontWeight(600).Padding(2, 7).Radius(999).
-							Background(pal.SoftPanel).TextColor(pal.InkSecondary).Shrink(0)
-					}
-				})
-				if GhostIconAction(c, "sleep_close", IconClose, "关闭", false).Clicked() {
+		ui.Column(c).Grow(1).Basis(0).MinHeight(0).FillWidth().Padding(14, 18, 18, 18).Gap(14).Children(func() {
+			RenderSheetHeader(c, pal, SheetHeaderProps{
+				Icon:      IconMoon,
+				Title:     "灵感串联",
+				BadgeText: badgeTxt,
+				Subtitle:  "跨主题寻找旧想法之间意想不到的联系",
+				CloseKey:  "sleep_close",
+				OnClose: func() {
 					a.SleepModalOpen = false
-				}
+				},
 			})
 
 			if PillAction(c, "sleep_wake", IconSpark, "找找灵感之间的联系", true).FillWidth().Clicked() {
@@ -186,35 +182,33 @@ func (a *App) renderSleepModal(c *ui.Context) {
 				})
 			}
 
-			ui.Box(c).FillWidth().Height(1).Background(pal.Border)
-
 			ui.Scroll(c).Grow(1).Basis(0).MinHeight(0).FillWidth().Children(func() {
 				ui.Column(c).FillWidth().Gap(10).Children(func() {
 					if len(a.SleepInsights) == 0 {
-						ui.Column(c).FillWidth().Padding(28).Center().Gap(8).Radius(14).
-							Background(pal.SoftPanel).Border(1, pal.Border).
+						ui.Column(c).FillWidth().Padding(28).Center().Gap(8).Radius(RadiusCard).
+							Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.75)).
 							Children(func() {
 								ui.Icon(c, IconMoon).Size(20, 20).TextColor(pal.InkMuted)
 								ui.Text(c, "暂时还没有新的串联发现，点上方按钮试试看").
-									FontSize(13).TextColor(pal.InkSecondary).TextAlign(ui.Center)
+									FontSize(FontBody).TextColor(pal.InkSecondary).TextAlign(ui.Center)
 							})
 						return
 					}
 					for _, ins := range a.SleepInsights {
 						item := ins
-						ui.Column(c).Key("sleep_"+item.ID).FillWidth().Padding(15).Gap(10).Radius(14).
-							Background(pal.SoftPanel).Border(1, pal.Border).
+						ui.Column(c).Key("sleep_"+item.ID).FillWidth().Padding(15).Gap(10).Radius(RadiusCard).
+							Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.75)).
 							Children(func() {
-								ui.Text(c, item.Title).FontSize(15.5).Bold().LineHeight(1.35).TextColor(pal.Ink)
-								ui.Text(c, item.SparkSummary).FontSize(13).LineHeight(1.58).TextColor(pal.InkSecondary)
+								ui.Text(c, item.Title).FontSize(FontCardTitle).Bold().LineHeight(1.35).TextColor(pal.Ink)
+								ui.Text(c, item.SparkSummary).FontSize(FontBody).LineHeight(1.58).TextColor(pal.InkSecondary)
 
 								if strings.TrimSpace(item.SuggestedAction) != "" {
 									ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Stretch).
-										Padding(8, 10).Radius(10).Background(pal.Card).
+										Padding(8, 10).Radius(RadiusControl).Background(pal.Card).Border(1, pal.Border.Alpha(0.65)).
 										Children(func() {
-											ui.Box(c).Width(2.5).Radius(2).Background(pal.Accent).Shrink(0)
-											ui.Text(c, item.SuggestedAction).FontSize(12.5).LineHeight(1.48).
-												FontWeight(500).TextColor(pal.Accent).Grow(1).MinWidth(0)
+											ui.Box(c).Width(2.5).Radius(2).Background(ColorVermilion).Shrink(0)
+											ui.Text(c, item.SuggestedAction).FontSize(FontMeta).LineHeight(1.48).
+												FontWeight(500).TextColor(pal.Ink).Grow(1).MinWidth(0)
 										})
 								}
 

@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -126,7 +127,7 @@ func (a *App) exportOrbCapsule(nodeID string) {
 	}
 	mygo.Haptics.Success()
 	a.LastExportedPath = p
-	a.setBanner("已导出灵感备份：" + p)
+	a.setBanner("已导出灵感备份：" + filepath.Base(p))
 }
 
 func (a *App) exportAndMaybeSharePNG(node domain.IdeaNode, openShareSheet bool) {
@@ -142,11 +143,11 @@ func (a *App) exportAndMaybeSharePNG(node domain.IdeaNode, openShareSheet bool) 
 			Text:  fmt.Sprintf("分享一条灵感：《%s》", node.Title),
 			Files: []string{p},
 		}); err != nil {
-			a.setBanner("海报已保存到本地：" + p)
+			a.setBanner(fmt.Sprintf("已保存分享海报：《%s》", node.Title))
 			return
 		}
 	}
-	a.setBanner("已导出分享海报：" + p)
+	a.setBanner(fmt.Sprintf("已导出分享海报：《%s》", node.Title))
 }
 
 func (a *App) renderShareModal(c *ui.Context) {
@@ -164,7 +165,7 @@ func (a *App) renderShareModal(c *ui.Context) {
 
 	sheetBg := pal.Card
 	mobile.Sheet(c, &a.ShareModalOpen, mobile.SheetOptions{
-		Detents:    []float32{0.76, 0.94},
+		Detents:    []float32{0.80, 0.94},
 		Background: &sheetBg,
 		Label:      "分享灵感",
 	}, func() {
@@ -174,16 +175,19 @@ func (a *App) renderShareModal(c *ui.Context) {
 		evCount := a.EvCounts[node.ID]
 
 		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).FillWidth().Padding(18).Gap(14).Children(func() {
-				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, "分享灵感").FontSize(17).Bold().TextColor(pal.Ink).Grow(1).MinWidth(0)
-					if GhostIconAction(c, "share_modal_close", IconClose, "关闭", false).Clicked() {
+			ui.Column(c).FillWidth().Padding(14, 18, 22, 18).Gap(14).Children(func() {
+				RenderSheetHeader(c, pal, SheetHeaderProps{
+					Icon:     IconShare,
+					Title:    "分享灵感",
+					CloseKey: "share_modal_close",
+					OnClose: func() {
 						a.ShareModalOpen = false
-					}
+					},
 				})
 
-				ui.Box(c).FillWidth().Radius(16).
-					Shadow(0, 4, 16, 0, ui.RGBA(18, 22, 33, 0.06)).
+				ui.Box(c).FillWidth().Radius(RadiusCard).
+					Border(1, pal.Border.Alpha(0.75)).
+					Shadow(0, 4, 16, 0, ui.RGBA(18, 22, 33, 0.05)).
 					Children(func() {
 						renderPosterArtCard(c, pal, node, evCount, false)
 					})

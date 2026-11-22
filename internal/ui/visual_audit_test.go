@@ -226,6 +226,9 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if !tt.HasText("思维宫殿") || !tt.HasText("用一个蓝色花瓶养一株郁金香") {
 		t.Fatalf("mind palace cards missing expected labels, texts=%v", tt.Texts())
 	}
+	if _, ok := tt.Find("随手记一笔"); !ok {
+		t.Fatalf("expected quick-add capture trigger \"随手记一笔\" in Mind Palace header")
+	}
 	if tt.HasText("记灵感") {
 		t.Fatalf("expected duplicate archive capture FAB \"记灵感\" to be removed")
 	}
@@ -306,13 +309,16 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	assertAuditNoEmojis(t, "detail_sheet", tt.Texts())
 	maybeSaveAuditPNG(t, auditDir, tt, "ui_detail_sheet.png")
 
-	// 7. Raw Evidence tape with audio waveform bars & immutable tulip quotes
+	// 7. Raw Evidence tape with audio waveform bars & immutable tulip quotes (single-layer sheet, no DetailSheet stacking)
 	if err := tt.Click("原始记录"); err != nil {
 		t.Fatalf("click raw evidence button: %v", err)
 	}
 	settleAudit(tt)
 	if !app.EvidenceModalOpen {
 		t.Fatalf("expected EvidenceModalOpen=true")
+	}
+	if tt.HasText("灵感详情") {
+		t.Fatalf("expected underlying DetailSheet to defer while Raw Evidence sheet is open (no sheet-on-sheet stacking)")
 	}
 	if !tt.HasText("买一盆郁金香放在阳台上养") || !tt.HasText("郁金香的花瓶应该是蓝色的") {
 		t.Fatalf("raw evidence sheet missing immutable tulip quotes, texts=%v", tt.Texts())
@@ -331,13 +337,16 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	}
 	settleAudit(tt)
 
-	// 8. Pure Share Feature inside Detail Sheet (replaces obsolete "漫游" screen)
+	// 8. Pure Share Feature inside Detail Sheet (single-layer sheet, no DetailSheet stacking)
 	if err := tt.Click("分享"); err != nil {
 		t.Fatalf("click share button in detail sheet: %v", err)
 	}
 	settleAudit(tt)
 	if !app.ShareModalOpen {
 		t.Fatalf("expected ShareModalOpen=true after clicking 分享")
+	}
+	if tt.HasText("灵感详情") {
+		t.Fatalf("expected underlying DetailSheet to defer while Share sheet is open (no sheet-on-sheet stacking)")
 	}
 	if !tt.HasText("分享灵感") || !tt.HasText("保存海报") || !tt.HasText("系统分享") {
 		t.Fatalf("share sheet missing expected labels, texts=%v", tt.Texts())
@@ -352,6 +361,9 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		}
 		if app.LastExportedPath == "" {
 			t.Fatalf("expected LastExportedPath to be non-empty")
+		}
+		if strings.Contains(app.BannerText, filepath.Dir(app.LastExportedPath)) {
+			t.Fatalf("expected human-friendly export toast without raw directory path, got %q", app.BannerText)
 		}
 		rawPoster, err := os.ReadFile(app.LastExportedPath)
 		if err != nil {

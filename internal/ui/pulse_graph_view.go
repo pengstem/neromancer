@@ -17,22 +17,19 @@ import (
 	"github.com/pengstem/neromancer/internal/service"
 )
 
-// Apple Inset-Grouped Daylight semantic color tokens for Pulse Graph & AI File Explorer.
+// Harmonized Bento Studio semantic color aliases for Pulse Graph & AI File Explorer.
 var (
-	pulseBgCanvas    = ui.Hex("#F2F3F6")
-	pulseBgStage     = ui.Hex("#FFFFFF")
-	pulseBgElevated  = ui.RGBA(255, 255, 255, 0.95)
-	pulseBgSoft      = ui.Hex("#F7F8FA")
-	pulseBgActiveRow = ui.RGBA(0, 122, 255, 0.09)
-	pulseBorder      = ui.Hex("#E3E5EB")
-	pulseGuideLine   = ui.Hex("#E1E4EE")
-	pulseTextBright  = ui.Hex("#141519")
-	pulseTextPrimary = ui.Hex("#282C34")
-	pulseTextMuted   = ui.Hex("#585C66")
-	pulseTextDim     = ui.Hex("#8B909C")
-	pulseTextSubtle  = ui.Hex("#9AA0AE")
-	pulseAccent      = ui.Hex("#007AFF") // Apple System Blue focus & active indicator
-	pulseEmerald     = ui.Hex("#18795B") // Shared tag node emerald accent
+	pulseBgCanvas    = ColorCanvasBg
+	pulseBgStage     = ColorCardBg
+	pulseBgElevated  = ColorCardBg.Alpha(0.96)
+	pulseBgSoft      = ColorSoftPanel
+	pulseBorder      = ColorBorderSoft
+	pulseGuideLine   = ColorBorderSoft
+	pulseTextBright  = ColorInkPrimary
+	pulseTextPrimary = ColorInkPrimary
+	pulseTextMuted   = ColorInkSecondary
+	pulseTextDim     = ColorInkMuted
+	pulseTextSubtle  = ColorInkMuted
 )
 
 type pulseSimNode struct {
@@ -446,34 +443,10 @@ func (a *App) renderArchivePulseSplit(c *ui.Context, phone bool) {
 }
 
 func (a *App) renderLightPulseSearchBar(c *ui.Context) {
-	q := strings.TrimSpace(a.SearchQuery)
-	ui.Box(c).FillWidth().Padding(2, 14, 6, 14).Background(pulseBgCanvas).
+	pal := a.Palette()
+	ui.Box(c).FillWidth().Padding(2, 14, 6, 14).Background(pal.Canvas).
 		Children(func() {
-			ui.Row(c).FillWidth().Padding(8, 12).Gap(8).Radius(12).AlignItems(ui.Center).
-				Background(pulseBgStage).
-				Shadow(0, 2, 8, 0, ui.RGBA(18, 22, 33, 0.04)).
-				Role(ui.RoleSearch).
-				Children(func() {
-					ui.Icon(c, IconSearch).Size(14, 14).TextColor(pulseTextDim).Shrink(0)
-					ui.TextInputBase(c, &a.SearchQuery).
-						Placeholder("筛选脉络节点与文件夹…").
-						PlaceholderColor(pulseTextDim).
-						TextColor(pulseTextBright).
-						FontSize(13).
-						Label("搜索脉络").
-						Search().
-						Grow(1).MinWidth(0)
-					if q != "" {
-						clr := ui.ButtonBase(c).Key("pulse_search_clear").
-							Size(22, 22).Radius(6).Center().
-							Background(ui.Transparent).Cursor(ui.CursorPointer).Label("清空搜索")
-						clr.OnClick(func() {
-							a.SearchQuery = ""
-						}).Children(func() {
-							ui.Icon(c, IconClose).Size(12.5, 12.5).TextColor(pulseTextMuted)
-						})
-					}
-				})
+			RenderSearchBar(c, pal, "pulse_search", "筛选脉络节点与文件夹…", "搜索脉络", &a.SearchQuery)
 		})
 }
 
@@ -493,10 +466,11 @@ type projectedPulseVertex struct {
 }
 
 func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, estW, stageH float32, phone bool) {
-	stage := ui.Box(c).Key("pulse_graph_stage").FillWidth().Height(stageH).
-		Radius(18).Background(pulseBgStage).Clip().
-		Border(1, pulseBorder.Alpha(0.75)).
-		Shadow(0, 2, 12, 0, ui.RGBA(18, 22, 33, 0.05))
+	pal := a.Palette()
+	stage := StyleSurfaceCard(
+		ui.Box(c).Key("pulse_graph_stage").FillWidth().Height(stageH).Clip(),
+		pal,
+	)
 
 	bounds := stage.Bounds()
 	stageW := bounds.W
@@ -507,22 +481,24 @@ func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, est
 	if len(pg.Nodes) == 0 {
 		stage.Center().Children(func() {
 			ui.Column(c).Center().Gap(8).Padding(24).Children(func() {
-				ui.Icon(c, IconConstellation).Size(22, 22).TextColor(pulseTextDim)
-				ui.Text(c, "还没有匹配的脉络节点").FontSize(13).FontWeight(500).TextColor(pulseTextMuted)
+				ui.Icon(c, IconConstellation).Size(20, 20).TextColor(pal.InkMuted)
+				ui.Text(c, "还没有匹配的脉络节点").FontSize(FontBody).FontWeight(500).TextColor(pal.InkSecondary)
 			})
 		})
 		return
 	}
 
-	// Resolve focused vertex index.
+	// Resolve focused vertex index and harmonize focus color with the focused note's mineral theme.
 	focusIdx := -1
-	focusAccent := pulseAccent
+	focusAccent := ColorVermilion
+	focusSoftBg := ColorDangerSoft
 	if a.Pulse.FocusedTag != "" {
 		tagID := "tag:" + a.Pulse.FocusedTag
 		for i, nd := range pg.Nodes {
 			if nd.ID == tagID {
 				focusIdx = i
-				focusAccent = pulseEmerald
+				focusAccent = ColorVermilion
+				focusSoftBg = ColorDangerSoft
 				break
 			}
 		}
@@ -530,6 +506,11 @@ func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, est
 	if focusIdx < 0 && a.SelectedID != "" {
 		if idx, ok := pg.NoteIndexByID[a.SelectedID]; ok {
 			focusIdx = idx
+			if selIdea, okIdea := a.NodeByID[a.SelectedID]; okIdea {
+				orbSet := ColorsForTheme(selIdea.Theme)
+				focusAccent = orbSet.Mid
+				focusSoftBg = orbSet.BadgeBg
+			}
 		}
 	}
 	neighMap := pg.NeighborsByIdx[focusIdx]
@@ -612,20 +593,21 @@ func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, est
 			p.AnimationFrameRate(30)
 		}
 	}).Children(func() {
-		renderPulsePlainLabels(c, stageW, stageH, zoom, proj)
+		renderPulsePlainLabels(c, stageW, stageH, zoom, proj, focusAccent)
 
-		// Top-right discreet Apple light filter button
+		// Top-right discreet Bento Studio filter button
 		fltBtn := ui.ButtonBase(c).Key("pulse_filter_btn").
-			Absolute().Right(10).Top(10).Size(28, 28).Radius(8).Center().
-			Background(pulseBgSoft).Cursor(ui.CursorPointer).Label("图谱显示设置")
+			Absolute().Right(10).Top(10).Size(30, 30).Radius(RadiusControl).Center().
+			Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.65)).
+			Cursor(ui.CursorPointer).Label("图谱显示设置")
 		mobile.Ink(fltBtn)
 		fltBtn.OnClick(func() {
 			mygo.Haptics.Selection()
 			a.Pulse.FilterPopoverOpen = !a.Pulse.FilterPopoverOpen
 		}).Children(func() {
-			icCol := pulseTextMuted
+			icCol := pal.InkSecondary
 			if a.Pulse.FilterPopoverOpen {
-				icCol = pulseAccent
+				icCol = pal.Ink
 			}
 			ui.Icon(c, IconSliders).Size(14, 14).TextColor(icCol)
 		})
@@ -638,16 +620,17 @@ func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, est
 		if phone && a.SelectedID != "" {
 			if selNode, ok := a.NodeByID[a.SelectedID]; ok {
 				openBtn := ui.ButtonBase(c).Key("pulse_open_detail_btn").
-					Absolute().Left(12).Bottom(8).Padding(3, 8).Radius(999).
-					Background(pulseBgActiveRow).Cursor(ui.CursorPointer).
+					Absolute().Left(12).Bottom(8).Padding(3, 9).Radius(RadiusPill).
+					Background(focusSoftBg).Border(1, focusAccent.Alpha(0.28)).
+					Cursor(ui.CursorPointer).
 					Label("查看选中灵感详情")
 				openBtn.OnClick(func() {
 					mygo.Haptics.Selection()
 					a.DetailSheetOpen = true
 				}).Children(func() {
-					ui.Row(c).Gap(3).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, trimText(selNode.Title, 9)).FontSize(10.5).FontWeight(600).TextColor(pulseAccent).SingleLine()
-						ui.Icon(c, IconChevronRight).Size(11, 11).TextColor(pulseAccent)
+					ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, trimText(selNode.Title, 9)).FontSize(FontCaption).FontWeight(600).TextColor(focusAccent).SingleLine()
+						ui.Icon(c, IconChevronRight).Size(12, 12).TextColor(focusAccent)
 					})
 				})
 			}
@@ -659,17 +642,18 @@ func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, est
 			if pg.IslandCount <= 1 {
 				statText = fmt.Sprintf("%d 节点 · %d 连线", len(pg.Nodes), len(pg.Edges))
 			}
-			ui.Text(c, statText).FontSize(10).FontFeatures("tnum").TextColor(pulseTextSubtle).SingleLine()
+			ui.Text(c, statText).FontSize(FontCaption).FontFeatures("tnum").TextColor(pal.InkMuted).SingleLine()
 		})
 	})
 }
 
 func (a *App) renderPulseFilterOverlay(c *ui.Context) {
+	pal := a.Palette()
 	ui.Column(c).Key("pulse_filter_panel").
-		Absolute().Right(10).Top(42).Width(186).Padding(10, 12).Gap(8).Radius(14).
+		Absolute().Right(10).Top(44).Width(192).Padding(11, 13).Gap(8).Radius(RadiusCard).
 		Material(glass.Glass{}).
-		Background(pulseBgElevated).Border(1, pulseBorder).
-		Shadow(0, 8, 24, 0, ui.RGBA(18, 22, 33, 0.14)).
+		Background(pulseBgElevated).Border(1, pal.Border).
+		Shadow(0, 8, 24, 0, ui.RGBA(18, 22, 33, 0.12)).
 		ZIndex(50).
 		Children(func() {
 			a.renderLightToggleRow(c, "pf_evs", "显示合并原记录点", a.Pulse.ShowEvidences, func() {
@@ -682,10 +666,10 @@ func (a *App) renderPulseFilterOverlay(c *ui.Context) {
 				}
 			})
 
-			ui.Box(c).FillWidth().Height(1).Background(pulseBorder)
+			ui.Box(c).FillWidth().Height(1).Background(pal.Border)
 
 			resetBtn := ui.ButtonBase(c).Key("pf_reset_cam").
-				FillWidth().Padding(5, 4).Radius(6).
+				FillWidth().Padding(5, 4).Radius(RadiusControl).
 				Background(ui.Transparent).Cursor(ui.CursorPointer).Label("重置星图视角")
 			resetBtn.OnClick(func() {
 				mygo.Haptics.Selection()
@@ -698,13 +682,13 @@ func (a *App) renderPulseFilterOverlay(c *ui.Context) {
 				a.Pulse.FilterPopoverOpen = false
 			}).Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, IconRefresh).Size(12.5, 12.5).TextColor(pulseTextMuted)
-					ui.Text(c, "重置缩放与位移").FontSize(12).TextColor(pulseTextPrimary)
+					ui.Icon(c, IconRefresh).Size(14, 14).TextColor(pal.InkSecondary)
+					ui.Text(c, "重置缩放与位移").FontSize(FontMeta).TextColor(pal.Ink)
 				})
 			})
 
 			aiBtn := ui.ButtonBase(c).Key("pf_ai_reorg").
-				FillWidth().Padding(5, 4).Radius(6).
+				FillWidth().Padding(5, 4).Radius(RadiusControl).
 				Background(ui.Transparent).Cursor(ui.CursorPointer).Label("AI 重新归纳目录")
 			aiBtn.OnClick(func() {
 				a.Pulse.FilterPopoverOpen = false
@@ -713,31 +697,32 @@ func (a *App) renderPulseFilterOverlay(c *ui.Context) {
 				})
 			}).Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, IconSpark).Size(12.5, 12.5).TextColor(pulseAccent)
-					ui.Text(c, "AI 重新归纳目录").FontSize(12).FontWeight(600).TextColor(pulseAccent)
+					ui.Icon(c, IconSpark).Size(14, 14).TextColor(ColorVermilion)
+					ui.Text(c, "AI 重新归纳目录").FontSize(FontMeta).FontWeight(600).TextColor(ColorVermilion)
 				})
 			})
 		})
 }
 
 func (a *App) renderLightToggleRow(c *ui.Context, key, label string, on bool, onToggle func()) {
-	row := ui.ButtonBase(c).Key(key).FillWidth().Padding(4, 2).Radius(6).
+	pal := a.Palette()
+	row := ui.ButtonBase(c).Key(key).FillWidth().Padding(4, 2).Radius(RadiusControl).
 		Background(ui.Transparent).Cursor(ui.CursorPointer).Label(label)
 	row.OnClick(func() {
 		mygo.Haptics.Selection()
 		onToggle()
 	}).Children(func() {
 		ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, label).FontSize(12).TextColor(pulseTextPrimary)
-			dotBg := ui.Hex("#D8DCE6")
+			ui.Text(c, label).FontSize(FontMeta).TextColor(pal.Ink)
+			dotBg := ColorSecondaryAct
 			knobX := float32(2)
 			if on {
-				dotBg = pulseAccent
-				knobX = 14
+				dotBg = pal.Accent
+				knobX = 16
 			}
-			ui.Box(c).Size(28, 16).Radius(999).Background(dotBg).Children(func() {
-				ui.Box(c).Absolute().Left(knobX).Top(2).Size(12, 12).Radius(6).
-					Background(ui.Hex("#FFFFFF")).
+			ui.Box(c).Size(32, 18).Radius(RadiusPill).Background(dotBg).Children(func() {
+				ui.Box(c).Absolute().Left(knobX).Top(2).Size(14, 14).Radius(7).
+					Background(pal.Card).
 					Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.16))
 			})
 		})
@@ -1025,7 +1010,7 @@ func drawPulseObsidianMesh(
 		case pv.IsFocus:
 			fill = focusAccent.Alpha(pv.Appear)
 		case pv.Node.Kind == "tag":
-			fill = pulseEmerald.Alpha(alpha)
+			fill = ColorInkSecondary.Alpha(0.75 * alpha)
 		case pv.Node.Kind == "evidence":
 			fill = pulseTextSubtle.Alpha(alpha)
 		case pv.IsNeigh:
@@ -1060,7 +1045,7 @@ func drawPulseObsidianMesh(
 	}
 }
 
-func renderPulsePlainLabels(c *ui.Context, stageW, stageH, zoom float32, proj []projectedPulseVertex) {
+func renderPulsePlainLabels(c *ui.Context, stageW, stageH, zoom float32, proj []projectedPulseVertex, focusAccent ui.Color) {
 	var order []int
 	for i, pv := range proj {
 		if pv.IsFocus && pv.InBounds {
@@ -1104,23 +1089,23 @@ func renderPulsePlainLabels(c *ui.Context, stageW, stageH, zoom float32, proj []
 			continue
 		}
 
-		fontSize := float32(10.5)
+		fontSize := FontCaption
 		weight := 500
 		fg := pulseTextMuted.Alpha(pv.Appear)
 		switch {
 		case pv.IsFocus:
-			fontSize = 11.5
+			fontSize = FontMeta
 			weight = 700
-			fg = pulseAccent.Alpha(pv.Appear)
+			fg = focusAccent.Alpha(pv.Appear)
 		case pv.Node.Kind == "note" && pv.Node.IsHub:
-			fontSize = 11.0
+			fontSize = FontCaption
 			weight = 600
 			fg = pulseTextBright.Alpha(pv.Appear)
 		case pv.Node.Kind == "tag":
-			fontSize = 9.8
-			fg = pulseEmerald.Alpha(pv.Appear)
+			fontSize = FontCaption
+			fg = ColorInkSecondary.Alpha(pv.Appear)
 		case pv.Node.Kind == "evidence":
-			fontSize = 9.5
+			fontSize = FontCaption
 			fg = pulseTextDim.Alpha(pv.Appear)
 		}
 
@@ -1205,40 +1190,42 @@ func (a *App) renderPulseSplitGrabber(c *ui.Context, availH float32) {
 			return false
 		})
 	grab.Children(func() {
-		col := ui.Hex("#D5D9E4")
+		col := ColorSecondaryAct
 		if a.Pulse.SplitDragging {
-			col = pulseAccent
+			col = ColorInkPrimary
 		}
 		ui.Box(c).Width(32).Height(3.5).Radius(2).Background(col)
 	})
 }
 
 func (a *App) renderObsidianFileExplorer(c *ui.Context, pg service.PulseGraph, phone bool) {
+	pal := a.Palette()
 	totalNotes := 0
 	for _, fd := range pg.Folders {
 		totalNotes += len(fd.Notes)
 	}
 
-	ui.Column(c).Grow(1).FillWidth().MinHeight(0).Padding(2, 14, 4, 14).Gap(5).Background(pulseBgCanvas).Children(func() {
+	ui.Column(c).Grow(1).FillWidth().MinHeight(0).Padding(2, 14, 0, 14).Gap(5).Background(pal.Canvas).Children(func() {
 		ui.Row(c).FillWidth().Padding(2, 4, 2, 4).Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "AI 归档目录").FontSize(11.5).FontWeight(600).LetterSpacing(0.3).TextColor(pulseTextDim)
+			ui.Text(c, "AI 归档目录").FontSize(FontCaption).FontWeight(600).LetterSpacing(0.3).TextColor(pal.InkSecondary)
 			ui.Textf(c, "%d 个主题夹 · %d 篇笔记", len(pg.Folders), totalNotes).
-				FontSize(11).FontFeatures("tnum").TextColor(pulseTextSubtle)
+				FontSize(FontCaption).FontFeatures("tnum").TextColor(pal.InkMuted)
 		})
 
-		ui.Scroll(c).Key("pulse_tree_scroll").TrackScroll(&a.Pulse.TreeScroll).Grow(1).FillWidth().
-			HandleInput(func(ev ui.InputEvent) bool {
-				return a.handleSpaceBoundaryScroll(ev, SpaceDashboard, a.Pulse.TreeScroll.Y >= a.Pulse.TreeScroll.MaxY-1)
-			}).
-			Children(func() {
-				ui.Box(c).FillWidth().Padding(0, 0, 62, 0).Children(func() {
-					ui.Column(c).FillWidth().Padding(8, 10).Gap(2).Radius(16).
-						Background(pulseBgStage).
-						Shadow(0, 2, 10, 0, ui.RGBA(18, 22, 33, 0.04)).
-						Children(func() {
+		ui.Box(c).Key("pulse_tree_wrap").Grow(1).FillWidth().MinHeight(0).Children(func() {
+			ui.Scroll(c).Key("pulse_tree_scroll").TrackScroll(&a.Pulse.TreeScroll).Fill().
+				HandleInput(func(ev ui.InputEvent) bool {
+					return a.handleSpaceBoundaryScroll(ev, SpaceDashboard, a.Pulse.TreeScroll.Y >= a.Pulse.TreeScroll.MaxY-1)
+				}).
+				Children(func() {
+					ui.Box(c).FillWidth().Padding(0, 0, 80, 0).Children(func() {
+						StyleSurfaceCard(
+							ui.Column(c).FillWidth().Padding(8, 10).Gap(2),
+							pal,
+						).Children(func() {
 							if len(pg.Folders) == 0 {
 								ui.Box(c).FillWidth().Padding(22, 8).Center().Children(func() {
-									ui.Text(c, "暂无匹配的灵感文件").FontSize(12.5).TextColor(pulseTextDim)
+									ui.Text(c, "暂无匹配的灵感文件").FontSize(FontMeta).TextColor(pal.InkMuted)
 								})
 								return
 							}
@@ -1247,14 +1234,14 @@ func (a *App) renderObsidianFileExplorer(c *ui.Context, pg service.PulseGraph, p
 								fd := folder
 								collapsed := a.Pulse.CollapsedFolders[fd.Name]
 								chev := IconChevronDown
-								fCol := pulseTextBright
+								fCol := pal.Ink
 								if collapsed {
 									chev = IconChevronRight
-									fCol = pulseTextMuted
+									fCol = pal.InkSecondary
 								}
 
 								folderBtn := ui.ButtonBase(c).Key("pfolder_"+fd.Name).
-									FillWidth().Padding(6, 6).Radius(8).
+									FillWidth().Padding(6, 6).Radius(RadiusControl).
 									Background(ui.Transparent).Cursor(ui.CursorPointer).Label(fd.Name)
 								mobile.Ink(folderBtn)
 								folderBtn.OnClick(func() {
@@ -1262,11 +1249,11 @@ func (a *App) renderObsidianFileExplorer(c *ui.Context, pg service.PulseGraph, p
 									a.Pulse.CollapsedFolders[fd.Name] = !a.Pulse.CollapsedFolders[fd.Name]
 								}).Children(func() {
 									ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-										ui.Icon(c, chev).Size(12, 12).TextColor(pulseTextDim).Shrink(0)
-										ui.Icon(c, IconArchiveFolder).Size(13.5, 13.5).TextColor(pulseAccent.Alpha(0.85)).Shrink(0)
-										ui.Text(c, fd.Name).FontSize(13).FontWeight(600).TextColor(fCol).Grow(1).MinWidth(0).SingleLine()
+										ui.Icon(c, chev).Size(12, 12).TextColor(pal.InkMuted).Shrink(0)
+										ui.Icon(c, IconArchiveFolder).Size(14, 14).TextColor(pal.InkSecondary).Shrink(0)
+										ui.Text(c, fd.Name).FontSize(FontBody).FontWeight(600).TextColor(fCol).Grow(1).MinWidth(0).SingleLine()
 										ui.Text(c, fmt.Sprintf("%d", len(fd.Notes))).
-											FontSize(11).FontFeatures("tnum").TextColor(pulseTextDim).Shrink(0)
+											FontSize(FontCaption).FontFeatures("tnum").TextColor(pal.InkMuted).Shrink(0)
 									})
 								})
 
@@ -1278,22 +1265,22 @@ func (a *App) renderObsidianFileExplorer(c *ui.Context, pg service.PulseGraph, p
 												active := n.ID == a.SelectedID
 												orbCol := ColorsForTheme(n.Theme)
 												rowBg := ui.Transparent
-												txtCol := pulseTextMuted
-												barCol := pulseGuideLine
+												txtCol := pal.InkSecondary
+												barCol := pal.Border
 												barW := float32(1.5)
 												weight := 400
 												if active {
-													rowBg = pulseBgActiveRow
-													txtCol = pulseAccent
-													barCol = pulseAccent
-													barW = 2
+													rowBg = orbCol.BadgeBg.Alpha(0.75)
+													txtCol = pal.Ink
+													barCol = orbCol.Mid
+													barW = 2.5
 													weight = 600
 												}
 
 												ui.Row(c).Key("pfile_wrap_"+n.ID).FillWidth().AlignItems(ui.Stretch).Children(func() {
-													ui.Box(c).Width(barW).Background(barCol).Shrink(0)
+													ui.Box(c).Width(barW).Radius(1).Background(barCol).Shrink(0)
 													fileBtn := ui.ButtonBase(c).Key("pfile_"+n.ID).
-														Grow(1).MinWidth(0).Margin(1, 0, 1, 6).Padding(5.5, 9).Radius(8).
+														Grow(1).MinWidth(0).Margin(1, 0, 1, 6).Padding(6, 9).Radius(RadiusControl).
 														Background(rowBg).Cursor(ui.CursorPointer).Label(n.Title)
 													mobile.Ink(fileBtn)
 													fileBtn.OnClick(func() {
@@ -1304,9 +1291,9 @@ func (a *App) renderObsidianFileExplorer(c *ui.Context, pg service.PulseGraph, p
 															a.DetailSheetOpen = true
 														}
 													}).Children(func() {
-														ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
-															ui.Icon(c, ResolveNodeSVG(n)).Size(13, 13).TextColor(orbCol.BadgeText).Shrink(0)
-															ui.Text(c, n.Title).FontSize(12.8).FontWeight(weight).
+														ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(7).Children(func() {
+															ui.Icon(c, ResolveNodeSVG(n)).Size(14, 14).TextColor(orbCol.BadgeText).Shrink(0)
+															ui.Text(c, n.Title).FontSize(FontBody).FontWeight(weight).
 																TextColor(txtCol).SingleLine().Grow(1).MinWidth(0)
 														})
 													})
@@ -1317,7 +1304,16 @@ func (a *App) renderObsidianFileExplorer(c *ui.Context, pg service.PulseGraph, p
 								}
 							}
 						})
+					})
 				})
-			})
+
+			ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).Height(38).PassThrough().
+				LinearGradient(ui.LinearGradient{
+					From:  pal.Canvas.Alpha(0.0),
+					To:    pal.Canvas,
+					Angle: 180,
+					Oklab: true,
+				})
+		})
 	})
 }

@@ -158,14 +158,14 @@ func IconAction(c *ui.Context, key string, ic *ui.SVG, label string, active bool
 		face = hover
 	}
 
-	b.Size(32, 32).Radius(9).Center().
+	b.Size(32, 32).Radius(RadiusControl).Center().
 		Background(face).Border(1, border).TextColor(fg).
 		Cursor(ui.CursorPointer).Shrink(0).Clip().Label(label)
 	mobile.Ink(b)
 
 	if ic != nil {
 		b.Children(func() {
-			ui.Icon(c, ic).Size(15, 15)
+			ui.Icon(c, ic).Size(16, 16)
 		})
 	}
 	return b
@@ -195,7 +195,7 @@ func GhostIconAction(c *ui.Context, key string, ic *ui.SVG, label string, active
 		face = hover
 	}
 
-	b.Size(32, 32).Radius(9).Center().
+	b.Size(32, 32).Radius(RadiusControl).Center().
 		Background(face).TextColor(fg).
 		Cursor(ui.CursorPointer).Shrink(0).Clip().Label(label)
 	mobile.Ink(b)
@@ -216,9 +216,9 @@ func PillAction(c *ui.Context, key string, ic *ui.SVG, label string, primary boo
 		b.Key(key)
 	}
 
-	bg := ui.Hex("#ECEDF2")
-	hover := ui.Hex("#E2E5EC")
-	pressed := ui.Hex("#D8DCE6")
+	bg := ColorSecondaryFill
+	hover := ColorSecondaryHov
+	pressed := ColorSecondaryAct
 	fg := t.Text
 	if primary {
 		bg = t.Accent
@@ -234,7 +234,7 @@ func PillAction(c *ui.Context, key string, ic *ui.SVG, label string, primary boo
 		face = hover
 	}
 
-	b.Padding(7, 12).Gap(6).Radius(999).Center().
+	b.Padding(7, 12).Gap(6).Radius(RadiusPill).Center().
 		Background(face).TextColor(fg).
 		Cursor(ui.CursorPointer).Shrink(0).Clip().Label(label)
 	mobile.Ink(b)
@@ -244,7 +244,7 @@ func PillAction(c *ui.Context, key string, ic *ui.SVG, label string, primary boo
 			ui.Icon(c, ic).Size(14, 14)
 		}
 		if label != "" {
-			ui.Text(c, label).FontSize(12.5).Bold().SingleLine()
+			ui.Text(c, label).FontSize(FontMeta).Bold().SingleLine()
 		}
 	})
 	return b
@@ -265,17 +265,17 @@ func GhostTextAction(c *ui.Context, key string, ic *ui.SVG, label string) ui.Ele
 		face = t.SurfaceHover
 	}
 
-	b.Padding(5, 8).Gap(5).Radius(8).Center().
+	b.Padding(5, 8).Gap(5).Radius(RadiusControl).Center().
 		Background(face).TextColor(t.TextMuted).
 		Cursor(ui.CursorPointer).Shrink(0).Clip().Label(label)
 	mobile.Ink(b)
 
 	b.Children(func() {
 		if ic != nil {
-			ui.Icon(c, ic).Size(13.5, 13.5)
+			ui.Icon(c, ic).Size(14, 14)
 		}
 		if label != "" {
-			ui.Text(c, label).FontSize(12).FontWeight(600).SingleLine()
+			ui.Text(c, label).FontSize(FontMeta).FontWeight(600).SingleLine()
 		}
 	})
 	return b
