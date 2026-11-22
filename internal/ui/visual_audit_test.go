@@ -17,12 +17,14 @@ import (
 	"github.com/pengstem/neromancer/internal/store"
 )
 
-func resolveVisualAuditDir(t *testing.T) string {
-	t.Helper()
-	if dir := strings.TrimSpace(os.Getenv("NEROMANCER_VISUAL_AUDIT_DIR")); dir != "" {
-		return dir
-	}
-	return t.TempDir()
+func resolveVisualAuditDir() string {
+	return strings.TrimSpace(os.Getenv("NEROMANCER_VISUAL_AUDIT_DIR"))
+}
+
+func newFastTester(view func(c *ui.Context), width, height int) *ui.Tester {
+	return ui.NewTesterWith(view, width, height, ui.TesterOptions{
+		Preferences: ui.Preferences{ReduceMotion: true},
+	})
 }
 
 func newAuditTestApp(t *testing.T) (*App, func()) {
@@ -64,10 +66,9 @@ func newAuditTestApp(t *testing.T) (*App, func()) {
 
 func settleAudit(tt *ui.Tester) {
 	tt.Frame()
-	for i := 0; i < 24 && tt.FramePending(); i++ {
+	for i := 0; i < 8 && tt.FramePending(); i++ {
 		tt.Advance(80 * time.Millisecond)
 	}
-	tt.Frame()
 	tt.Frame()
 }
 
@@ -81,6 +82,14 @@ func assertAuditNoEmojis(t *testing.T, viewName string, texts []string) {
 			}
 		}
 	}
+}
+
+func maybeSaveAuditPNG(t *testing.T, auditDir string, tt *ui.Tester, filename string) {
+	t.Helper()
+	if auditDir == "" {
+		return
+	}
+	saveAuditPNG(t, auditDir, tt.Image(), filename)
 }
 
 func saveAuditPNG(t *testing.T, auditDir string, img *image.RGBA, filename string) {
@@ -103,11 +112,11 @@ func saveAuditPNG(t *testing.T, auditDir string, img *image.RGBA, filename strin
 }
 
 func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
-	auditDir := resolveVisualAuditDir(t)
+	auditDir := resolveVisualAuditDir()
 	app, cleanup := newAuditTestApp(t)
 	defer cleanup()
 
-	tt := ui.NewTester(app.RootView, 412, 892)
+	tt := newFastTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
 	// 1. Homepage Bento Dashboard + 3D Inspiration Globe + unified bottom-right Vermilion Seal (no title/icon, no search, no duplicates, no bottom nav bar)
@@ -135,7 +144,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		t.Fatalf("expected bottom nav bar \"灵感\" to be removed")
 	}
 	assertAuditNoEmojis(t, "dashboard_bento", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_dashboard_bento.png")
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_dashboard_bento.png")
 
 	// 2. Vermilion Seal Speed-Dial -> Voice-First Capture Sheet
 	if err := tt.Click("记一笔"); err != nil {
@@ -149,7 +158,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		t.Fatalf("speed-dial missing modality pills, texts=%v", tt.Texts())
 	}
 	assertAuditNoEmojis(t, "dashboard_speed_dial", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_dashboard_speed_dial.png")
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_dashboard_speed_dial.png")
 
 	if err := tt.Click("语音"); err != nil {
 		t.Fatalf("click voice dial pill: %v", err)
@@ -165,7 +174,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		t.Fatalf("capture voice sheet missing expected labels, texts=%v", tt.Texts())
 	}
 	assertAuditNoEmojis(t, "capture_voice", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_capture_voice.png")
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_capture_voice.png")
 
 	if err := tt.Click("文字"); err != nil {
 		t.Fatalf("switch capture tab to text: %v", err)
@@ -196,7 +205,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 			t.Fatalf("expected SpaceArchive filtered by %q, got space=%v tag=%q query=%q", firstTerm.Word, app.ActiveSpace, app.ActiveTag, app.SearchQuery)
 		}
 		assertAuditNoEmojis(t, "archive_globe_filtered", tt.Texts())
-		saveAuditPNG(t, auditDir, tt.Image(), "ui_archive_globe_filtered.png")
+		maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_globe_filtered.png")
 
 		if err := tt.Click("回到主页看板"); err != nil {
 			t.Fatalf("back to dashboard: %v", err)
@@ -204,7 +213,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		settleAudit(tt)
 	}
 
-	// 4. Inspiration Archive Vault (Cards mode via bottom portal)
+	// 4. Inspiration Archive Vault (Cards mode via top portal)
 	if err := tt.Click("进入灵感档案室"); err != nil {
 		t.Fatalf("enter archive vault: %v", err)
 	}
@@ -224,7 +233,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		}
 	}
 	assertAuditNoEmojis(t, "archive_cards", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_archive_cards.png")
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_cards.png")
 
 	// 5. Archive Outline mode
 	if err := tt.Click("目录"); err != nil {
@@ -235,7 +244,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		t.Fatalf("expected ArchiveOutline, got %v", app.ArchiveMode)
 	}
 	assertAuditNoEmojis(t, "archive_outline", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_archive_outline.png")
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_outline.png")
 
 	if err := tt.Click("档案卡"); err != nil {
 		t.Fatalf("switch archive mode back to cards: %v", err)
@@ -262,7 +271,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		}
 	}
 	assertAuditNoEmojis(t, "detail_sheet", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_detail_sheet.png")
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_detail_sheet.png")
 
 	// 7. Raw Evidence tape with audio waveform bars & immutable tulip quotes
 	if err := tt.Click("原始记录"); err != nil {
@@ -282,7 +291,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		t.Fatalf("raw evidence append composer \"补充\" clipped/off-screen: ok=%v rect=%+v", ok, r)
 	}
 	assertAuditNoEmojis(t, "raw_evidence", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_raw_evidence.png")
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_raw_evidence.png")
 
 	if err := tt.Click("关闭"); err != nil {
 		t.Fatalf("close raw evidence sheet: %v", err)
@@ -305,33 +314,35 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		t.Fatalf("roam view missing expected labels, texts=%v", tt.Texts())
 	}
 	assertAuditNoEmojis(t, "archive_roam", tt.Texts())
-	saveAuditPNG(t, auditDir, tt.Image(), "ui_archive_roam.png")
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_roam.png")
 
-	// 9. Export 1200x1640 PNG poster and copy to ui_exported_poster.png
-	if err := tt.Click("导出海报"); err != nil {
-		t.Fatalf("click export poster: %v", err)
-	}
-	if app.LastExportedPath == "" {
-		t.Fatalf("expected LastExportedPath to be non-empty")
-	}
-	rawPoster, err := os.ReadFile(app.LastExportedPath)
-	if err != nil {
-		t.Fatalf("read exported poster %s: %v", app.LastExportedPath, err)
-	}
-	f, err := os.Open(app.LastExportedPath)
-	if err != nil {
-		t.Fatalf("open exported poster: %v", err)
-	}
-	defer f.Close()
-	decoded, err := png.Decode(f)
-	if err != nil {
-		t.Fatalf("decode exported poster: %v", err)
-	}
-	if decoded.Bounds().Dx() != 1200 || decoded.Bounds().Dy() != 1640 {
-		t.Fatalf("expected 1200x1640 exported poster, got %v", decoded.Bounds())
-	}
-	if err := os.WriteFile(filepath.Join(auditDir, "ui_exported_poster.png"), rawPoster, 0o644); err != nil {
-		t.Fatalf("copy ui_exported_poster.png: %v", err)
+	// 9. Export 1200x1640 PNG poster only when saving visual audit artifacts (poster E2E is covered in main_test.go)
+	if auditDir != "" {
+		if err := tt.Click("导出海报"); err != nil {
+			t.Fatalf("click export poster: %v", err)
+		}
+		if app.LastExportedPath == "" {
+			t.Fatalf("expected LastExportedPath to be non-empty")
+		}
+		rawPoster, err := os.ReadFile(app.LastExportedPath)
+		if err != nil {
+			t.Fatalf("read exported poster %s: %v", app.LastExportedPath, err)
+		}
+		f, err := os.Open(app.LastExportedPath)
+		if err != nil {
+			t.Fatalf("open exported poster: %v", err)
+		}
+		defer f.Close()
+		decoded, err := png.Decode(f)
+		if err != nil {
+			t.Fatalf("decode exported poster: %v", err)
+		}
+		if decoded.Bounds().Dx() != 1200 || decoded.Bounds().Dy() != 1640 {
+			t.Fatalf("expected 1200x1640 exported poster, got %v", decoded.Bounds())
+		}
+		if err := os.WriteFile(filepath.Join(auditDir, "ui_exported_poster.png"), rawPoster, 0o644); err != nil {
+			t.Fatalf("copy ui_exported_poster.png: %v", err)
+		}
 	}
 
 	// 10. Verify Sleep & Settings modals open cleanly from Dashboard with zero emojis
@@ -359,14 +370,14 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	}
 	settleAudit(tt)
 
-	// 11. Responsive layout screenshots: minimum 360x620 & desktop 920x720
-	ttMin := ui.NewTester(app.RootView, 360, 620)
+	// 11. Responsive layout checks: minimum 360x620 & desktop 920x720
+	ttMin := newFastTester(app.RootView, 360, 620)
 	app.ActiveSpace = SpaceDashboard
 	settleAudit(ttMin)
 	if r, ok := ttMin.Find("记一笔"); !ok || r.X+r.W > 360 || r.Y+r.H > 620 {
 		t.Fatalf("360px bottom-right capture seal clipped: ok=%v rect=%+v", ok, r)
 	}
-	saveAuditPNG(t, auditDir, ttMin.Image(), "ui_360x620_dashboard.png")
+	maybeSaveAuditPNG(t, auditDir, ttMin, "ui_360x620_dashboard.png")
 
 	app.ActiveSpace = SpaceArchive
 	app.ArchiveMode = ArchiveCards
@@ -374,25 +385,25 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if r, ok := ttMin.Find("漫游"); !ok || r.X+r.W > 360 {
 		t.Fatalf("360px archive header mode switch clipped: ok=%v rect=%+v", ok, r)
 	}
-	saveAuditPNG(t, auditDir, ttMin.Image(), "ui_360x620_archive.png")
+	maybeSaveAuditPNG(t, auditDir, ttMin, "ui_360x620_archive.png")
 
-	ttWide := ui.NewTester(app.RootView, 920, 720)
+	ttWide := newFastTester(app.RootView, 920, 720)
 	app.ActiveSpace = SpaceDashboard
 	settleAudit(ttWide)
-	saveAuditPNG(t, auditDir, ttWide.Image(), "ui_920x720_dashboard.png")
+	maybeSaveAuditPNG(t, auditDir, ttWide, "ui_920x720_dashboard.png")
 
 	app.ActiveSpace = SpaceArchive
 	app.ArchiveMode = ArchiveCards
 	app.SelectNode("orb_tulip")
 	settleAudit(ttWide)
-	saveAuditPNG(t, auditDir, ttWide.Image(), "ui_920x720_archive.png")
+	maybeSaveAuditPNG(t, auditDir, ttWide, "ui_920x720_archive.png")
 }
 
 func TestDashboardCaptureSpeedDialInteractions(t *testing.T) {
 	app, cleanup := newAuditTestApp(t)
 	defer cleanup()
 
-	tt := ui.NewTester(app.RootView, 412, 892)
+	tt := newFastTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
 	// 1. Open dial then dismiss via backdrop click

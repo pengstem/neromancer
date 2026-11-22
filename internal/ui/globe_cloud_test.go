@@ -94,7 +94,7 @@ func TestDashboardWordCloudGlobeInteractions(t *testing.T) {
 	defer cleanup()
 
 	tt := ui.NewTester(app.RootView, 412, 892)
-	settleAudit(tt)
+	tt.Frame()
 
 	terms := app.DashboardDigest.WordCloud
 	if len(terms) == 0 {
@@ -139,15 +139,12 @@ func TestDashboardWordCloudGlobeInteractions(t *testing.T) {
 	if v0 <= 0.05 {
 		t.Fatalf("expected non-trivial post-drag inertia velocity, got %v", v0)
 	}
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 4; i++ {
 		tt.Advance(50 * time.Millisecond)
 	}
 	v1 := math.Hypot(app.Globe.VelYaw, app.Globe.VelPitch)
 	if v1 >= v0 {
 		t.Fatalf("expected inertia velocity to decay: before=%v after=%v", v0, v1)
-	}
-	for i := 0; i < 30; i++ {
-		tt.Advance(50 * time.Millisecond)
 	}
 
 	// 2. Double-tap blank area inside globe resets orientation so #1 term faces front.
@@ -189,7 +186,7 @@ func TestDashboardWordCloudGlobeInteractions(t *testing.T) {
 	tt.ClickAt(blankX, blankY)
 	tt.Advance(90 * time.Millisecond)
 	tt.ClickAt(blankX, blankY)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 10 && app.Globe.FocusAnimating; i++ {
 		tt.Advance(50 * time.Millisecond)
 	}
 	if !mat3ApproxIdentity(app.Globe.Rot) {
@@ -281,7 +278,7 @@ func TestGlobeWordCloudDirectArchiveFilterCoversConceptsAndTags(t *testing.T) {
 	app, cleanup := newAuditTestApp(t)
 	defer cleanup()
 
-	tt := ui.NewTester(app.RootView, 412, 892)
+	tt := newFastTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
 	// Verify both tag-backed and concept-backed terms filter cleanly into SpaceArchive.

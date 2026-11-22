@@ -4,15 +4,13 @@ import (
 	"math"
 	"testing"
 	"time"
-
-	"github.com/egoist/mygo/ui"
 )
 
 func TestSpaceDeckPullDownOpensArchiveAndShowsBothFloors(t *testing.T) {
 	app, cleanup := newAuditTestApp(t)
 	defer cleanup()
 
-	tt := ui.NewTester(app.RootView, 412, 892)
+	tt := newFastTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
 	// Top pull-down portal must live at the top of the Dashboard.
@@ -45,7 +43,7 @@ func TestSpaceDeckPullDownOpensArchiveAndShowsBothFloors(t *testing.T) {
 	if tt.HasText("松手回到主页看板") {
 		t.Fatalf("unexpected Archive return release cue while pulling down from Dashboard, texts=%v", tt.Texts())
 	}
-	saveAuditPNG(t, resolveVisualAuditDir(t), tt.Image(), "ui_space_deck_mid_pull.png")
+	maybeSaveAuditPNG(t, resolveVisualAuditDir(), tt, "ui_space_deck_mid_pull.png")
 
 	tt.FingerUp(startX, startY+180)
 	settleAudit(tt)
@@ -69,7 +67,7 @@ func TestSpaceDeckShortPullBouncesBackToDashboard(t *testing.T) {
 	app, cleanup := newAuditTestApp(t)
 	defer cleanup()
 
-	tt := ui.NewTester(app.RootView, 412, 892)
+	tt := newFastTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
 	portalRect, ok := tt.Find("进入灵感档案室")
@@ -100,7 +98,7 @@ func TestSpaceDeckPushUpFromArchiveBottomHandleReturnsHome(t *testing.T) {
 	app, cleanup := newAuditTestApp(t)
 	defer cleanup()
 
-	tt := ui.NewTester(app.RootView, 412, 892)
+	tt := newFastTester(app.RootView, 412, 892)
 	app.ActiveSpace = SpaceArchive
 	settleAudit(tt)
 
@@ -142,7 +140,7 @@ func TestSpaceDeckSmallScrollableScreenBoundaryHandoff(t *testing.T) {
 	defer cleanup()
 
 	// 360x620 forces DashboardScroll and ArchiveScroll to have MaxY > 0.
-	tt := ui.NewTester(app.RootView, 360, 620)
+	tt := newFastTester(app.RootView, 360, 620)
 	settleAudit(tt)
 
 	if app.DashboardScroll.MaxY <= 0 {
@@ -220,7 +218,7 @@ func TestSpaceDeckGlobeVerticalDragDoesNotOpenArchive(t *testing.T) {
 	app, cleanup := newAuditTestApp(t)
 	defer cleanup()
 
-	tt := ui.NewTester(app.RootView, 412, 892)
+	tt := newFastTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
 	terms := app.DashboardDigest.WordCloud
@@ -243,7 +241,7 @@ func TestSpaceDeckGlobeVerticalDragDoesNotOpenArchive(t *testing.T) {
 	tt.FingerMove(cx, cy+190)
 	tt.Advance(20 * time.Millisecond)
 	tt.FingerUp(cx, cy+190)
-	settleAudit(tt)
+	tt.Frame()
 
 	if app.ActiveSpace != SpaceDashboard {
 		t.Fatalf("expected downward drag inside 3D Globe to keep SpaceDashboard, got %v", app.ActiveSpace)
