@@ -248,7 +248,7 @@ func (s *Store) SeedIfEmpty() error {
 		ID:               "sleep_seed_1",
 		Title:            "昨晚睡前的小发现：玻璃蓝瓶 × 手绘颗粒感",
 		ConnectedNodeIDs: []string{"orb_tulip", "orb_shader"},
-		SparkSummary:     "你一边想找一只透光钴蓝花瓶养郁金香，另一边又在着色器里迷恋‘带一点不完美颗粒的手吹玻璃感’——要不要用自己写的抖动着色器给 Neromancer 的记忆球加一层清晨阳光穿过蓝玻璃的边缘光？",
+		SparkSummary:     "你一边想找一只透光钴蓝花瓶养郁金香，另一边又在着色器里迷恋‘带一点不完美颗粒的手吹玻璃感’——要不要用自己写的抖动着色器做出清晨阳光穿过蓝玻璃的边缘光？",
 		SuggestedAction:  "点进《用一个蓝色花瓶养一株郁金香》试试让 DeepSeek 把这两条线揉成一个迷你桌面视觉小玩具。",
 		CreatedAt:        now.Add(-1 * time.Hour),
 		Dismissed:        false,

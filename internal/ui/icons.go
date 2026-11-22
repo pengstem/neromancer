@@ -50,6 +50,7 @@ var (
 	IconFloat         = mustIconSVG(`<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="15.5" cy="13.5" r="3"/>`)
 	IconChevronDown   = mustIconSVG(`<polyline points="6 9 12 15 18 9"/>`)
 	IconChevronUp     = mustIconSVG(`<polyline points="6 15 12 9 18 15"/>`)
+	IconChevronLeft   = mustIconSVG(`<polyline points="15 18 9 12 15 6"/>`)
 	IconChevronRight  = mustIconSVG(`<polyline points="9 6 15 12 9 18"/>`)
 	IconMapPin        = mustIconSVG(`<path d="M12 21s-6-5.4-6-10.5a6 6 0 1 1 12 0C18 15.6 12 21 12 21Z"/><circle cx="12" cy="10.5" r="2"/>`)
 	IconClock         = mustIconSVG(`<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>`)

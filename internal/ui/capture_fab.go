@@ -88,7 +88,7 @@ func hitOrbDialOption(localX, localY float32, count int) int {
 }
 
 func (a *App) renderFloatingOrbDial(c *ui.Context, pal SurfacePalette, archiveProgress float32) {
-	if a.DetailSheetOpen || a.CaptureModalOpen || a.EvidenceModalOpen || a.SettingsModalOpen || a.SleepModalOpen || a.ShareModalOpen {
+	if a.DetailSheetOpen || a.CaptureModalOpen || a.EvidenceModalOpen || a.SettingsModalOpen || a.ShareModalOpen {
 		return
 	}
 

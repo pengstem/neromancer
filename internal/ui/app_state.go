@@ -99,7 +99,7 @@ type App struct {
 	CaptureModalOpen    bool
 	EvidenceModalOpen   bool
 	SettingsModalOpen   bool
-	SleepModalOpen      bool
+	SleepPageIdx        int
 	ShareModalOpen      bool
 	QuickOrbOverlayOpen bool
 
@@ -246,6 +246,13 @@ func (a *App) ReloadVault() error {
 
 	if insights, err := a.Deps.Store.ListActiveSleepInsights(); err == nil {
 		a.SleepInsights = insights
+	}
+	if len(a.SleepInsights) == 0 {
+		a.SleepPageIdx = 0
+	} else if a.SleepPageIdx >= len(a.SleepInsights) {
+		a.SleepPageIdx = len(a.SleepInsights) - 1
+	} else if a.SleepPageIdx < 0 {
+		a.SleepPageIdx = 0
 	}
 	a.DashboardDigest = a.Deps.Organize.BuildDashboardDigest(a.Nodes, a.EvCounts, a.SleepInsights)
 	return nil
@@ -464,7 +471,6 @@ func (a *App) RootView(c *ui.Context) {
 		ui.Box(c).Key("modal_slot_capture").Children(func() { a.renderCaptureModal(c) })
 		ui.Box(c).Key("modal_slot_evidence").Children(func() { a.renderEvidenceModal(c) })
 		ui.Box(c).Key("modal_slot_settings").Children(func() { a.renderSettingsModal(c) })
-		ui.Box(c).Key("modal_slot_sleep").Children(func() { a.renderSleepModal(c) })
 		ui.Box(c).Key("modal_slot_share").Children(func() { a.renderShareModal(c) })
 	})
 }

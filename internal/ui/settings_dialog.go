@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -30,9 +29,8 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 		ui.Scroll(c).Fill().Children(func() {
 			ui.Column(c).FillWidth().Padding(14, 18, 22, 18).Gap(14).Children(func() {
 				RenderSheetHeader(c, pal, SheetHeaderProps{
-					Icon:     IconSliders,
-					Title:    "DeepSeek 设置",
-					Subtitle: "填好 API Key 即可使用语音转文字、自动整理与追问",
+					Icon:  IconSliders,
+					Title: "DeepSeek 设置",
 					ExtraBadge: func() {
 						a.renderConnectionBadge(c, pal, configured)
 					},
@@ -148,88 +146,4 @@ func (a *App) persistDeepSeekSettings() {
 		_ = a.Deps.Store.SetSetting("deepseek_api_key", strings.TrimSpace(a.SettingsAPIKey))
 		_ = a.Deps.Store.SetSetting("deepseek_model", strings.TrimSpace(a.SettingsModel))
 	}
-}
-
-func (a *App) renderSleepModal(c *ui.Context) {
-	pal := a.Palette()
-	badgeTxt := ""
-	if len(a.SleepInsights) > 0 {
-		badgeTxt = fmt.Sprintf("%d 条", len(a.SleepInsights))
-	}
-
-	sheetBg := pal.Card
-	mobile.Sheet(c, &a.SleepModalOpen, mobile.SheetOptions{
-		Detents:    []float32{0.76, 0.94},
-		Background: &sheetBg,
-		Label:      "灵感串联",
-	}, func() {
-		ui.Column(c).Grow(1).Basis(0).MinHeight(0).FillWidth().Padding(14, 18, 18, 18).Gap(14).Children(func() {
-			RenderSheetHeader(c, pal, SheetHeaderProps{
-				Icon:      IconMoon,
-				Title:     "灵感串联",
-				BadgeText: badgeTxt,
-				Subtitle:  "跨主题寻找旧想法之间意想不到的联系",
-				CloseKey:  "sleep_close",
-				OnClose: func() {
-					a.SleepModalOpen = false
-				},
-			})
-
-			if PillAction(c, "sleep_wake", IconSpark, "找找灵感之间的联系", true).FillWidth().Clicked() {
-				a.RunAsync("正在翻看你的灵感，寻找有趣的联系…", func(ctx context.Context) error {
-					_, err := a.Deps.Incubate.RunSleepIncubation(ctx)
-					return err
-				})
-			}
-
-			ui.Scroll(c).Grow(1).Basis(0).MinHeight(0).FillWidth().Children(func() {
-				ui.Column(c).FillWidth().Gap(10).Children(func() {
-					if len(a.SleepInsights) == 0 {
-						ui.Column(c).FillWidth().Padding(28).Center().Gap(8).Radius(RadiusCard).
-							Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.75)).
-							Children(func() {
-								ui.Icon(c, IconMoon).Size(20, 20).TextColor(pal.InkMuted)
-								ui.Text(c, "暂时还没有新的串联发现，点上方按钮试试看").
-									FontSize(FontBody).TextColor(pal.InkSecondary).TextAlign(ui.Center)
-							})
-						return
-					}
-					for _, ins := range a.SleepInsights {
-						item := ins
-						ui.Column(c).Key("sleep_"+item.ID).FillWidth().Padding(15).Gap(10).Radius(RadiusCard).
-							Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.75)).
-							Children(func() {
-								ui.Text(c, item.Title).FontSize(FontCardTitle).Bold().LineHeight(1.35).TextColor(pal.Ink)
-								ui.Text(c, item.SparkSummary).FontSize(FontBody).LineHeight(1.58).TextColor(pal.InkSecondary)
-
-								if strings.TrimSpace(item.SuggestedAction) != "" {
-									ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Stretch).
-										Padding(8, 10).Radius(RadiusControl).Background(pal.Card).Border(1, pal.Border.Alpha(0.65)).
-										Children(func() {
-											ui.Box(c).Width(2.5).Radius(2).Background(ColorVermilion).Shrink(0)
-											ui.Text(c, item.SuggestedAction).FontSize(FontMeta).LineHeight(1.48).
-												FontWeight(500).TextColor(pal.Ink).Grow(1).MinWidth(0)
-										})
-								}
-
-								ui.Row(c).FillWidth().Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
-									if len(item.ConnectedNodeIDs) > 0 {
-										firstID := item.ConnectedNodeIDs[0]
-										if PillAction(c, "jump_"+item.ID, IconChevronRight, "去看这条灵感", false).Clicked() {
-											a.SleepModalOpen = false
-											a.ActiveSpace = SpaceArchive
-											a.openNodeDetail(c, firstID)
-										}
-									}
-									if PillAction(c, "dis_"+item.ID, IconCheck, "收起", false).Clicked() {
-										_ = a.Deps.Store.DismissSleepInsight(item.ID)
-										_ = a.ReloadVault()
-									}
-								})
-							})
-					}
-				})
-			})
-		})
-	})
 }

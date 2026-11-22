@@ -122,7 +122,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	settleAudit(tt)
 
 	// 1. Homepage Bento Dashboard + 3D Inspiration Globe + unified bottom-right Vermilion Seal (no title/icon, no search, no duplicates, no bottom nav bar)
-	for _, want := range []string{"AI 灵感画像", "本周积累", "灵感星云球", "串联与待深化追问"} {
+	for _, want := range []string{"AI 灵感画像", "本周积累", "灵感串联", "灵感星云球", "待深化追问"} {
 		if !tt.HasText(want) {
 			t.Fatalf("dashboard missing expected label %q", want)
 		}
@@ -398,20 +398,15 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		settleAudit(tt)
 	}
 
-	// 10. Verify Sleep & Settings modals open cleanly from Dashboard with zero emojis
+	// 10. Verify inline Dashboard Synthesis & Settings modal open cleanly with zero emojis
 	if err := tt.Click("回到主页看板"); err != nil {
 		t.Fatalf("back to dashboard: %v", err)
 	}
 	settleAudit(tt)
-	if err := tt.Click("灵感串联"); err != nil {
-		t.Fatalf("open sleep modal: %v", err)
+	if !tt.HasText("灵感串联") || !tt.HasText("昨晚睡前的小发现：玻璃蓝瓶 × 手绘颗粒感") {
+		t.Fatalf("expected inline 灵感串联 card directly on Dashboard, texts=%v", tt.Texts())
 	}
-	settleAudit(tt)
-	assertAuditNoEmojis(t, "sleep_modal", tt.Texts())
-	if err := tt.Click("关闭"); err != nil {
-		t.Fatalf("close sleep modal: %v", err)
-	}
-	settleAudit(tt)
+	assertAuditNoEmojis(t, "dashboard_inline_synthesis", tt.Texts())
 
 	if err := tt.Click("DeepSeek 设置"); err != nil {
 		t.Fatalf("open settings modal: %v", err)
@@ -735,4 +730,86 @@ func TestMindPalaceTagConvergenceAndZeroHashSlop(t *testing.T) {
 	app.ShareModalOpen = true
 	settleAudit(tt)
 	assertAuditNoHashPrefixes(t, "share_poster_no_hash", tt.Texts())
+}
+func TestDashboardInlineSynthesis(t *testing.T) {
+	app, cleanup := newAuditTestApp(t)
+	defer cleanup()
+
+	if err := app.Deps.Store.SaveSleepInsight(domain.SleepInsight{
+		ID:               "sleep_seed_2",
+		Title:            "第二条串联：阳台微风 × 雨夜采样",
+		ConnectedNodeIDs: []string{"orb_tulip"},
+		SparkSummary:     "把晨间阳台与雨夜录下的环境声拼成一段随时间流转的声音背景。",
+		SuggestedAction:  "挑两段 10 秒原声做一次交叉淡入。",
+		CreatedAt:        time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ReloadVault(); err != nil {
+		t.Fatal(err)
+	}
+
+	tt := newFastTester(app.RootView, 412, 892)
+	settleAudit(tt)
+
+	// Top-right header must NOT place a "灵感串联" button next to DeepSeek settings.
+	settingsRect, ok := tt.Find("DeepSeek 设置")
+	if !ok {
+		t.Fatalf("missing DeepSeek 设置 button in top header")
+	}
+	synthTitleRect, ok := tt.Find("灵感串联")
+	if !ok {
+		t.Fatalf("missing inline 灵感串联 section on Dashboard")
+	}
+	if synthTitleRect.Y <= settingsRect.Y+settingsRect.H {
+		t.Fatalf("expected 灵感串联 in Dashboard body below top header, got headerY=%.1f synthY=%.1f", settingsRect.Y, synthTitleRect.Y)
+	}
+
+	// Paging 1 / 2 (newest first) -> 2 / 2 -> 1 / 2
+	if !tt.HasText("1 / 2") || !tt.HasText("第二条串联：阳台微风 × 雨夜采样") {
+		t.Fatalf("expected page 1 / 2 newest insight initially, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("下一条串联"); err != nil {
+		t.Fatalf("click next synthesis page: %v", err)
+	}
+	settleAudit(tt)
+	if !tt.HasText("2 / 2") || !tt.HasText("昨晚睡前的小发现：玻璃蓝瓶 × 手绘颗粒感") {
+		t.Fatalf("expected page 2 / 2 older insight after next, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("上一条串联"); err != nil {
+		t.Fatalf("click prev synthesis page: %v", err)
+	}
+	settleAudit(tt)
+	if !tt.HasText("1 / 2") {
+		t.Fatalf("expected wrap back to 1 / 2, texts=%v", tt.Texts())
+	}
+
+	// Clicking connected idea link opens its detail sheet directly.
+	if err := tt.Click("查看关联灵感：用一个蓝色花瓶养一株郁金香"); err != nil {
+		t.Fatalf("click connected idea link: %v", err)
+	}
+	settleAudit(tt)
+	if !app.DetailSheetOpen || app.SelectedID != "orb_tulip" {
+		t.Fatalf("expected DetailSheetOpen for orb_tulip, got open=%v selected=%q", app.DetailSheetOpen, app.SelectedID)
+	}
+	if err := tt.Click("关闭"); err != nil {
+		t.Fatalf("close detail sheet: %v", err)
+	}
+	settleAudit(tt)
+
+	// Dismissing both insights transitions cleanly to inline empty state ("暂无串联线索" + "找找联系").
+	if err := tt.Click("已读"); err != nil {
+		t.Fatalf("dismiss first insight: %v", err)
+	}
+	settleAudit(tt)
+	if len(app.SleepInsights) != 1 {
+		t.Fatalf("expected 1 remaining insight, got %d", len(app.SleepInsights))
+	}
+	if err := tt.Click("已读"); err != nil {
+		t.Fatalf("dismiss second insight: %v", err)
+	}
+	settleAudit(tt)
+	if len(app.SleepInsights) != 0 || !tt.HasText("暂无串联线索") || !tt.HasText("找找联系") {
+		t.Fatalf("expected clean empty state on Dashboard, insights=%d texts=%v", len(app.SleepInsights), tt.Texts())
+	}
 }
