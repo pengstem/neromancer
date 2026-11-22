@@ -3,12 +3,10 @@ package ui
 import (
 	"math"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/mobile"
 	"github.com/pengstem/neromancer/internal/domain"
 	"github.com/pengstem/neromancer/internal/service"
 )
@@ -32,7 +30,6 @@ type GlobeState struct {
 	LastPtrTime time.Time
 	DownTerm    string
 
-	FocusedWord    string
 	FocusAnimating bool
 	FocusStart     time.Time
 	FocusDuration  time.Duration
@@ -60,7 +57,6 @@ type globeProjectedTerm struct {
 	Opacity   float32
 	BlurSigma float32
 	Backface  bool
-	Focused   bool
 	ZOrder    int
 }
 
@@ -95,19 +91,6 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 	pts := fibonacciSpherePoints(len(terms))
 	ambientActive := a.stepGlobePhysics(c, terms, pts)
 
-	var focusedTerm *service.WordCloudTerm
-	if a.Globe.FocusedWord != "" {
-		for i := range terms {
-			if terms[i].Word == a.Globe.FocusedWord {
-				focusedTerm = &terms[i]
-				break
-			}
-		}
-		if focusedTerm == nil {
-			a.Globe.FocusedWord = ""
-		}
-	}
-
 	ui.Column(c).Key("dash_globe_card").FillWidth().Padding(14).Gap(10).Radius(16).
 		Background(pal.Card).Border(1, pal.Border).Children(func() {
 		ui.Text(c, "灵感星云球").FontSize(13.5).Bold().TextColor(pal.Ink).SingleLine()
@@ -134,11 +117,7 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 			sy := cy + float32(rv[1]*pScale)*sphereR*0.92
 
 			depth := float32((z + 1.0) * 0.5)
-			isFocused := focusedTerm != nil && focusedTerm.Word == term.Word
 			depthScale := float32(0.62) + float32(0.50)*depth
-			if isFocused {
-				depthScale *= 1.12
-			}
 
 			var opacity float32
 			switch {
@@ -148,9 +127,6 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 				opacity = 0.35 + 0.40*((depth-0.42)/0.30)
 			default:
 				opacity = 0.75 + 0.25*((depth-0.72)/0.28)
-			}
-			if focusedTerm != nil && !isFocused {
-				opacity *= 0.42
 			}
 			if opacity > 1 {
 				opacity = 1
@@ -204,7 +180,6 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 				Opacity:   opacity,
 				BlurSigma: blurSigma,
 				Backface:  backface,
-				Focused:   isFocused,
 				ZOrder:    int(math.Round((z + 1.0) * 1000)),
 			}
 		}
@@ -325,11 +300,6 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 								Bounds: &ui.Rect{},
 								Rigid:  true,
 							})
-						if pt.Focused {
-							btn.Background(orbPal.CardTint.Alpha(0.92)).
-								Border(1, orbPal.Mid.Alpha(0.32)).
-								Shadow(0, 3, 10, 0, orbPal.Mid.Alpha(0.14))
-						}
 						btn.HandleInput(func(ev ui.InputEvent) bool {
 							stageX := ev.X + localLeft + hzLeft
 							stageY := ev.Y + localTop + hzTop
@@ -340,11 +310,6 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 					}
 				})
 			})
-
-		// Below stage inside card: Focus preview card when a word is tapped.
-		if focusedTerm != nil {
-			a.renderGlobeFocusCard(c, pal, phone, *focusedTerm)
-		}
 	})
 }
 
@@ -373,65 +338,6 @@ func renderGlobeWordText(c *ui.Context, pal SurfacePalette, orbPal OrbColorSet, 
 		zNorm := float32((pt.RotVec[2] - 0.35) / 0.65)
 		txt.TextShadow(0, 0, 10*zNorm, orbPal.Mid.Alpha(0.26*zNorm))
 	}
-}
-
-func (a *App) renderGlobeFocusCard(c *ui.Context, pal SurfacePalette, phone bool, term service.WordCloudTerm) {
-	orbPal := ColorsForTheme(term.Theme)
-	ui.Column(c).Key("globe_focus_card").FillWidth().Padding(10, 12).Gap(8).Radius(12).
-		Background(orbPal.CardTint).Border(1, orbPal.Mid.Alpha(0.24)).Children(func() {
-		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-			IdeaIconBadge(c, term.IconKey, term.Theme, IconBadgeProps{
-				Size:     28,
-				IconSize: 14,
-				Radius:   8,
-			})
-			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-				ui.Text(c, term.Word).FontSize(13).Bold().TextColor(pal.Ink).SingleLine()
-				ui.Textf(c, "词云热度 %d%% · %d 篇相关灵感", term.Percent, term.NodeCount).
-					FontSize(10.5).FontFeatures("tnum").TextColor(orbPal.BadgeText).SingleLine()
-			})
-			if GhostIconAction(c, "globe_focus_close", IconClose, "收起聚焦", false).
-				Size(24, 24).Clicked() {
-				mygo.Haptics.Selection()
-				a.Globe.FocusedWord = ""
-			}
-		})
-
-		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-			previewBtn := ui.ButtonBase(c).Key("globe_focus_node").Grow(1).MinWidth(0).
-				Padding(6, 8).Radius(9).Background(pal.Card.Alpha(0.85)).
-				Border(1, pal.Border.Alpha(0.7)).
-				Cursor(ui.CursorPointer).Label(term.TopNodeTitle)
-			mobile.Ink(previewBtn)
-			previewBtn.OnClick(func() {
-				if term.TopNodeID != "" {
-					mygo.Haptics.Selection()
-					a.CaptureDialOpen = false
-					a.SelectNode(term.TopNodeID)
-					if phone {
-						a.DetailSheetOpen = true
-					} else {
-						a.ActiveSpace = SpaceArchive
-						if a.ArchiveMode == ArchiveRoam {
-							a.ArchiveMode = ArchiveCards
-						}
-					}
-				}
-			}).Children(func() {
-				ui.Column(c).FillWidth().Gap(2).Children(func() {
-					ui.Text(c, term.TopNodeTitle).FontSize(12).FontWeight(600).TextColor(pal.Ink).SingleLine()
-					if strings.TrimSpace(term.TopNodeSummary) != "" {
-						ui.Text(c, term.TopNodeSummary).FontSize(11).TextColor(pal.InkSecondary).SingleLine()
-					}
-				})
-			})
-
-			if PillAction(c, "globe_open_archive", IconArchiveFolder, "看相关档案", true).Clicked() {
-				mygo.Haptics.Selection()
-				a.enterArchiveWithTerm(term)
-			}
-		})
-	})
 }
 
 func (a *App) stepGlobePhysics(c *ui.Context, terms []service.WordCloudTerm, pts [][3]float64) (ambientActive bool) {
@@ -515,7 +421,7 @@ func (a *App) stepGlobePhysics(c *ui.Context, terms []service.WordCloudTerm, pts
 	st.VelYaw = 0
 	st.VelPitch = 0
 
-	if st.FocusedWord == "" && len(terms) > 0 && !c.Preferences().ReduceMotion {
+	if len(terms) > 0 && !c.Preferences().ReduceMotion {
 		if dt > 0 {
 			delta := mat3Mul(mat3RotX(globeAmbientPitch*dt), mat3RotY(globeAmbientYaw*dt))
 			st.Rot = mat3Orthonormalize(mat3Mul(delta, st.Rot))
@@ -541,7 +447,7 @@ func (a *App) handleGlobePointer(
 		if termWord != "" && (ev.Key == ui.KeyEnter || ev.Key == ui.KeySpace) {
 			for _, t := range terms {
 				if t.Word == termWord {
-					a.activateGlobeWord(t, terms, pts, ev.Time)
+					a.activateGlobeWord(t)
 					return true
 				}
 			}
@@ -625,7 +531,7 @@ func (a *App) handleGlobePointer(
 		if targetWord != "" {
 			for _, t := range terms {
 				if t.Word == targetWord {
-					a.activateGlobeWord(t, terms, pts, ev.Time)
+					a.activateGlobeWord(t)
 					return true
 				}
 			}
@@ -637,8 +543,6 @@ func (a *App) handleGlobePointer(
 		if isDouble {
 			mygo.Haptics.Light()
 			a.resetGlobeOrientation(ev.Time)
-		} else if st.FocusedWord != "" {
-			st.FocusedWord = ""
 		}
 		return true
 	}
@@ -663,38 +567,9 @@ func hitTestProjectedWord(projected []globeProjectedTerm, sx, sy float32) *globe
 	return best
 }
 
-func (a *App) activateGlobeWord(term service.WordCloudTerm, terms []service.WordCloudTerm, pts [][3]float64, now time.Time) {
-	if a.Globe.FocusedWord == term.Word {
-		mygo.Haptics.Selection()
-		a.enterArchiveWithTerm(term)
-		return
-	}
-	for i, t := range terms {
-		if t.Word == term.Word {
-			mygo.Haptics.Light()
-			a.focusGlobeTerm(t, pts[i], now)
-			return
-		}
-	}
-}
-
-func (a *App) focusGlobeTerm(term service.WordCloudTerm, baseVec [3]float64, now time.Time) {
-	st := &a.Globe
-	if !st.Initialized {
-		st.Rot = mat3Identity()
-		st.Initialized = true
-	}
-	if now.IsZero() {
-		now = time.Now()
-	}
-	st.FocusedWord = term.Word
-	st.VelYaw = 0
-	st.VelPitch = 0
-	st.FocusFrom = st.Rot
-	st.FocusTo = mat3FocusTarget(baseVec, st.Rot)
-	st.FocusStart = now
-	st.FocusDuration = globeFocusDuration
-	st.FocusAnimating = true
+func (a *App) activateGlobeWord(term service.WordCloudTerm) {
+	mygo.Haptics.Selection()
+	a.enterArchiveWithTerm(term)
 }
 
 func (a *App) resetGlobeOrientation(now time.Time) {
@@ -706,7 +581,6 @@ func (a *App) resetGlobeOrientation(now time.Time) {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	st.FocusedWord = ""
 	st.VelYaw = 0
 	st.VelPitch = 0
 	st.FocusFrom = st.Rot

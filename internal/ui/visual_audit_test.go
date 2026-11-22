@@ -182,37 +182,25 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	}
 	settleAudit(tt)
 
-	// 3. Tapping a foreground Globe word focuses it and opens the preview card -> "看相关档案" enters SpaceArchive
+	// 3. Tapping a foreground Globe word directly enters SpaceArchive with automatic filter (no homepage focus popup)
 	if len(app.DashboardDigest.WordCloud) > 0 {
 		firstTerm := app.DashboardDigest.WordCloud[0]
 		if err := tt.Click(firstTerm.Word); err != nil {
 			t.Fatalf("click globe foreground term %q: %v", firstTerm.Word, err)
 		}
-		for i := 0; i < 10; i++ {
-			tt.Advance(50 * time.Millisecond)
-		}
 		settleAudit(tt)
-		if app.Globe.FocusedWord != firstTerm.Word {
-			t.Fatalf("expected Globe.FocusedWord=%q, got %q", firstTerm.Word, app.Globe.FocusedWord)
+		if tt.HasText("看相关档案") {
+			t.Fatalf("expected no homepage focus preview card after clicking %q, texts=%v", firstTerm.Word, tt.Texts())
 		}
-		if !tt.HasText("看相关档案") {
-			t.Fatalf("expected globe focus card with \"看相关档案\", texts=%v", tt.Texts())
+		if app.ActiveSpace != SpaceArchive || (firstTerm.FilterTag != "" && app.ActiveTag != firstTerm.FilterTag) || (firstTerm.FilterTag == "" && app.SearchQuery != firstTerm.Word) {
+			t.Fatalf("expected SpaceArchive filtered by %q, got space=%v tag=%q query=%q", firstTerm.Word, app.ActiveSpace, app.ActiveTag, app.SearchQuery)
 		}
-		assertAuditNoEmojis(t, "dashboard_globe_focused", tt.Texts())
-		saveAuditPNG(t, auditDir, tt.Image(), "ui_dashboard_globe_focused.png")
+		assertAuditNoEmojis(t, "archive_globe_filtered", tt.Texts())
+		saveAuditPNG(t, auditDir, tt.Image(), "ui_archive_globe_filtered.png")
 
-		if err := tt.Click("看相关档案"); err != nil {
-			t.Fatalf("click \"看相关档案\": %v", err)
-		}
-		settleAudit(tt)
-		if app.ActiveSpace != SpaceArchive || (firstTerm.FilterTag != "" && app.ActiveTag != firstTerm.FilterTag) {
-			t.Fatalf("expected SpaceArchive filtered by %q, got space=%v tag=%q", firstTerm.FilterTag, app.ActiveSpace, app.ActiveTag)
-		}
 		if err := tt.Click("回到主页看板"); err != nil {
 			t.Fatalf("back to dashboard: %v", err)
 		}
-		settleAudit(tt)
-		app.Globe.FocusedWord = ""
 		settleAudit(tt)
 	}
 

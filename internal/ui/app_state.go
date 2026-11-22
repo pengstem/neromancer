@@ -264,24 +264,40 @@ func (a *App) returnToDashboard() {
 func (a *App) enterArchiveWithTag(tag string) {
 	a.CaptureDialOpen = false
 	a.ActiveTag = strings.TrimSpace(tag)
+	a.SearchQuery = ""
+	a.ArchiveSearchOpen = false
 	a.ActiveSpace = SpaceArchive
 	a.ArchiveMode = ArchiveCards
 	a.ArchiveScroll.Y = 0
 }
 
-// enterArchiveWithTerm transitions from a focused Globe word into the Archive Vault filtered by tag or search query.
+// enterArchiveWithTerm transitions directly from a tapped Globe word into the Archive Vault filtered by tag or search query.
 func (a *App) enterArchiveWithTerm(term service.WordCloudTerm) {
 	a.CaptureDialOpen = false
 	a.ActiveSpace = SpaceArchive
 	a.ArchiveMode = ArchiveCards
 	a.ArchiveScroll.Y = 0
+	a.ArchiveSearchOpen = false
 	if tag := strings.TrimSpace(term.FilterTag); tag != "" {
 		a.ActiveTag = tag
 		a.SearchQuery = ""
-		return
+	} else {
+		a.ActiveTag = ""
+		a.SearchQuery = strings.TrimSpace(term.Word)
 	}
-	a.ActiveTag = ""
-	a.SearchQuery = strings.TrimSpace(term.Word)
+	filtered := a.filteredArchiveNodes()
+	if len(filtered) > 0 {
+		targetID := filtered[0].ID
+		if term.TopNodeID != "" {
+			for _, n := range filtered {
+				if n.ID == term.TopNodeID {
+					targetID = n.ID
+					break
+				}
+			}
+		}
+		a.SelectNode(targetID)
+	}
 }
 
 // TriggerGlobeCaptureRipple arms a gentle fly-in ripple and rotation toward a newly captured idea's primary keyword.
@@ -296,7 +312,6 @@ func (a *App) TriggerGlobeCaptureRipple(node domain.IdeaNode) {
 	if term == "" {
 		term = trimText(node.Title, 8)
 	}
-	a.Globe.FocusedWord = ""
 	a.Globe.RipplePending = true
 	a.Globe.RippleTerm = term
 	a.Globe.RippleTheme = node.Theme

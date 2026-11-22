@@ -231,12 +231,12 @@ func TestDashboardWordCloudGlobeInteractions(t *testing.T) {
 		}
 		tt.ClickAt(backPos[0], backPos[1])
 		tt.Frame()
-		if app.Globe.FocusedWord == backWord {
-			t.Fatalf("expected backface tap at (%v,%v) NOT to focus %q", backPos[0], backPos[1], backWord)
+		if app.ActiveSpace != SpaceDashboard {
+			t.Fatalf("expected backface tap at (%v,%v) NOT to navigate away from Dashboard for %q, got space=%v", backPos[0], backPos[1], backWord, app.ActiveSpace)
 		}
 	}
 
-	// 4. Tap foreground word -> focuses & opens preview card -> "看相关档案" navigates to SpaceArchive.
+	// 4. Tap foreground word -> directly navigates to SpaceArchive with automatic filter (no homepage focus popup).
 	var targetTermIdx int = -1
 	for i := 1; i < len(terms); i++ {
 		rv := mat3Vec(app.Globe.Rot, pts[i])
@@ -254,29 +254,68 @@ func TestDashboardWordCloudGlobeInteractions(t *testing.T) {
 		}
 	}
 	targetTerm := terms[targetTermIdx]
-	if app.Globe.FocusedWord != targetTerm.Word {
-		t.Fatalf("expected FocusedWord=%q, got %q", targetTerm.Word, app.Globe.FocusedWord)
-	}
-	for i := 0; i < 10; i++ {
-		tt.Advance(50 * time.Millisecond)
-	}
-	focusedZ := mat3Vec(app.Globe.Rot, pts[targetTermIdx])[2]
-	if focusedZ < 0.96 {
-		t.Fatalf("expected focused word %q to rotate to front-center (z>0.96), got z=%v", targetTerm.Word, focusedZ)
-	}
-	if !tt.HasText("看相关档案") {
-		t.Fatalf("expected focus preview card with \"看相关档案\" button, texts=%v", tt.Texts())
-	}
-	assertAuditNoEmojis(t, "globe_focused", tt.Texts())
-
-	if err := tt.Click("看相关档案"); err != nil {
-		t.Fatalf("click \"看相关档案\": %v", err)
-	}
 	settleAudit(tt)
-	if app.ActiveSpace != SpaceArchive {
-		t.Fatalf("expected SpaceArchive after clicking \"看相关档案\", got %v", app.ActiveSpace)
+
+	if app.ActiveSpace != SpaceArchive || app.ArchiveMode != ArchiveCards {
+		t.Fatalf("expected single tap on %q to enter SpaceArchive/ArchiveCards directly, got space=%v mode=%v", targetTerm.Word, app.ActiveSpace, app.ArchiveMode)
 	}
-	if targetTerm.FilterTag != "" && app.ActiveTag != targetTerm.FilterTag {
-		t.Fatalf("expected ActiveTag=%q, got %q", targetTerm.FilterTag, app.ActiveTag)
+	if tt.HasText("看相关档案") {
+		t.Fatalf("expected no homepage focus preview popup when tapping globe word, texts=%v", tt.Texts())
+	}
+	if targetTerm.FilterTag != "" {
+		if app.ActiveTag != targetTerm.FilterTag || app.SearchQuery != "" {
+			t.Fatalf("expected tag filter ActiveTag=%q SearchQuery=\"\", got tag=%q query=%q", targetTerm.FilterTag, app.ActiveTag, app.SearchQuery)
+		}
+	} else {
+		if app.ActiveTag != "" || app.SearchQuery != targetTerm.Word {
+			t.Fatalf("expected search filter ActiveTag=\"\" SearchQuery=%q, got tag=%q query=%q", targetTerm.Word, app.ActiveTag, app.SearchQuery)
+		}
+	}
+	if len(app.filteredArchiveNodes()) == 0 {
+		t.Fatalf("expected non-empty filtered archive results for globe term %q", targetTerm.Word)
+	}
+	assertAuditNoEmojis(t, "globe_archive_filtered", tt.Texts())
+}
+
+func TestGlobeWordCloudDirectArchiveFilterCoversConceptsAndTags(t *testing.T) {
+	app, cleanup := newAuditTestApp(t)
+	defer cleanup()
+
+	tt := ui.NewTester(app.RootView, 412, 892)
+	settleAudit(tt)
+
+	// Verify both tag-backed and concept-backed terms filter cleanly into SpaceArchive.
+	var conceptWord string
+	for _, term := range app.DashboardDigest.WordCloud {
+		app.ActiveSpace = SpaceDashboard
+		app.enterArchiveWithTerm(term)
+		if app.ActiveSpace != SpaceArchive || app.ArchiveMode != ArchiveCards {
+			t.Fatalf("term %q: expected SpaceArchive/ArchiveCards, got space=%v mode=%v", term.Word, app.ActiveSpace, app.ArchiveMode)
+		}
+		if len(app.filteredArchiveNodes()) == 0 {
+			t.Fatalf("term %q (kind=%s, tag=%q): expected at least 1 filtered archive node", term.Word, term.Kind, term.FilterTag)
+		}
+		if term.FilterTag == "" && conceptWord == "" {
+			conceptWord = term.Word
+		}
+	}
+
+	if conceptWord != "" {
+		app.ActiveSpace = SpaceDashboard
+		app.enterArchiveWithTerm(app.DashboardDigest.WordCloud[0])
+		// Apply concept term and verify the search input renders its active query.
+		for _, term := range app.DashboardDigest.WordCloud {
+			if term.Word == conceptWord {
+				app.enterArchiveWithTerm(term)
+				break
+			}
+		}
+		settleAudit(tt)
+		if app.SearchQuery != conceptWord || app.ActiveTag != "" {
+			t.Fatalf("expected SearchQuery=%q ActiveTag=\"\", got query=%q tag=%q", conceptWord, app.SearchQuery, app.ActiveTag)
+		}
+		if !tt.HasText("灵感档案室") || tt.HasText("看相关档案") {
+			t.Fatalf("expected Archive view without homepage focus popup, texts=%v", tt.Texts())
+		}
 	}
 }

@@ -196,6 +196,19 @@ func (a *App) renderArchiveTitleAndTabs(c *ui.Context, pal SurfacePalette) {
 				})
 
 				limit := min(len(a.Tags), 12)
+				activeInTabs := a.ActiveTag == ""
+				for i := 0; i < limit; i++ {
+					if a.Tags[i].Tag == a.ActiveTag {
+						activeInTabs = true
+						break
+					}
+				}
+				if !activeInTabs {
+					activeTag := a.ActiveTag
+					a.renderUnderlineFilterTab(c, pal, "arch_tag_"+activeTag, activeTag, true, func() {
+						a.ActiveTag = ""
+					})
+				}
 				for i := 0; i < limit; i++ {
 					tc := a.Tags[i]
 					tagName := tc.Tag
@@ -449,7 +462,7 @@ func (a *App) filteredArchiveNodes() []domain.IdeaNode {
 			}
 		}
 		if q != "" {
-			hay := strings.ToLower(n.Title + " " + n.ConversationalSummary + " " + strings.Join(n.Tags, " "))
+			hay := strings.ToLower(n.Title + " " + n.Visual.Caption + " " + n.ConversationalSummary + " " + strings.Join(n.Tags, " "))
 			if !strings.Contains(hay, q) {
 				continue
 			}
