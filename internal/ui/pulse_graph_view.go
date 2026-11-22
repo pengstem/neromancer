@@ -3,8 +3,10 @@ package ui
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"math"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/egoist/mygo"
@@ -29,10 +31,20 @@ var (
 	obsTextSubtle  = ui.Hex("#52525B")
 	obsAccent      = ui.Hex("#A882FF") // Obsidian lavender focus & active bar
 	obsEmerald     = ui.Hex("#3ECF6E") // Obsidian tag node green
-	obsViolet      = ui.Hex("#9B8AFB") // Secondary hub cluster tint
+	obsViolet      = ui.Hex("#9B8AFB") // Secondary note tint
 )
 
-// PulseViewState holds pure frame-persistent state for the Obsidian Graph + AI File Explorer view.
+type pulseSimNode struct {
+	ID        string
+	X, Y      float64
+	VX, VY    float64
+	Phase     float64
+	Appear    float32
+	FocusGlow float32
+	Pinned    bool
+}
+
+// PulseViewState holds pure frame-persistent physics, animation, and UI state for the Obsidian Graph + AI File Explorer.
 type PulseViewState struct {
 	ShowTags          bool
 	ShowEvidences     bool
@@ -40,6 +52,8 @@ type PulseViewState struct {
 
 	PanX       float32
 	PanY       float32
+	PanVelX    float32
+	PanVelY    float32
 	Zoom       float32
 	SplitRatio float32 // fraction of body height given to Graph stage (0.26 .. 0.68)
 
@@ -47,19 +61,31 @@ type PulseViewState struct {
 	CollapsedFolders map[string]bool
 	TreeScroll       ui.ScrollState
 
+	// Live spring-physics & organic breathing state
+	SimNodes        []pulseSimNode
+	LastSimTick     time.Time
+	BreathTime      float64
+	FocusPresence   float32
+	LastStageBounds ui.Rect
+	LastProj        []projectedPulseVertex
+
 	// Pointer gesture tracking on Graph stage & Split handle
-	DragDummy     ui.Point
-	SplitDummy    ui.Point
-	Dragging      bool
-	DragMoved     bool
-	DownX         float32
-	DownY         float32
-	StartPanX     float32
-	StartPanY     float32
-	HitVertexIdx  int
-	SplitDragging bool
-	SplitDownY    float32
-	SplitStartRat float32
+	DragDummy       ui.Point
+	SplitDummy      ui.Point
+	Dragging        bool
+	DragMoved       bool
+	DownX           float32
+	DownY           float32
+	LastPtrX        float32
+	LastPtrY        float32
+	LastPtrAt       time.Time
+	StartPanX       float32
+	StartPanY       float32
+	HitVertexIdx    int
+	DraggingNodeIdx int
+	SplitDragging   bool
+	SplitDownY      float32
+	SplitStartRat   float32
 
 	// Memoized force-directed graph cache
 	CachedVaultGen      int
@@ -72,16 +98,17 @@ type PulseViewState struct {
 
 func newPulseViewState() PulseViewState {
 	return PulseViewState{
-		ShowTags:         true,
-		ShowEvidences:    true,
+		ShowTags:         false, // Default OFF so unrelated notes stand cleanly as separate islands without tag tentacles
+		ShowEvidences:    true,  // Shows merged raw capture dots when a note aggregates 2+ captures
 		Zoom:             1.0,
-		SplitRatio:       0.45,
+		SplitRatio:       0.46,
 		HitVertexIdx:     -1,
+		DraggingNodeIdx:  -1,
 		CollapsedFolders: make(map[string]bool),
 	}
 }
 
-func (a *App) ensurePulseGraph() service.PulseGraph {
+func (a *App) ensurePulseGraph(reduceMotion bool) service.PulseGraph {
 	q := strings.TrimSpace(a.SearchQuery)
 	tag := cleanTagLabel(a.ActiveTag)
 	p := &a.Pulse
@@ -92,7 +119,7 @@ func (a *App) ensurePulseGraph() service.PulseGraph {
 		p.Zoom = 1.0
 	}
 	if p.SplitRatio <= 0 {
-		p.SplitRatio = 0.45
+		p.SplitRatio = 0.46
 	}
 
 	if p.CachedVaultGen == a.VaultGen &&
@@ -100,6 +127,9 @@ func (a *App) ensurePulseGraph() service.PulseGraph {
 		p.CachedTag == tag &&
 		p.CachedShowTags == p.ShowTags &&
 		p.CachedShowEvidences == p.ShowEvidences {
+		if len(p.SimNodes) != len(p.Graph.Nodes) {
+			p.syncSimNodes(p.Graph, reduceMotion)
+		}
 		return p.Graph
 	}
 
@@ -124,11 +154,267 @@ func (a *App) ensurePulseGraph() service.PulseGraph {
 	p.CachedTag = tag
 	p.CachedShowTags = p.ShowTags
 	p.CachedShowEvidences = p.ShowEvidences
+	p.syncSimNodes(p.Graph, reduceMotion)
 	return p.Graph
 }
 
+func (p *PulseViewState) syncSimNodes(pg service.PulseGraph, reduceMotion bool) {
+	prevByID := make(map[string]pulseSimNode, len(p.SimNodes))
+	for _, sn := range p.SimNodes {
+		prevByID[sn.ID] = sn
+	}
+
+	next := make([]pulseSimNode, len(pg.Nodes))
+	for i, nd := range pg.Nodes {
+		if old, ok := prevByID[nd.ID]; ok {
+			if reduceMotion {
+				old.X = nd.X
+				old.Y = nd.Y
+				old.VX = 0
+				old.VY = 0
+				old.Appear = 1.0
+			}
+			next[i] = old
+			continue
+		}
+		phase := hashNodePhase(nd.ID)
+		if reduceMotion {
+			next[i] = pulseSimNode{
+				ID:     nd.ID,
+				X:      nd.X,
+				Y:      nd.Y,
+				Phase:  phase,
+				Appear: 1.0,
+			}
+		} else {
+			// New or freshly-opened nodes gently bloom outward from their island center!
+			startX := nd.AnchorX + (nd.X-nd.AnchorX)*0.42
+			startY := nd.AnchorY + (nd.Y-nd.AnchorY)*0.42
+			next[i] = pulseSimNode{
+				ID:     nd.ID,
+				X:      startX,
+				Y:      startY,
+				Phase:  phase,
+				Appear: 0.20,
+			}
+		}
+	}
+	p.SimNodes = next
+	p.DraggingNodeIdx = -1
+}
+
+func hashNodePhase(id string) float64 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(id))
+	return (float64(h.Sum32()&0xFFFF) / 65535.0) * 2.0 * math.Pi
+}
+
+// stepPulsePhysics advances live Obsidian spring elasticity, coasting pan inertia,
+// smooth focus transitions, and serene ambient breathing.
+func (a *App) stepPulsePhysics(
+	c *ui.Context,
+	pg service.PulseGraph,
+	focusIdx int,
+	neighMap map[int]bool,
+	stageW, stageH float32,
+) (kineticActive bool, breathActive bool) {
+	p := &a.Pulse
+	n := len(pg.Nodes)
+	if n == 0 || len(p.SimNodes) != n {
+		return false, false
+	}
+
+	reduceMotion := c == nil || c.Preferences().ReduceMotion
+	if reduceMotion {
+		for i, nd := range pg.Nodes {
+			p.SimNodes[i].X = nd.X
+			p.SimNodes[i].Y = nd.Y
+			p.SimNodes[i].VX = 0
+			p.SimNodes[i].VY = 0
+			p.SimNodes[i].Appear = 1.0
+			switch {
+			case i == focusIdx:
+				p.SimNodes[i].FocusGlow = 1.0
+			case neighMap[i]:
+				p.SimNodes[i].FocusGlow = 0.55
+			default:
+				p.SimNodes[i].FocusGlow = 0.0
+			}
+		}
+		if focusIdx >= 0 {
+			p.FocusPresence = 1.0
+		} else {
+			p.FocusPresence = 0.0
+		}
+		p.PanVelX = 0
+		p.PanVelY = 0
+		return false, false
+	}
+
+	now := c.Now()
+	dt := 0.016
+	if !p.LastSimTick.IsZero() && !now.Before(p.LastSimTick) {
+		elapsed := now.Sub(p.LastSimTick).Seconds()
+		if elapsed > 0 && elapsed < 0.05 {
+			dt = elapsed
+		} else if elapsed >= 0.05 {
+			dt = 0.032
+		}
+	}
+	p.LastSimTick = now
+	p.BreathTime += dt
+
+	// 1. Pan coasting inertia when not actively dragging
+	if !p.Dragging && (math.Abs(float64(p.PanVelX)) > 2.0 || math.Abs(float64(p.PanVelY)) > 2.0) {
+		maxPanX := stageW * 0.85 * max(1.0, p.Zoom)
+		maxPanY := stageH * 0.85 * max(1.0, p.Zoom)
+		p.PanX = min(maxPanX, max(-maxPanX, p.PanX+p.PanVelX*float32(dt)))
+		p.PanY = min(maxPanY, max(-maxPanY, p.PanY+p.PanVelY*float32(dt)))
+		decay := float32(math.Exp(-5.2 * dt))
+		p.PanVelX *= decay
+		p.PanVelY *= decay
+		kineticActive = true
+	} else if !p.Dragging {
+		p.PanVelX = 0
+		p.PanVelY = 0
+	}
+
+	// 2. Live spring-repulsion physics (especially responsive when dragging a node!)
+	fx := make([]float64, n)
+	fy := make([]float64, n)
+
+	// Spring attraction to each node's island equilibrium rest position (near-critically damped)
+	anchorStiff := 24.0
+	if p.Dragging && p.DraggingNodeIdx >= 0 {
+		// Loosen equilibrium tether on same-island nodes so dragged island stretches organically!
+		anchorStiff = 6.5
+	}
+	draggedIsland := -1
+	if p.Dragging && p.DraggingNodeIdx >= 0 && p.DraggingNodeIdx < n {
+		draggedIsland = pg.Nodes[p.DraggingNodeIdx].IslandID
+	}
+
+	for i, nd := range pg.Nodes {
+		if p.SimNodes[i].Pinned {
+			continue
+		}
+		k := anchorStiff
+		if draggedIsland >= 0 && nd.IslandID != draggedIsland {
+			k = 26.0 // Unrelated islands stay peacefully anchored in their own territory
+		}
+		fx[i] += (nd.X - p.SimNodes[i].X) * k
+		fy[i] += (nd.Y - p.SimNodes[i].Y) * k
+	}
+
+	// Live Hooke springs along connected edges so pulling one node tugs its whole island!
+	for _, e := range pg.Edges {
+		u, v := e.U, e.V
+		if u >= n || v >= n {
+			continue
+		}
+		restDX := pg.Nodes[v].X - pg.Nodes[u].X
+		restDY := pg.Nodes[v].Y - pg.Nodes[u].Y
+		restLen := math.Hypot(restDX, restDY)
+
+		curDX := p.SimNodes[v].X - p.SimNodes[u].X
+		curDY := p.SimNodes[v].Y - p.SimNodes[u].Y
+		curLen := math.Hypot(curDX, curDY) + 0.0001
+
+		stretch := (curLen - restLen) * 36.0
+		sx := (curDX / curLen) * stretch
+		sy := (curDY / curLen) * stretch
+		if !p.SimNodes[u].Pinned {
+			fx[u] += sx
+			fy[u] += sy
+		}
+		if !p.SimNodes[v].Pinned {
+			fx[v] -= sx
+			fy[v] -= sy
+		}
+	}
+
+	// Soft short-range collision separation preventing dots from sitting directly on top of each other
+	for i := 0; i < n; i++ {
+		for j := i + 1; j < n; j++ {
+			dx := p.SimNodes[i].X - p.SimNodes[j].X
+			dy := p.SimNodes[i].Y - p.SimNodes[j].Y
+			d2 := dx*dx + dy*dy
+			if d2 > 0.006 || d2 < 1e-7 {
+				continue
+			}
+			d := math.Sqrt(d2)
+			rep := (0.006 - d2) * 22.0
+			rx, ry := (dx/d)*rep, (dy/d)*rep
+			if !p.SimNodes[i].Pinned {
+				fx[i] += rx
+				fy[i] += ry
+			}
+			if !p.SimNodes[j].Pinned {
+				fx[j] -= rx
+				fy[j] -= ry
+			}
+		}
+	}
+
+	damping := math.Exp(-9.2 * dt)
+	totalSpeed := 0.0
+	appearRate := float32(1.0 - math.Exp(-7.5*dt))
+	glowRate := float32(1.0 - math.Exp(-11.0*dt))
+
+	for i := range p.SimNodes {
+		sn := &p.SimNodes[i]
+		if !sn.Pinned {
+			sn.VX = (sn.VX + fx[i]*dt) * damping
+			sn.VY = (sn.VY + fy[i]*dt) * damping
+			sn.X = min(0.95, max(0.05, sn.X+sn.VX*dt))
+			sn.Y = min(0.93, max(0.07, sn.Y+sn.VY*dt))
+			totalSpeed += math.Hypot(sn.VX, sn.VY)
+		} else {
+			sn.VX = 0
+			sn.VY = 0
+		}
+
+		if sn.Appear < 0.995 {
+			sn.Appear += (1.0 - sn.Appear) * appearRate
+			kineticActive = true
+		} else {
+			sn.Appear = 1.0
+		}
+
+		targetGlow := float32(0.0)
+		if i == focusIdx {
+			targetGlow = 1.0
+		} else if neighMap[i] {
+			targetGlow = 0.55
+		}
+		if math.Abs(float64(targetGlow-sn.FocusGlow)) > 0.01 {
+			sn.FocusGlow += (targetGlow - sn.FocusGlow) * glowRate
+			kineticActive = true
+		} else {
+			sn.FocusGlow = targetGlow
+		}
+	}
+
+	targetPresence := float32(0.0)
+	if focusIdx >= 0 {
+		targetPresence = 1.0
+	}
+	if math.Abs(float64(targetPresence-p.FocusPresence)) > 0.01 {
+		p.FocusPresence += (targetPresence - p.FocusPresence) * glowRate
+		kineticActive = true
+	} else {
+		p.FocusPresence = targetPresence
+	}
+
+	if totalSpeed > 0.008 || (p.Dragging && p.DraggingNodeIdx >= 0) {
+		kineticActive = true
+	}
+	return kineticActive, true
+}
+
 func (a *App) renderArchivePulseSplit(c *ui.Context, phone bool) {
-	pg := a.ensurePulseGraph()
+	reduceMotion := c.Preferences().ReduceMotion
+	pg := a.ensurePulseGraph(reduceMotion)
 	winW, winH := c.Size()
 	if winW <= 0 {
 		winW = 412
@@ -143,7 +429,7 @@ func (a *App) renderArchivePulseSplit(c *ui.Context, phone bool) {
 	}
 	availH := max(float32(420), winH-118)
 	ratio := min(float32(0.68), max(float32(0.26), a.Pulse.SplitRatio))
-	stageH := max(float32(190), min(availH-170, availH*ratio))
+	stageH := max(float32(195), min(availH-170, availH*ratio))
 
 	ui.Column(c).Key("pulse_obsidian_split").Grow(1).FillWidth().MinHeight(0).Background(obsBgTree).Children(func() {
 		if strings.TrimSpace(a.SearchQuery) != "" || a.ArchiveSearchOpen {
@@ -192,7 +478,11 @@ type projectedPulseVertex struct {
 	Idx       int
 	Node      service.PulseGraphNode
 	SX, SY    float32
+	Phase     float64
+	Pinned    bool
 	Radius    float32
+	Appear    float32
+	FocusGlow float32
 	IsFocus   bool
 	IsNeigh   bool
 	InBounds  bool
@@ -219,7 +509,7 @@ func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, est
 		return
 	}
 
-	// Resolve focused vertex index (either a focused Tag or the selected IdeaNode).
+	// Resolve focused vertex index.
 	focusIdx := -1
 	focusAccent := obsAccent
 	if a.Pulse.FocusedTag != "" {
@@ -239,49 +529,81 @@ func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, est
 	}
 	neighMap := pg.NeighborsByIdx[focusIdx]
 
+	kineticActive, breathActive := a.stepPulsePhysics(c, pg, focusIdx, neighMap, stageW, stageH)
+	if kineticActive {
+		c.AnimationFrame()
+	}
+	reduceMotion := c.Preferences().ReduceMotion
+	animOrigin := a.AnimOrigin
+	if animOrigin.IsZero() {
+		animOrigin = c.Now()
+		a.AnimOrigin = animOrigin
+	}
+
 	zoom := min(float32(2.6), max(float32(0.55), a.Pulse.Zoom))
 	panX := a.Pulse.PanX
 	panY := a.Pulse.PanY
 	cx := stageW * 0.5
-	cy := stageH * 0.48
-	usableW := stageW * 0.86
-	usableH := stageH * 0.84
+	cy := stageH * 0.47
+	usableW := stageW * 0.84
+	usableH := stageH * 0.80
 
 	proj := make([]projectedPulseVertex, len(pg.Nodes))
 	for i, nd := range pg.Nodes {
-		sx := cx + (float32(nd.X)-0.5)*usableW*zoom + panX
-		sy := cy + (float32(nd.Y)-0.49)*usableH*zoom + panY
+		sn := a.Pulse.SimNodes[i]
+		sx := cx + (float32(sn.X)-0.5)*usableW*zoom + panX
+		sy := cy + (float32(sn.Y)-0.48)*usableH*zoom + panY
+
 		isFoc := i == focusIdx
 		isNei := neighMap[i]
-		rad := pulseVertexRadius(nd, isFoc)
+		baseRad := pulseVertexRadius(nd, isFoc)
+		rad := baseRad * (0.55 + 0.45*sn.Appear)
+		if sn.FocusGlow > 0.02 {
+			rad += 0.65 * sn.FocusGlow
+		}
+
 		proj[i] = projectedPulseVertex{
-			Idx:      i,
-			Node:     nd,
-			SX:       sx,
-			SY:       sy,
-			Radius:   rad,
-			IsFocus:  isFoc,
-			IsNeigh:  isNei,
-			InBounds: sx >= -30 && sx <= stageW+30 && sy >= -30 && sy <= stageH+30,
+			Idx:       i,
+			Node:      nd,
+			SX:        sx,
+			SY:        sy,
+			Phase:     sn.Phase,
+			Pinned:    sn.Pinned,
+			Radius:    rad,
+			Appear:    sn.Appear,
+			FocusGlow: sn.FocusGlow,
+			IsFocus:   isFoc,
+			IsNeigh:   isNei,
+			InBounds:  sx >= -30 && sx <= stageW+30 && sy >= -30 && sy <= stageH+30,
 		}
 	}
+	a.Pulse.LastStageBounds = bounds
+	a.Pulse.LastProj = proj
 
 	edges := pg.Edges
-	hasFocus := focusIdx >= 0
+	focusPresence := a.Pulse.FocusPresence
 
 	stage.Draggable(&a.Pulse.DragDummy, ui.DraggableOptions{
 		Axis:   ui.Horizontal | ui.Vertical,
 		Bounds: &ui.Rect{},
 		Rigid:  true,
 	}).HandleInput(func(ev ui.InputEvent) bool {
-		return a.handlePulseGraphInput(ev, pg, proj, stageW, stageH, phone)
+		return a.handlePulseGraphInput(ev, pg, proj, stageW, stageH, cx, cy, usableW, usableH, zoom, phone)
 	}).Draw(func(p *ui.Painter, r ui.Rect) {
-		drawPulseObsidianMesh(p, r, stageW, stageH, proj, edges, focusIdx, hasFocus, focusAccent)
+		liveT := a.Pulse.BreathTime
+		if !reduceMotion && !animOrigin.IsZero() {
+			if el := p.Now().Sub(animOrigin).Seconds(); el > 0 {
+				liveT = el
+			}
+		}
+		drawPulseObsidianMesh(p, r, stageW, stageH, proj, edges, focusIdx, focusPresence, focusAccent, liveT, reduceMotion)
+		if !kineticActive && breathActive && p.Accelerated() {
+			p.AnimationFrameRate(30)
+		}
 	}).Children(func() {
-		// Zoom-aware plain-text labels (zero background pill boxes, automatic collision culling)
 		renderPulsePlainLabels(c, stageW, stageH, zoom, proj)
 
-		// Top-right discreet filter button (Obsidian Graph Settings style)
+		// Top-right discreet filter button
 		fltBtn := ui.ButtonBase(c).Key("pulse_filter_btn").
 			Absolute().Right(10).Top(8).Size(28, 28).Radius(6).Center().
 			Background(ui.Transparent).Cursor(ui.CursorPointer).Label("图谱显示设置")
@@ -320,29 +642,32 @@ func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, est
 			}
 		}
 
-		// Bottom-right quiet vertex & edge count
+		// Bottom-right quiet island, vertex & edge count
 		ui.Box(c).Absolute().Right(13).Bottom(8).PassThrough().Children(func() {
-			ui.Textf(c, "%d 节点 · %d 连线", len(pg.Nodes), len(pg.Edges)).
-				FontSize(10).FontFeatures("tnum").TextColor(obsTextSubtle).SingleLine()
+			statText := fmt.Sprintf("%d 小岛 · %d 节点", pg.IslandCount, len(pg.Nodes))
+			if pg.IslandCount <= 1 {
+				statText = fmt.Sprintf("%d 节点 · %d 连线", len(pg.Nodes), len(pg.Edges))
+			}
+			ui.Text(c, statText).FontSize(10).FontFeatures("tnum").TextColor(obsTextSubtle).SingleLine()
 		})
 	})
 }
 
 func (a *App) renderPulseFilterOverlay(c *ui.Context) {
 	ui.Column(c).Key("pulse_filter_panel").
-		Absolute().Right(10).Top(40).Width(178).Padding(10, 12).Gap(8).Radius(10).
+		Absolute().Right(10).Top(40).Width(182).Padding(10, 12).Gap(8).Radius(10).
 		Background(obsBgElevated).Border(1, ui.Hex("#383842")).
 		Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.42)).
 		ZIndex(50).
 		Children(func() {
-			a.renderDarkToggleRow(c, "pf_tags", "显示标签节点", a.Pulse.ShowTags, func() {
+			a.renderDarkToggleRow(c, "pf_evs", "显示合并原记录点", a.Pulse.ShowEvidences, func() {
+				a.Pulse.ShowEvidences = !a.Pulse.ShowEvidences
+			})
+			a.renderDarkToggleRow(c, "pf_tags", "显示共享标签节点", a.Pulse.ShowTags, func() {
 				a.Pulse.ShowTags = !a.Pulse.ShowTags
 				if !a.Pulse.ShowTags {
 					a.Pulse.FocusedTag = ""
 				}
-			})
-			a.renderDarkToggleRow(c, "pf_evs", "显示原记录碎点", a.Pulse.ShowEvidences, func() {
-				a.Pulse.ShowEvidences = !a.Pulse.ShowEvidences
 			})
 
 			ui.Box(c).FillWidth().Height(1).Background(obsBorder)
@@ -354,6 +679,8 @@ func (a *App) renderPulseFilterOverlay(c *ui.Context) {
 				mygo.Haptics.Selection()
 				a.Pulse.PanX = 0
 				a.Pulse.PanY = 0
+				a.Pulse.PanVelX = 0
+				a.Pulse.PanVelY = 0
 				a.Pulse.Zoom = 1.0
 				a.Pulse.FocusedTag = ""
 				a.Pulse.FilterPopoverOpen = false
@@ -407,27 +734,31 @@ func (a *App) handlePulseGraphInput(
 	ev ui.InputEvent,
 	pg service.PulseGraph,
 	proj []projectedPulseVertex,
-	stageW, stageH float32,
+	stageW, stageH, cx, cy, usableW, usableH, zoom float32,
 	phone bool,
 ) bool {
 	p := &a.Pulse
 	switch ev.Kind {
+	case ui.InputZoom:
+		if ev.Scale > 0 {
+			p.Zoom = min(float32(2.6), max(float32(0.55), p.Zoom*ev.Scale))
+		}
+		return true
+
 	case ui.InputScroll:
 		delta := ev.DY
 		if !ev.Precise {
 			delta *= 1.8
 		}
 		factor := float32(math.Exp(float64(-delta) * 0.0045))
-		nextZoom := min(float32(2.6), max(float32(0.55), p.Zoom*factor))
-		p.Zoom = nextZoom
+		p.Zoom = min(float32(2.6), max(float32(0.55), p.Zoom*factor))
 		return true
 
 	case ui.InputPointerDown:
-		// Ignore top-right filter button zone so button clicks pass cleanly
 		if ev.X >= stageW-42 && ev.Y <= 40 {
 			return false
 		}
-		if p.FilterPopoverOpen && ev.X >= stageW-192 && ev.Y <= 210 {
+		if p.FilterPopoverOpen && ev.X >= stageW-196 && ev.Y <= 210 {
 			return false
 		}
 		if phone && ev.X <= 160 && ev.Y >= stageH-28 {
@@ -437,9 +768,18 @@ func (a *App) handlePulseGraphInput(
 		p.DragMoved = false
 		p.DownX = ev.X
 		p.DownY = ev.Y
+		p.LastPtrX = ev.X
+		p.LastPtrY = ev.Y
+		p.LastPtrAt = ev.Time
 		p.StartPanX = p.PanX
 		p.StartPanY = p.PanY
+		p.PanVelX = 0
+		p.PanVelY = 0
 		p.HitVertexIdx = hitTestPulseVertex(proj, ev.X, ev.Y)
+		p.DraggingNodeIdx = p.HitVertexIdx
+		if p.DraggingNodeIdx >= 0 && p.DraggingNodeIdx < len(p.SimNodes) {
+			p.SimNodes[p.DraggingNodeIdx].Pinned = true
+		}
 		return true
 
 	case ui.InputPointerMove:
@@ -453,10 +793,33 @@ func (a *App) handlePulseGraphInput(
 			p.FilterPopoverOpen = false
 		}
 		if p.DragMoved {
-			maxPanX := stageW * 0.85 * max(1.0, p.Zoom)
-			maxPanY := stageH * 0.85 * max(1.0, p.Zoom)
-			p.PanX = min(maxPanX, max(-maxPanX, p.StartPanX+dx))
-			p.PanY = min(maxPanY, max(-maxPanY, p.StartPanY+dy))
+			if p.DraggingNodeIdx >= 0 && p.DraggingNodeIdx < len(p.SimNodes) && usableW > 1 && usableH > 1 {
+				// Signature Obsidian node drag: move the grabbed vertex directly, elastically pulling its island!
+				nx := float64((ev.X-cx-p.PanX)/(usableW*zoom)) + 0.5
+				ny := float64((ev.Y-cy-p.PanY)/(usableH*zoom)) + 0.48
+				p.SimNodes[p.DraggingNodeIdx].X = min(0.95, max(0.05, nx))
+				p.SimNodes[p.DraggingNodeIdx].Y = min(0.93, max(0.07, ny))
+			} else {
+				// Blank-space drag pans the viewport and records coasting velocity.
+				if !p.LastPtrAt.IsZero() && !ev.Time.IsZero() {
+					dt := float32(ev.Time.Sub(p.LastPtrAt).Seconds())
+					if dt > 0.002 && dt < 0.15 {
+						vx := (ev.X - p.LastPtrX) / dt
+						vy := (ev.Y - p.LastPtrY) / dt
+						p.PanVelX = 0.55*p.PanVelX + 0.45*vx
+						p.PanVelY = 0.55*p.PanVelY + 0.45*vy
+					}
+				}
+				maxPanX := stageW * 0.85 * max(1.0, p.Zoom)
+				maxPanY := stageH * 0.85 * max(1.0, p.Zoom)
+				p.PanX = min(maxPanX, max(-maxPanX, p.StartPanX+dx))
+				p.PanY = min(maxPanY, max(-maxPanY, p.StartPanY+dy))
+			}
+		}
+		p.LastPtrX = ev.X
+		p.LastPtrY = ev.Y
+		if !ev.Time.IsZero() {
+			p.LastPtrAt = ev.Time
 		}
 		return true
 
@@ -464,8 +827,15 @@ func (a *App) handlePulseGraphInput(
 		if !p.Dragging {
 			return false
 		}
+		if p.DraggingNodeIdx >= 0 && p.DraggingNodeIdx < len(p.SimNodes) {
+			p.SimNodes[p.DraggingNodeIdx].Pinned = false
+		}
 		p.Dragging = false
+		p.DraggingNodeIdx = -1
+
 		if !p.DragMoved {
+			p.PanVelX = 0
+			p.PanVelY = 0
 			if p.FilterPopoverOpen {
 				p.FilterPopoverOpen = false
 				return true
@@ -510,7 +880,6 @@ func hitTestPulseVertex(proj []projectedPulseVertex, x, y float32) int {
 		if dist > hitR {
 			continue
 		}
-		// Slight priority preference for Note & Tag vertices over tiny Evidence dots when overlapping
 		score := dist
 		if pv.Node.Kind == "evidence" {
 			score += 4.5
@@ -531,13 +900,26 @@ func pulseVertexRadius(nd service.PulseGraphNode, isFocused bool) float32 {
 	case "tag":
 		return min(float32(3.3), 2.1+float32(nd.Degree)*0.28)
 	case "evidence":
-		return 1.9
+		return 2.1
 	default: // "note"
-		if nd.IsHub {
-			return 4.5
+		if nd.IsHub && nd.Degree >= 2 {
+			return 4.6
 		}
-		return min(float32(4.0), 2.6+float32(nd.Degree)*0.30)
+		return min(float32(4.4), 3.4+float32(nd.Degree)*0.28)
 	}
+}
+
+func pulseBreathOffset(pv projectedPulseVertex, breathT float64, reduceMotion bool) (float32, float32) {
+	if reduceMotion || pv.Pinned {
+		return 0, 0
+	}
+	amp := float32(2.2)
+	if pv.Node.Kind == "evidence" {
+		amp = 1.5
+	}
+	bx := amp * float32(math.Sin(breathT*0.72+pv.Phase)+0.42*math.Cos(breathT*0.41+pv.Phase*1.7))
+	by := amp * float32(math.Cos(breathT*0.64+pv.Phase*1.3)+0.42*math.Sin(breathT*0.37+pv.Phase*2.1))
+	return bx, by
 }
 
 func drawPulseObsidianMesh(
@@ -547,8 +929,10 @@ func drawPulseObsidianMesh(
 	proj []projectedPulseVertex,
 	edges []service.PulseGraphEdge,
 	focusIdx int,
-	hasFocus bool,
+	focusPresence float32,
 	focusAccent ui.Color,
+	breathT float64,
+	reduceMotion bool,
 ) {
 	if p == nil || r.W < 20 || r.H < 20 || len(proj) == 0 {
 		return
@@ -562,79 +946,93 @@ func drawPulseObsidianMesh(
 		scaleY = r.H / stageH
 	}
 
-	// 1. Razor-straight 0.8px hairline edges (dimming unrelated web subtly when focused)
+	// Precompute live GPU-animated coordinates with gentle organic breathing drift
+	animX := make([]float32, len(proj))
+	animY := make([]float32, len(proj))
+	for i, pv := range proj {
+		bx, by := pulseBreathOffset(pv, breathT, reduceMotion)
+		animX[i] = r.X + (pv.SX+bx)*scaleX
+		animY[i] = r.Y + (pv.SY+by)*scaleY
+	}
+
+	// 1. Razor-straight hairline edges (only within connected islands — zero forced cross-island lines!)
 	for _, e := range edges {
 		if e.U >= len(proj) || e.V >= len(proj) {
 			continue
 		}
 		u := proj[e.U]
 		v := proj[e.V]
-		ux, uy := r.X+u.SX*scaleX, r.Y+u.SY*scaleY
-		vx, vy := r.X+v.SX*scaleX, r.Y+v.SY*scaleY
+		ux, uy := animX[e.U], animY[e.U]
+		vx, vy := animX[e.V], animY[e.V]
 
-		activeEdge := hasFocus && (e.U == focusIdx || e.V == focusIdx)
+		appear := min(u.Appear, v.Appear)
+		activeEdge := focusIdx >= 0 && (e.U == focusIdx || e.V == focusIdx)
 		var col ui.Color
-		width := float32(0.80)
+		width := float32(0.85)
 		if activeEdge {
-			col = focusAccent.Alpha(0.72)
-			width = 1.05
-		} else if hasFocus {
-			col = ui.RGBA(165, 170, 182, 0.16)
+			edgePulse := float32(0.70)
+			if !reduceMotion {
+				edgePulse = 0.64 + 0.14*float32(0.5+0.5*math.Sin(breathT*1.8))
+			}
+			col = focusAccent.Alpha(edgePulse * appear)
+			width = 1.10
 		} else {
-			col = ui.RGBA(165, 170, 182, 0.23)
+			baseAlpha := 0.25 - 0.08*focusPresence
+			col = ui.RGBA(168, 174, 186, baseAlpha*appear)
 		}
 		p.StrokePolyline([][2]float32{{ux, uy}, {vx, vy}}, width, col)
 	}
 
-	// 2. Flat crisp matte vertices
-	for _, pv := range proj {
-		nx, ny := r.X+pv.SX*scaleX, r.Y+pv.SY*scaleY
+	// 2. Flat crisp matte vertices with smooth breathing focus aura
+	for i, pv := range proj {
+		nx, ny := animX[i], animY[i]
+		rad := pv.Radius
+		if !reduceMotion && (pv.IsFocus || pv.Node.IsHub) {
+			rad += 0.25 * float32(math.Sin(breathT*1.6+pv.Phase))
+		}
+		dimFactor := 1.0 - 0.28*focusPresence*(1.0-pv.FocusGlow*1.4)
+		if dimFactor < 0.55 {
+			dimFactor = 0.55
+		} else if dimFactor > 1.0 {
+			dimFactor = 1.0
+		}
+		alpha := pv.Appear * dimFactor
+
 		var fill ui.Color
 		switch {
 		case pv.IsFocus:
-			fill = focusAccent
+			fill = focusAccent.Alpha(pv.Appear)
 		case pv.Node.Kind == "tag":
-			if hasFocus && !pv.IsNeigh {
-				fill = obsEmerald.Alpha(0.55)
-			} else {
-				fill = obsEmerald
-			}
+			fill = obsEmerald.Alpha(alpha)
 		case pv.Node.Kind == "evidence":
-			if hasFocus && !pv.IsNeigh {
-				fill = obsTextDim.Alpha(0.45)
-			} else {
-				fill = obsTextDim
-			}
+			fill = obsTextDim.Alpha(alpha)
 		case pv.Node.IsHub:
-			if hasFocus && !pv.IsNeigh {
-				fill = obsTextBright.Alpha(0.72)
-			} else {
-				fill = obsTextBright
-			}
+			fill = obsTextBright.Alpha(alpha)
 		case pv.IsNeigh:
-			fill = ui.Hex("#D4D4D8")
+			fill = ui.Hex("#D4D4D8").Alpha(pv.Appear)
 		default:
-			fill = obsViolet.Alpha(0.75)
+			fill = obsViolet.Alpha(0.82 * alpha)
 		}
 
-		if pv.IsFocus {
+		if pv.FocusGlow > 0.05 && pv.IsFocus {
+			breathWave := float32(0.5)
+			if !reduceMotion {
+				breathWave = float32(0.5 + 0.5*math.Sin(breathT*1.8))
+			}
+			haloRad := pv.Radius + 2.6 + 1.5*breathWave
+			haloAlpha := (0.13 + 0.10*breathWave) * pv.FocusGlow * pv.Appear
 			var halo ui.Path
-			halo.Circle(nx, ny, pv.Radius+2.8)
-			p.FillPath(&halo, focusAccent.Alpha(0.18))
+			halo.Circle(nx, ny, haloRad)
+			p.FillPath(&halo, focusAccent.Alpha(haloAlpha))
 		}
+
 		var dot ui.Path
-		dot.Circle(nx, ny, pv.Radius)
+		dot.Circle(nx, ny, rad)
 		p.FillPath(&dot, fill)
 	}
 }
 
 func renderPulsePlainLabels(c *ui.Context, stageW, stageH, zoom float32, proj []projectedPulseVertex) {
-	// Priority queue matching Obsidian's Text Fade Threshold:
-	// Tier 1: Focused vertex (always visible)
-	// Tier 2: Hub notes (always visible)
-	// Tier 3: 1-hop Note & Tag neighbors of focus (visible at zoom >= 0.75)
-	// Tier 4: All other Note & Tag vertices (fade in at zoom >= 1.22)
-	// Tier 5: RawEvidence peripheral snippets (fade in at zoom >= 1.62)
 	var order []int
 	for i, pv := range proj {
 		if pv.IsFocus && pv.InBounds {
@@ -646,21 +1044,21 @@ func renderPulsePlainLabels(c *ui.Context, stageW, stageH, zoom float32, proj []
 			order = append(order, i)
 		}
 	}
-	if zoom >= 0.75 {
+	if zoom >= 0.85 {
 		for i, pv := range proj {
-			if !pv.IsFocus && !(pv.Node.Kind == "note" && pv.Node.IsHub) && pv.IsNeigh && pv.Node.Kind != "evidence" && pv.InBounds {
+			if !pv.IsFocus && !(pv.Node.Kind == "note" && pv.Node.IsHub) && pv.Node.Kind == "note" && pv.InBounds {
 				order = append(order, i)
 			}
 		}
 	}
-	if zoom >= 1.22 {
+	if zoom >= 1.15 {
 		for i, pv := range proj {
-			if !pv.IsFocus && !(pv.Node.Kind == "note" && pv.Node.IsHub) && !pv.IsNeigh && pv.Node.Kind != "evidence" && pv.InBounds {
+			if !pv.IsFocus && pv.Node.Kind == "tag" && pv.InBounds {
 				order = append(order, i)
 			}
 		}
 	}
-	if zoom >= 1.62 {
+	if zoom >= 1.55 {
 		for i, pv := range proj {
 			if !pv.IsFocus && pv.Node.Kind == "evidence" && pv.InBounds {
 				order = append(order, i)
@@ -678,24 +1076,24 @@ func renderPulsePlainLabels(c *ui.Context, stageW, stageH, zoom float32, proj []
 			continue
 		}
 
-		fontSize := float32(10.2)
+		fontSize := float32(10.5)
 		weight := 400
-		fg := obsTextMuted
+		fg := obsTextMuted.Alpha(pv.Appear)
 		switch {
 		case pv.IsFocus:
 			fontSize = 11.5
 			weight = 600
-			fg = obsTextBright
+			fg = obsTextBright.Alpha(pv.Appear)
 		case pv.Node.Kind == "note" && pv.Node.IsHub:
 			fontSize = 11.0
 			weight = 500
-			fg = obsTextPrimary
+			fg = obsTextPrimary.Alpha(pv.Appear)
 		case pv.Node.Kind == "tag":
 			fontSize = 9.8
-			fg = obsTextDim
+			fg = obsTextDim.Alpha(pv.Appear)
 		case pv.Node.Kind == "evidence":
 			fontSize = 9.5
-			fg = obsTextDim
+			fg = obsTextDim.Alpha(pv.Appear)
 		}
 
 		estW := measurePlainLabelWidth(label, fontSize)
@@ -707,7 +1105,7 @@ func renderPulsePlainLabels(c *ui.Context, stageW, stageH, zoom float32, proj []
 		if lx+estW > stageW-6 {
 			lx = stageW - 6 - estW
 		}
-		ly := pv.SY + pv.Radius + 3.5
+		ly := pv.SY + pv.Radius + 4.0
 		if ly+estH > stageH-18 {
 			ly = pv.SY - pv.Radius - estH - 2.5
 		}

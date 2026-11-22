@@ -2,9 +2,11 @@ package ui
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/ui"
 	"github.com/pengstem/neromancer/internal/service"
 )
 
@@ -18,7 +20,7 @@ func TestObsidianPulseGraphAndFileExplorerInteractions(t *testing.T) {
 	tt := newFastTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
-	// 1. Verify "漫游" is absent and both Obsidian Graph stats + AI File Explorer folders render.
+	// 1. Verify "漫游" is absent and multi-island Obsidian Graph + AI File Explorer folders render.
 	if tt.HasText("漫游") {
 		t.Fatalf("expected '漫游' to be completely removed, got texts=%v", tt.Texts())
 	}
@@ -26,12 +28,12 @@ func TestObsidianPulseGraphAndFileExplorerInteractions(t *testing.T) {
 		t.Fatalf("missing expected AI folders in Pulse view, texts=%v", tt.Texts())
 	}
 
-	pgBefore := app.ensurePulseGraph()
+	pgBefore := app.ensurePulseGraph(true)
+	if pgBefore.IslandCount != 3 {
+		t.Fatalf("expected 3 independent islands on seed vault, got %d", pgBefore.IslandCount)
+	}
 	initialVertices := len(pgBefore.Nodes)
 	initialEdges := len(pgBefore.Edges)
-	if initialVertices < 8 || initialEdges < 6 {
-		t.Fatalf("expected populated force-directed graph, got %d vertices and %d edges", initialVertices, initialEdges)
-	}
 
 	// 2. Folder collapse & expand in AI File Explorer.
 	if !tt.HasText("用不完美噪点做温暖的手绘感着色器") {
@@ -66,40 +68,134 @@ func TestObsidianPulseGraphAndFileExplorerInteractions(t *testing.T) {
 	app.DetailSheetOpen = false
 	settleAudit(tt)
 
-	// 5. Dragging on the Graph Canvas pans the constellation WITHOUT triggering SpaceDeck floor transition!
-	tt.FingerDown(206, 200)
+	// 5. Dragging blank space on the Graph Canvas pans the constellation WITHOUT pulling SpaceDeck!
+	tt.FingerDown(30, 110)
 	tt.Advance(20 * time.Millisecond)
-	tt.FingerMove(266, 240)
+	tt.FingerMove(95, 145)
 	tt.Advance(20 * time.Millisecond)
-	tt.FingerUp(266, 240)
+	tt.FingerUp(95, 145)
 	settleAudit(tt)
 	if app.ActiveSpace != SpaceArchive {
 		t.Fatalf("dragging inside Obsidian Graph should pan graph, not pull SpaceDeck to Dashboard")
 	}
 	if app.Pulse.PanX == 0 && app.Pulse.PanY == 0 {
-		t.Fatalf("expected non-zero PanX/PanY after dragging graph canvas")
+		t.Fatalf("expected non-zero PanX/PanY after dragging blank graph canvas")
 	}
 
-	// 6. Capturing a new related inspiration automatically adds new graph vertices & connects edges!
-	out, err := app.Deps.Capture.CaptureQuick(context.Background(), service.QuickCaptureInput{
+	// 6. Capturing a related inspiration connects to its island; capturing an unrelated inspiration forms a new island!
+	relOut, err := app.Deps.Capture.CaptureQuick(context.Background(), service.QuickCaptureInput{
 		RawText:  "用钴蓝玻璃杯在书桌阳光下拍水波焦散",
 		Modality: "text",
 	})
 	if err != nil {
-		t.Fatalf("CaptureQuick failed: %v", err)
+		t.Fatalf("CaptureQuick related failed: %v", err)
+	}
+	unrelOut, err := app.Deps.Capture.CaptureQuick(context.Background(), service.QuickCaptureInput{
+		RawText:  "周末试做一碗葱油拌面",
+		Modality: "text",
+	})
+	if err != nil {
+		t.Fatalf("CaptureQuick unrelated failed: %v", err)
 	}
 	if err := app.ReloadVault(); err != nil {
 		t.Fatalf("ReloadVault failed: %v", err)
 	}
 	settleAudit(tt)
 
-	pgAfter := app.ensurePulseGraph()
+	pgAfter := app.ensurePulseGraph(true)
 	if len(pgAfter.Nodes) <= initialVertices || len(pgAfter.Edges) <= initialEdges {
 		t.Fatalf("expected graph to grow naturally on new capture: before=(%d,%d) after=(%d,%d)",
 			initialVertices, initialEdges, len(pgAfter.Nodes), len(pgAfter.Edges))
 	}
-	newIdx, ok := pgAfter.NoteIndexByID[out.Node.ID]
-	if !ok || pgAfter.Nodes[newIdx].Degree == 0 {
-		t.Fatalf("expected newly captured inspiration to be present and automatically connected, ok=%v node=%+v", ok, pgAfter.Nodes[newIdx])
+	if pgAfter.IslandCount != 4 {
+		t.Fatalf("expected 4 separate islands after adding 1 related + 1 unrelated thought, got %d", pgAfter.IslandCount)
+	}
+	relIdx := pgAfter.NoteIndexByID[relOut.Node.ID]
+	unrelIdx := pgAfter.NoteIndexByID[unrelOut.Node.ID]
+	if pgAfter.Nodes[relIdx].Degree == 0 {
+		t.Fatalf("expected related thought to connect into existing island")
+	}
+	if pgAfter.Nodes[unrelIdx].Degree != 0 {
+		t.Fatalf("expected unrelated thought to remain an independent 0-degree island, got degree=%d", pgAfter.Nodes[unrelIdx].Degree)
+	}
+}
+
+func TestObsidianPulseSpringBloomAndElasticIslandDrag(t *testing.T) {
+	app, cleanup := newAuditTestApp(t)
+	defer cleanup()
+
+	app.ActiveSpace = SpaceArchive
+	app.ArchiveMode = ArchiveGraph
+
+	// Enable live motion (ReduceMotion: false) to verify Obsidian bloom, breathing, and elastic island drag!
+	tt := ui.NewTesterWith(app.RootView, 412, 892, ui.TesterOptions{
+		Preferences: ui.Preferences{ReduceMotion: false},
+	})
+	tt.Frame()
+
+	tulipIdx := app.Pulse.Graph.NoteIndexByID["orb_tulip"]
+	shaderIdx := app.Pulse.Graph.NoteIndexByID["orb_shader"]
+	rlIdx := app.Pulse.Graph.NoteIndexByID["orb_rl_prose"]
+
+	// 1. Capturing a new node mid-session starts in soft bloom state (Appear < 0.95) and smoothly settles to 1.0.
+	newOut, err := app.Deps.Capture.CaptureQuick(context.Background(), service.QuickCaptureInput{
+		RawText:  "深夜听黑胶唱片时的唱针颗粒声",
+		Modality: "text",
+	})
+	if err != nil {
+		t.Fatalf("CaptureQuick failed: %v", err)
+	}
+	_ = app.ReloadVault()
+	tt.Frame()
+
+	newIdx := app.Pulse.Graph.NoteIndexByID[newOut.Node.ID]
+	if app.Pulse.SimNodes[newIdx].Appear >= 0.95 {
+		t.Fatalf("expected newly spawned node to start in soft bloom (<0.95), got %v", app.Pulse.SimNodes[newIdx].Appear)
+	}
+	for i := 0; i < 60 && tt.FramePending(); i++ {
+		tt.Advance(25 * time.Millisecond)
+	}
+	if app.Pulse.SimNodes[newIdx].Appear < 0.98 {
+		t.Fatalf("expected bloom Appear to settle near 1.0, got %v", app.Pulse.SimNodes[newIdx].Appear)
+	}
+	if app.Pulse.BreathTime <= 0 {
+		t.Fatalf("expected BreathTime to advance in live motion mode")
+	}
+
+	tulipIdx = app.Pulse.Graph.NoteIndexByID["orb_tulip"]
+	shaderIdx = app.Pulse.Graph.NoteIndexByID["orb_shader"]
+	rlIdx = app.Pulse.Graph.NoteIndexByID["orb_rl_prose"]
+
+	// 2. Real finger-drag on orb_tulip's exact rendered vertex elastically tugs connected orb_shader (same island)
+	// while leaving independent island orb_rl_prose undisturbed!
+	tulipWinX := app.Pulse.LastStageBounds.X + app.Pulse.LastProj[tulipIdx].SX
+	tulipWinY := app.Pulse.LastStageBounds.Y + app.Pulse.LastProj[tulipIdx].SY
+
+	shaderBeforeX := app.Pulse.SimNodes[shaderIdx].X
+	rlBeforeX := app.Pulse.SimNodes[rlIdx].X
+
+	tt.FingerDown(tulipWinX, tulipWinY)
+	if app.Pulse.DraggingNodeIdx != tulipIdx {
+		t.Fatalf("expected FingerDown on orb_tulip dot to grab tulipIdx=%d, got %d", tulipIdx, app.Pulse.DraggingNodeIdx)
+	}
+	tt.Advance(20 * time.Millisecond)
+	tt.FingerMove(tulipWinX-70, tulipWinY-10)
+	for i := 0; i < 6; i++ {
+		tt.Advance(25 * time.Millisecond)
+	}
+
+	shaderDelta := math.Abs(app.Pulse.SimNodes[shaderIdx].X - shaderBeforeX)
+	rlDelta := math.Abs(app.Pulse.SimNodes[rlIdx].X - rlBeforeX)
+	if shaderDelta < 0.015 {
+		t.Fatalf("expected connected neighbor orb_shader to elastically follow finger-dragged orb_tulip, delta=%v", shaderDelta)
+	}
+	if rlDelta > shaderDelta*0.15 {
+		t.Fatalf("expected independent island orb_rl_prose to stay undisturbed while pulling tulip island: rlDelta=%v shaderDelta=%v", rlDelta, shaderDelta)
+	}
+
+	// Release finger and verify island rebounds smoothly.
+	tt.FingerUp(tulipWinX-70, tulipWinY-10)
+	for i := 0; i < 10; i++ {
+		tt.Advance(40 * time.Millisecond)
 	}
 }

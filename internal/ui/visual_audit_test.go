@@ -349,7 +349,9 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 			t.Fatalf("copy ui_exported_poster.png: %v", err)
 		}
 	} else {
-		app.ShareModalOpen = false
+		if err := tt.Click("关闭"); err != nil {
+			t.Fatalf("close share sheet: %v", err)
+		}
 	}
 	settleAudit(tt)
 

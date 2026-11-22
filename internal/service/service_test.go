@@ -254,7 +254,41 @@ func TestPulseGraphAutoLinkAndAIFolderTree(t *testing.T) {
 	capSvc := NewCaptureService(st, aiClient, mm)
 	orgSvc := NewOrganizeService(st)
 
-	// Capturing a related botanical/light idea offline should immediately assign folder & auto-link to orb_tulip!
+	// 1. Seeded vault should naturally form 3 SEPARATE islands (Tulip+Shader, RL, Watch) — not 1 forced blob!
+	seedNodes, _, _, _, _ := orgSvc.ListVault()
+	seedEvs, _ := orgSvc.ListAllEvidences()
+	seedIns, _ := st.ListActiveSleepInsights()
+	seedPG := orgSvc.BuildPulseGraph(seedNodes, seedEvs, seedIns, PulseGraphOptions{
+		ShowTags:      false,
+		ShowEvidences: true,
+	})
+	if seedPG.IslandCount != 3 {
+		t.Fatalf("expected 3 separate islands on seed vault, got %d", seedPG.IslandCount)
+	}
+	tulipSeed := seedPG.Nodes[seedPG.NoteIndexByID["orb_tulip"]].IslandID
+	shaderSeed := seedPG.Nodes[seedPG.NoteIndexByID["orb_shader"]].IslandID
+	rlSeed := seedPG.Nodes[seedPG.NoteIndexByID["orb_rl_prose"]].IslandID
+	watchSeed := seedPG.Nodes[seedPG.NoteIndexByID["orb_watch"]].IslandID
+	if tulipSeed != shaderSeed {
+		t.Fatalf("expected orb_tulip and orb_shader to share an island")
+	}
+	if rlSeed == tulipSeed || watchSeed == tulipSeed || rlSeed == watchSeed {
+		t.Fatalf("expected RL (%d) and Watch (%d) to be independent islands separate from Tulip (%d)", rlSeed, watchSeed, tulipSeed)
+	}
+
+	// 2. Capturing an UNRELATED idea should spawn a new 4th independent island without forced links!
+	unrelatedOut, err := capSvc.CaptureQuick(context.Background(), QuickCaptureInput{
+		RawText:  "周末试做一碗葱油拌面配溏心蛋",
+		Modality: "text",
+	})
+	if err != nil {
+		t.Fatalf("CaptureQuick unrelated failed: %v", err)
+	}
+	if len(unrelatedOut.Node.RelatedIDs) != 0 {
+		t.Fatalf("expected unrelated idea to have zero forced RelatedIDs, got %v", unrelatedOut.Node.RelatedIDs)
+	}
+
+	// 3. Capturing a RELATED botanical/light idea offline should auto-link into orb_tulip's island!
 	out, err := capSvc.CaptureQuick(context.Background(), QuickCaptureInput{
 		RawText:  "在阳台玻璃瓶旁边再养一株薄荷看清晨光影",
 		Modality: "text",
@@ -280,14 +314,11 @@ func TestPulseGraphAutoLinkAndAIFolderTree(t *testing.T) {
 	insights, _ := st.ListActiveSleepInsights()
 
 	pg := orgSvc.BuildPulseGraph(nodes, evs, insights, PulseGraphOptions{
-		ShowTags:      true,
+		ShowTags:      false,
 		ShowEvidences: true,
 	})
-	if len(pg.Nodes) < len(nodes)+len(evs) {
-		t.Fatalf("expected note + tag + evidence vertices in PulseGraph, got %d", len(pg.Nodes))
-	}
-	if len(pg.Edges) == 0 {
-		t.Fatalf("expected connected edges in PulseGraph")
+	if pg.IslandCount != 4 {
+		t.Fatalf("expected 4 islands after adding 1 unrelated + 1 related idea, got %d", pg.IslandCount)
 	}
 	newIdx, ok := pg.NoteIndexByID[out.Node.ID]
 	if !ok {
@@ -296,6 +327,10 @@ func TestPulseGraphAutoLinkAndAIFolderTree(t *testing.T) {
 	tulipIdx := pg.NoteIndexByID["orb_tulip"]
 	if !pg.NeighborsByIdx[newIdx][tulipIdx] {
 		t.Fatalf("expected newly captured idea to have a direct edge to orb_tulip in PulseGraph")
+	}
+	unrelIdx := pg.NoteIndexByID[unrelatedOut.Node.ID]
+	if pg.Nodes[unrelIdx].Degree != 0 {
+		t.Fatalf("expected unrelated culinary idea to remain a 0-degree standalone island, got degree=%d", pg.Nodes[unrelIdx].Degree)
 	}
 	if len(pg.Folders) < 3 {
 		t.Fatalf("expected AI-summarized folder list with >=3 folders, got %d", len(pg.Folders))

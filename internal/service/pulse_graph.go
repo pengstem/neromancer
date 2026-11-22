@@ -20,16 +20,19 @@ type PulseGraphOptions struct {
 
 // PulseGraphNode represents a single vertex in the force-directed Inspiration Network.
 type PulseGraphNode struct {
-	ID      string  // unique graph vertex id ("note:<id>", "tag:<tag>", "ev:<id>")
-	Kind    string  // "note" | "tag" | "evidence"
-	NodeID  string  // associated IdeaNode.ID for focus/navigation
-	Tag     string  // non-empty when Kind == "tag"
-	Label   string  // plain-text label (never wrapped in pill boxes)
-	Folder  string  // resolved folder cluster name
-	IsHub   bool    // high-centrality anchor node
-	Degree  int     // undirected link count
-	X       float64 // equilibrium normalized X in [0..1]
-	Y       float64 // equilibrium normalized Y in [0..1]
+	ID       string  // unique graph vertex id ("note:<id>", "tag:<tag>", "ev:<id>")
+	Kind     string  // "note" | "tag" | "evidence"
+	NodeID   string  // associated IdeaNode.ID for focus/navigation
+	Tag      string  // non-empty when Kind == "tag"
+	Label    string  // plain-text label (never wrapped in pill boxes)
+	Folder   string  // resolved folder cluster name
+	IslandID int     // connected component index (0 .. IslandCount-1)
+	IsHub    bool    // high-centrality anchor node within multi-node island
+	Degree   int     // undirected link count
+	AnchorX  float64 // island gravity center X in normalized [0..1]
+	AnchorY  float64 // island gravity center Y in normalized [0..1]
+	X        float64 // equilibrium normalized X in [0..1]
+	Y        float64 // equilibrium normalized Y in [0..1]
 }
 
 // PulseGraphEdge represents a straight hairline connection between two vertices.
@@ -45,11 +48,12 @@ type PulseFolder struct {
 	Notes []domain.IdeaNode
 }
 
-// PulseGraph bundles the relaxed force-directed constellation and its AI-summarized File Explorer tree.
+// PulseGraph bundles the multi-island force-directed constellation and its AI-summarized File Explorer tree.
 type PulseGraph struct {
 	Nodes          []PulseGraphNode
 	Edges          []PulseGraphEdge
 	Folders        []PulseFolder
+	IslandCount    int
 	NoteIndexByID  map[string]int
 	NeighborsByIdx map[int]map[int]bool
 }
@@ -59,7 +63,7 @@ func (s *OrganizeService) ListAllEvidences() ([]domain.RawEvidence, error) {
 	return s.store.ListAllEvidences()
 }
 
-// ReorganizeFoldersWithAI asks DeepSeek to re-cluster all vault IdeaNodes into natural folders and enrich cross-links.
+// ReorganizeFoldersWithAI asks DeepSeek to re-cluster all vault IdeaNodes into natural folders and refine cross-links.
 func (s *OrganizeService) ReorganizeFoldersWithAI(ctx context.Context, aiClient *ai.Client) error {
 	if aiClient == nil || !aiClient.Configured() {
 		return ai.ErrMissingAPIKey
@@ -92,8 +96,8 @@ func (s *OrganizeService) ReorganizeFoldersWithAI(ctx context.Context, aiClient 
 		if f := strings.TrimSpace(asg.Folder); f != "" {
 			n.Folder = f
 		}
-		if len(asg.RelatedIDs) > 0 {
-			n.RelatedIDs = filterValidOtherIDs(n.ID, mergeUniqueStrings(n.RelatedIDs, asg.RelatedIDs), byID)
+		if asg.RelatedIDs != nil {
+			n.RelatedIDs = filterValidOtherIDs(n.ID, asg.RelatedIDs, byID)
 		}
 		if err := s.store.UpsertNode(n); err != nil {
 			return err
@@ -103,8 +107,8 @@ func (s *OrganizeService) ReorganizeFoldersWithAI(ctx context.Context, aiClient 
 	return nil
 }
 
-// BuildPulseGraph builds the Obsidian-style force-directed network and AI-summarized folder tree
-// from the current vault IdeaNodes, RawEvidences, and SleepInsights.
+// BuildPulseGraph builds the Obsidian-style multi-island network and AI-summarized folder tree.
+// Unrelated notes stay cleanly separated as independent islands rather than being forced together.
 func (s *OrganizeService) BuildPulseGraph(
 	nodes []domain.IdeaNode,
 	evidences []domain.RawEvidence,
@@ -122,17 +126,11 @@ func (s *OrganizeService) BuildPulseGraph(
 	// 1. Group IdeaNodes into clean AI-summarized folders ("文件列表页的形状").
 	pg.Folders = buildPulseFolders(nodes)
 
-	folderSector := make(map[string]float64, len(pg.Folders))
-	for i, fd := range pg.Folders {
-		folderSector[fd.Name] = (2.0 * math.Pi * float64(i)) / float64(max(1, len(pg.Folders)))
-	}
-
-	// 2. Add Note vertices first.
+	// 2. Add Note vertices.
 	byID := make(map[string]domain.IdeaNode, len(nodes))
 	for _, n := range nodes {
 		byID[n.ID] = n
 		folder := domain.ResolveIdeaFolder(n)
-		x0, y0 := seededClusterPos("note:"+n.ID, folderSector[folder], 0.42, 0.22)
 		idx := len(pg.Nodes)
 		pg.NoteIndexByID[n.ID] = idx
 		pg.Nodes = append(pg.Nodes, PulseGraphNode{
@@ -141,8 +139,6 @@ func (s *OrganizeService) BuildPulseGraph(
 			NodeID: n.ID,
 			Label:  compactGraphNoteLabel(n.Title),
 			Folder: folder,
-			X:      x0,
-			Y:      y0,
 		})
 	}
 
@@ -173,7 +169,7 @@ func (s *OrganizeService) BuildPulseGraph(
 		pg.NeighborsByIdx[v][u] = true
 	}
 
-	// 3. Connect Note <-> Note via explicit RelatedIDs, ParentID, SleepInsights, and semantic/folder affinity.
+	// 3. Connect Note <-> Note ONLY when genuinely related (explicit links, SleepInsight, or specific shared concept/tag).
 	for _, n := range nodes {
 		u := pg.NoteIndexByID[n.ID]
 		if n.ParentID != "" {
@@ -198,7 +194,6 @@ func (s *OrganizeService) BuildPulseGraph(
 			}
 		}
 	}
-	// Automatic semantic similarity & co-folder linking so newly captured thoughts naturally connect.
 	for i := 0; i < len(nodes); i++ {
 		for j := i + 1; j < len(nodes); j++ {
 			if notesNaturallyRelated(nodes[i], nodes[j]) {
@@ -207,7 +202,7 @@ func (s *OrganizeService) BuildPulseGraph(
 		}
 	}
 
-	// 4. Add Obsidian-style emerald Tag vertices connecting Notes that share themes.
+	// 4. Optional Tag bridge vertices (only non-broad tags when user enables ShowTags).
 	if opts.ShowTags {
 		type tagEntry struct {
 			tag     string
@@ -219,7 +214,7 @@ func (s *OrganizeService) BuildPulseGraph(
 			seenInNode := make(map[string]bool)
 			for _, rawTag := range n.Tags {
 				tg := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(rawTag), "#＃"))
-				if tg == "" || seenInNode[tg] {
+				if tg == "" || seenInNode[tg] || broadUmbrellaTags[tg] {
 					continue
 				}
 				seenInNode[tg] = true
@@ -236,16 +231,6 @@ func (s *OrganizeService) BuildPulseGraph(
 			if len(te.noteIDs) == 0 {
 				continue
 			}
-			// Average anchor position near the notes carrying this tag
-			var sumX, sumY float64
-			for _, nid := range te.noteIDs {
-				p := pg.Nodes[pg.NoteIndexByID[nid]]
-				sumX += p.X
-				sumY += p.Y
-			}
-			cx := sumX / float64(len(te.noteIDs))
-			cy := sumY / float64(len(te.noteIDs))
-			jx, jy := seededJitter("tag:"+te.tag, 0.14)
 			primaryNode := byID[te.noteIDs[0]]
 			tIdx := len(pg.Nodes)
 			pg.Nodes = append(pg.Nodes, PulseGraphNode{
@@ -255,8 +240,6 @@ func (s *OrganizeService) BuildPulseGraph(
 				Tag:    te.tag,
 				Label:  te.tag,
 				Folder: domain.ResolveIdeaFolder(primaryNode),
-				X:      cx + jx,
-				Y:      cy + jy,
 			})
 			for _, nid := range te.noteIDs {
 				addEdge(tIdx, pg.NoteIndexByID[nid], "tag")
@@ -264,81 +247,157 @@ func (s *OrganizeService) BuildPulseGraph(
 		}
 	}
 
-	// 5. Add RawEvidence capture fragments as peripheral satellite dots tethered to their IdeaNode.
+	// 5. RawEvidence capture dots: rendered when a note merged >= 2 captures (so every merged raw thought
+	// shows up as a point in that note's constellation without cluttering 1-capture standalone notes!).
 	if opts.ShowEvidences {
+		evsByNode := make(map[string][]domain.RawEvidence)
 		for _, ev := range evidences {
-			nIdx, ok := pg.NoteIndexByID[ev.NodeID]
-			if !ok {
+			if _, ok := pg.NoteIndexByID[ev.NodeID]; ok {
+				evsByNode[ev.NodeID] = append(evsByNode[ev.NodeID], ev)
+			}
+		}
+		for nodeID, list := range evsByNode {
+			if len(list) < 2 {
 				continue
 			}
+			nIdx := pg.NoteIndexByID[nodeID]
 			parent := pg.Nodes[nIdx]
-			jx, jy := seededJitter("ev:"+ev.ID, 0.22)
-			eIdx := len(pg.Nodes)
-			pg.Nodes = append(pg.Nodes, PulseGraphNode{
-				ID:     "ev:" + ev.ID,
-				Kind:   "evidence",
-				NodeID: ev.NodeID,
-				Label:  compactEvidenceLabel(ev),
-				Folder: parent.Folder,
-				X:      parent.X + jx,
-				Y:      parent.Y + jy,
-			})
-			addEdge(eIdx, nIdx, "evidence")
+			for _, ev := range list {
+				eIdx := len(pg.Nodes)
+				pg.Nodes = append(pg.Nodes, PulseGraphNode{
+					ID:     "ev:" + ev.ID,
+					Kind:   "evidence",
+					NodeID: ev.NodeID,
+					Label:  compactEvidenceLabel(ev),
+					Folder: parent.Folder,
+				})
+				addEdge(eIdx, nIdx, "evidence")
+			}
 		}
 	}
 
-	// Mark Hub status: top-degree note in each folder (or any note with degree >= 4).
-	for _, fd := range pg.Folders {
+	// 6. Partition into Connected Components (Independent Islands!) and relax each island cleanly.
+	layoutMultiIslandPulseGraph(&pg)
+	return pg
+}
+
+type pulseIsland struct {
+	members   []int
+	noteCount int
+	seedKey   string
+}
+
+func layoutMultiIslandPulseGraph(pg *PulseGraph) {
+	n := len(pg.Nodes)
+	if n == 0 {
+		return
+	}
+
+	// Find connected components via BFS.
+	visited := make([]bool, n)
+	var islands []pulseIsland
+
+	for i := 0; i < n; i++ {
+		if visited[i] {
+			continue
+		}
+		var comp []int
+		noteCnt := 0
+		queue := []int{i}
+		visited[i] = true
+		for len(queue) > 0 {
+			curr := queue[0]
+			queue = queue[1:]
+			comp = append(comp, curr)
+			if pg.Nodes[curr].Kind == "note" {
+				noteCnt++
+			}
+			for nb := range pg.NeighborsByIdx[curr] {
+				if !visited[nb] {
+					visited[nb] = true
+					queue = append(queue, nb)
+				}
+			}
+		}
+		// Sort members deterministically
+		sort.Ints(comp)
+		islands = append(islands, pulseIsland{
+			members:   comp,
+			noteCount: noteCnt,
+			seedKey:   pg.Nodes[comp[0]].ID,
+		})
+	}
+
+	// Largest connected islands take prominent central-ring positions; smaller standalone islands orbit cleanly around.
+	sort.Slice(islands, func(i, j int) bool {
+		if len(islands[i].members) != len(islands[j].members) {
+			return len(islands[i].members) > len(islands[j].members)
+		}
+		return islands[i].seedKey < islands[j].seedKey
+	})
+
+	pg.IslandCount = len(islands)
+
+	// Compute well-separated island centers in [-1..1] space so separate islands NEVER crowd together.
+	islandCenters := computeIslandCenters(len(islands), islands)
+
+	for islIdx, isl := range islands {
+		cx, cy := islandCenters[islIdx][0], islandCenters[islIdx][1]
+		// Mark hub note inside each island (note with highest degree, or sole note in a 1-note island so its title shows!)
 		bestIdx := -1
 		bestDeg := -1
-		for _, n := range fd.Notes {
-			idx := pg.NoteIndexByID[n.ID]
-			if pg.Nodes[idx].Degree > bestDeg {
+		for _, idx := range isl.members {
+			pg.Nodes[idx].IslandID = islIdx
+			if pg.Nodes[idx].Kind == "note" && pg.Nodes[idx].Degree > bestDeg {
 				bestDeg = pg.Nodes[idx].Degree
 				bestIdx = idx
-			}
-			if pg.Nodes[idx].Degree >= 4 {
-				pg.Nodes[idx].IsHub = true
 			}
 		}
 		if bestIdx >= 0 {
 			pg.Nodes[bestIdx].IsHub = true
 		}
+
+		// Seed deterministic positions around this island's own center
+		spread := 0.08 + 0.035*math.Sqrt(float64(len(isl.members)))
+		if len(isl.members) == 1 {
+			pg.Nodes[isl.members[0]].X = cx
+			pg.Nodes[isl.members[0]].Y = cy
+			continue
+		}
+		for _, idx := range isl.members {
+			jx, jy := seededJitter(pg.Nodes[idx].ID, spread)
+			pg.Nodes[idx].X = cx + jx
+			pg.Nodes[idx].Y = cy + jy
+		}
 	}
 
-	// 6. Run deterministic Fruchterman-Reingold force-directed relaxation to equilibrium.
-	relaxPulseGraph(&pg)
-	return pg
-}
-
-func relaxPulseGraph(pg *PulseGraph) {
-	n := len(pg.Nodes)
-	if n == 0 {
-		return
-	}
 	if n == 1 {
 		pg.Nodes[0].X = 0.5
 		pg.Nodes[0].Y = 0.48
+		pg.Nodes[0].AnchorX = 0.5
+		pg.Nodes[0].AnchorY = 0.48
 		return
 	}
 
 	vx := make([]float64, n)
 	vy := make([]float64, n)
-	const iters = 120
+	const iters = 130
 
 	for step := 0; step < iters; step++ {
-		temp := 0.044 * (1.0 - float64(step)/float64(iters)*0.86)
+		temp := 0.038 * (1.0 - float64(step)/float64(iters)*0.86)
 
-		// All-pairs Coulomb repulsion (stronger between Note hubs so major clusters breathe cleanly)
+		// All-pairs Coulomb repulsion (stronger between different islands to preserve clear dark channels!)
 		for i := 0; i < n; i++ {
 			for j := i + 1; j < n; j++ {
 				dx := pg.Nodes[i].X - pg.Nodes[j].X
 				dy := pg.Nodes[i].Y - pg.Nodes[j].Y
-				d2 := dx*dx + dy*dy + 0.0038
+				d2 := dx*dx + dy*dy + 0.004
 				d := math.Sqrt(d2)
-				repK := 0.012
-				if pg.Nodes[i].Kind == "note" && pg.Nodes[j].Kind == "note" {
-					repK = 0.024
+				repK := 0.0065
+				if pg.Nodes[i].IslandID != pg.Nodes[j].IslandID {
+					repK = 0.015
+				} else if pg.Nodes[i].Kind == "note" && pg.Nodes[j].Kind == "note" {
+					repK = 0.012
 				}
 				rep := repK / d2
 				fx, fy := (dx/d)*rep, (dy/d)*rep
@@ -349,20 +408,20 @@ func relaxPulseGraph(pg *PulseGraph) {
 			}
 		}
 
-		// Hooke spring attraction along edges
+		// Intra-island Hooke spring attraction along real edges ONLY
 		for _, e := range pg.Edges {
 			dx := pg.Nodes[e.V].X - pg.Nodes[e.U].X
 			dy := pg.Nodes[e.V].Y - pg.Nodes[e.U].Y
 			d := math.Hypot(dx, dy) + 0.0001
-			restLen := 0.22
-			stiff := 0.15
+			restLen := 0.20
+			stiff := 0.18
 			switch e.Kind {
 			case "evidence":
-				restLen = 0.14
-				stiff = 0.20
+				restLen = 0.12
+				stiff = 0.24
 			case "tag":
-				restLen = 0.18
-				stiff = 0.17
+				restLen = 0.15
+				stiff = 0.20
 			}
 			force := (d - restLen) * stiff
 			fx, fy := (dx/d)*force, (dy/d)*force
@@ -372,10 +431,11 @@ func relaxPulseGraph(pg *PulseGraph) {
 			vy[e.V] -= fy
 		}
 
-		// Gentle center gravity keeping disconnected orphans peacefully in frame
+		// Per-island anchor gravity keeping separate islands well-spaced and balanced
 		for i := 0; i < n; i++ {
-			vx[i] -= pg.Nodes[i].X * 0.032
-			vy[i] -= pg.Nodes[i].Y * 0.038
+			ic := islandCenters[pg.Nodes[i].IslandID]
+			vx[i] += (ic[0] - pg.Nodes[i].X) * 0.075
+			vy[i] += (ic[1] - pg.Nodes[i].Y) * 0.085
 			mag := math.Hypot(vx[i], vy[i])
 			if mag > temp {
 				vx[i] = (vx[i] / mag) * temp
@@ -396,12 +456,117 @@ func relaxPulseGraph(pg *PulseGraph) {
 		minY = min(minY, nd.Y)
 		maxY = max(maxY, nd.Y)
 	}
-	spanX := max(0.01, maxX-minX)
-	spanY := max(0.01, maxY-minY)
+	spanX := max(0.35, maxX-minX)
+	spanY := max(0.35, maxY-minY)
+	midX := (minX + maxX) * 0.5
+	midY := (minY + maxY) * 0.5
+
 	for i := range pg.Nodes {
-		pg.Nodes[i].X = 0.10 + ((pg.Nodes[i].X-minX)/spanX)*0.80
-		pg.Nodes[i].Y = 0.12 + ((pg.Nodes[i].Y-minY)/spanY)*0.74
+		pg.Nodes[i].X = 0.50 + ((pg.Nodes[i].X-midX)/spanX)*0.76
+		pg.Nodes[i].Y = 0.48 + ((pg.Nodes[i].Y-midY)/spanY)*0.68
+		ic := islandCenters[pg.Nodes[i].IslandID]
+		pg.Nodes[i].AnchorX = 0.50 + ((ic[0]-midX)/spanX)*0.76
+		pg.Nodes[i].AnchorY = 0.48 + ((ic[1]-midY)/spanY)*0.68
 	}
+}
+
+func computeIslandCenters(k int, islands []pulseIsland) [][2]float64 {
+	centers := make([][2]float64, k)
+	if k <= 1 {
+		return centers
+	}
+	if k == 2 {
+		centers[0] = [2]float64{-0.42, -0.10}
+		centers[1] = [2]float64{0.44, 0.14}
+		return centers
+	}
+	if k == 3 {
+		// Organic asymmetric triangle so 3 islands feel natural rather than rigid grid
+		centers[0] = [2]float64{-0.34, -0.18}
+		centers[1] = [2]float64{0.46, -0.22}
+		centers[2] = [2]float64{0.08, 0.42}
+		return centers
+	}
+	// Golden-angle spiral distribution for 4+ islands
+	const golden = 2.399963229728653 // pi * (3 - sqrt(5))
+	for i := 0; i < k; i++ {
+		h := fnv.New32a()
+		_, _ = h.Write([]byte(islands[i].seedKey))
+		phaseJitter := (float64(h.Sum32()&0xFF)/255.0 - 0.5) * 0.18
+		r := 0.28 + 0.34*math.Sqrt(float64(i)/float64(k))
+		if i == 0 && len(islands[0].members) >= 3 {
+			r = 0.18
+		}
+		theta := float64(i)*golden + phaseJitter - 0.55
+		centers[i] = [2]float64{
+			math.Cos(theta) * r * 1.18,
+			math.Sin(theta) * r * 0.92,
+		}
+	}
+	return centers
+}
+
+var broadUmbrellaTags = map[string]bool{
+	"随口一记": true, "语音闪念": true, "图像灵感": true, "手绘草图": true,
+	"生活美学": true, "学习笔记": true, "日常记录": true, "工作思考": true,
+	"奇思妙想": true, "阅读摘录": true, "随手闪念": true, "多端协同": true,
+}
+
+// notesNaturallyRelated returns true ONLY when two IdeaNodes share a specific, concrete
+// domain tag or concrete concept phrase — never linking notes merely for sharing a folder or broad category!
+func notesNaturallyRelated(a, b domain.IdeaNode) bool {
+	tagSet := make(map[string]bool, len(a.Tags))
+	for _, t := range a.Tags {
+		clean := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(t), "#＃"))
+		if clean != "" && !broadUmbrellaTags[clean] {
+			tagSet[clean] = true
+		}
+	}
+	for _, t := range b.Tags {
+		clean := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(t), "#＃"))
+		if tagSet[clean] {
+			return true
+		}
+	}
+
+	// Concrete curated phrase overlap (e.g. both discuss "郁金香", "钴蓝玻璃", "转移概率", "蒙特卡洛", "手表盲操")
+	hayA := a.Title + " " + a.ConversationalSummary
+	hayB := b.Title + " " + b.ConversationalSummary
+	for _, phrase := range curatedConceptPhrases {
+		if strings.Contains(hayA, phrase) && strings.Contains(hayB, phrase) {
+			return true
+		}
+	}
+
+	// Specific >=3-rune title token overlap (e.g. "郁金香", "强化学习", "着色器", "花瓶")
+	toksA := specificTitleKeywords(a.Title)
+	toksB := specificTitleKeywords(b.Title)
+	for tok := range toksA {
+		if toksB[tok] {
+			return true
+		}
+	}
+	return false
+}
+
+var genericTitleWords = map[string]bool{
+	"用一个": true, "做一颗": true, "做温暖": true, "到底差": true, "哪一步": true,
+	"有模型": true, "免模型": true, "不完美": true, "一株": true, "一个": true,
+}
+
+func specificTitleKeywords(title string) map[string]bool {
+	out := make(map[string]bool)
+	for _, kw := range []string{
+		"郁金香", "花瓶", "钴蓝", "花盆", "薄荷", "虹吸", "焦散",
+		"着色器", "噪点", "法线", "渲染管线",
+		"强化学习", "马尔可夫", "转移概率", "动态规划", "蒙特卡洛",
+		"手表", "盲操", "语音球", "语音记忆球",
+	} {
+		if strings.Contains(title, kw) && !genericTitleWords[kw] {
+			out[kw] = true
+		}
+	}
+	return out
 }
 
 func buildPulseFolders(nodes []domain.IdeaNode) []PulseFolder {
@@ -461,54 +626,6 @@ func buildPulseFolders(nodes []domain.IdeaNode) []PulseFolder {
 		})
 	}
 	return out
-}
-
-func notesNaturallyRelated(a, b domain.IdeaNode) bool {
-	// 1. Shared normalized tag (excluding generic fallback modality tags)
-	genericTags := map[string]bool{
-		"随口一记": true, "语音闪念": true, "图像灵感": true, "手绘草图": true,
-	}
-	tagSet := make(map[string]bool, len(a.Tags))
-	for _, t := range a.Tags {
-		clean := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(t), "#＃"))
-		if clean != "" && !genericTags[clean] {
-			tagSet[clean] = true
-		}
-	}
-	for _, t := range b.Tags {
-		clean := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(t), "#＃"))
-		if tagSet[clean] {
-			return true
-		}
-	}
-
-	// 2. Shared non-default AI folder AND shared icon motif or concept token
-	fa := domain.ResolveIdeaFolder(a)
-	fb := domain.ResolveIdeaFolder(b)
-	if fa == fb && fa != "最近散点闪念" {
-		return true
-	}
-
-	// 3. Shared extracted concept phrase
-	ca := extractNodeConcepts(a)
-	cb := extractNodeConcepts(b)
-	cSet := make(map[string]bool, len(ca))
-	for _, c := range ca {
-		cSet[c] = true
-	}
-	for _, c := range cb {
-		if cSet[c] {
-			return true
-		}
-	}
-	return false
-}
-
-func seededClusterPos(seedKey string, sectorAngle, radius, jitter float64) (float64, float64) {
-	cx := math.Cos(sectorAngle) * radius
-	cy := math.Sin(sectorAngle) * radius
-	jx, jy := seededJitter(seedKey, jitter)
-	return cx + jx, cy + jy
 }
 
 func seededJitter(seedKey string, amp float64) (float64, float64) {
