@@ -68,10 +68,20 @@ func newAuditTestApp(t testing.TB) (*App, func()) {
 
 func settleAudit(tt *ui.Tester) {
 	tt.Frame()
-	for i := 0; i < 8 && tt.FramePending(); i++ {
+	for i := 0; i < 14 && tt.FramePending(); i++ {
 		tt.Advance(80 * time.Millisecond)
 	}
 	tt.Frame()
+}
+
+func countExactText(texts []string, want string) int {
+	n := 0
+	for _, txt := range texts {
+		if strings.TrimSpace(txt) == want {
+			n++
+		}
+	}
+	return n
 }
 
 func assertAuditNoEmojis(t *testing.T, viewName string, texts []string) {
@@ -127,8 +137,10 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 			t.Fatalf("dashboard missing expected label %q", want)
 		}
 	}
-	if tt.HasText("Neromancer") {
-		t.Fatalf("expected homepage app title \"Neromancer\" to be removed, texts=%v", tt.Texts())
+	for _, txt := range tt.Texts() {
+		if strings.TrimSpace(txt) == "Neromancer" {
+			t.Fatalf("expected homepage app title \"Neromancer\" to be removed, texts=%v", tt.Texts())
+		}
 	}
 	if _, ok := tt.Find("搜索灵感"); ok {
 		t.Fatalf("expected homepage search button \"搜索灵感\" to be removed, texts=%v", tt.Texts())
@@ -145,10 +157,17 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if _, ok := tt.Find("灵感"); ok {
 		t.Fatalf("expected bottom nav bar \"灵感\" to be removed")
 	}
+	for _, noisy := range []string{"拖拽旋转 · 点词筛选", "下拉打开思维宫殿", "条新线索"} {
+		for _, txt := range tt.Texts() {
+			if strings.Contains(txt, noisy) {
+				t.Fatalf("expected noisy dashboard hint %q to be removed, found in %q", noisy, txt)
+			}
+		}
+	}
 	assertAuditNoEmojis(t, "dashboard_bento", tt.Texts())
 	maybeSaveAuditPNG(t, auditDir, tt, "ui_dashboard_bento.png")
 
-	// 2. Vermilion Seal Speed-Dial -> Voice-First Capture Sheet
+	// 2. Monochrome Bottom-Right Dial -> 3 Floating Icon-Only Buttons -> Voice-First Capture Sheet
 	if err := tt.Click("记一笔"); err != nil {
 		t.Fatalf("click bottom-right capture seal: %v", err)
 	}
@@ -156,8 +175,13 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if !app.CaptureDialOpen {
 		t.Fatalf("expected CaptureDialOpen=true after clicking bottom-right seal")
 	}
-	if !tt.HasText("语音") || !tt.HasText("文字") || !tt.HasText("图文") {
-		t.Fatalf("speed-dial missing modality pills, texts=%v", tt.Texts())
+	for _, mod := range []string{"语音", "文字", "图文"} {
+		if _, ok := tt.Find(mod); !ok {
+			t.Fatalf("speed-dial missing icon button %q", mod)
+		}
+		if cnt := countExactText(tt.Texts(), mod); cnt != 1 {
+			t.Fatalf("expected speed-dial button %q to have accessible label only (zero visible ui.Text), got count=%d texts=%v", mod, cnt, tt.Texts())
+		}
 	}
 	assertAuditNoEmojis(t, "dashboard_speed_dial", tt.Texts())
 	maybeSaveAuditPNG(t, auditDir, tt, "ui_dashboard_speed_dial.png")
@@ -172,24 +196,54 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if !app.CaptureModalOpen || app.CaptureModalityIdx != 0 {
 		t.Fatalf("expected CaptureModalOpen=true and CaptureModalityIdx=0, got open=%v idx=%d", app.CaptureModalOpen, app.CaptureModalityIdx)
 	}
-	if !tt.HasText("记一条灵感") || !tt.HasText("记下来") || !tt.HasText("点一下开始说话") {
-		t.Fatalf("capture voice sheet missing expected labels, texts=%v", tt.Texts())
+	if !tt.HasText("语音记录") || !tt.HasText("记下来") || !tt.HasText("点一下开始说话") {
+		t.Fatalf("capture voice view missing expected labels, texts=%v", tt.Texts())
+	}
+	if tt.HasText("AI 自动整理") || tt.HasText("文字") || tt.HasText("图片") || tt.HasText("图文") {
+		t.Fatalf("expected no AI auto-org switch or modality tabs inside voice capture, texts=%v", tt.Texts())
 	}
 	assertAuditNoEmojis(t, "capture_voice", tt.Texts())
 	maybeSaveAuditPNG(t, auditDir, tt, "ui_capture_voice.png")
-
-	if err := tt.Click("文字"); err != nil {
-		t.Fatalf("switch capture tab to text: %v", err)
-	}
-	settleAudit(tt)
-	assertAuditNoEmojis(t, "capture_text", tt.Texts())
-	if err := tt.Click("图片"); err != nil {
-		t.Fatalf("switch capture tab to image: %v", err)
-	}
-	settleAudit(tt)
-	assertAuditNoEmojis(t, "capture_image", tt.Texts())
 	if err := tt.Click("收起"); err != nil {
-		t.Fatalf("close capture sheet: %v", err)
+		t.Fatalf("close voice capture view: %v", err)
+	}
+	settleAudit(tt)
+
+	// Open Text dedicated capture from homepage dial
+	if err := tt.Click("记一笔"); err != nil {
+		t.Fatalf("re-open speed dial for text: %v", err)
+	}
+	settleAudit(tt)
+	if err := tt.Click("文字"); err != nil {
+		t.Fatalf("click text dial circle: %v", err)
+	}
+	settleAudit(tt)
+	if !tt.HasText("文字记录") || tt.HasText("AI 自动整理") {
+		t.Fatalf("unexpected text capture texts=%v", tt.Texts())
+	}
+	assertAuditNoEmojis(t, "capture_text", tt.Texts())
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_capture_text.png")
+	if err := tt.Click("收起"); err != nil {
+		t.Fatalf("close text capture view: %v", err)
+	}
+	settleAudit(tt)
+
+	// Open Image dedicated capture from homepage dial
+	if err := tt.Click("记一笔"); err != nil {
+		t.Fatalf("re-open speed dial for image: %v", err)
+	}
+	settleAudit(tt)
+	if err := tt.Click("图文"); err != nil {
+		t.Fatalf("click image dial circle: %v", err)
+	}
+	settleAudit(tt)
+	if !tt.HasText("图文记录") || tt.HasText("AI 自动整理") {
+		t.Fatalf("unexpected image capture texts=%v", tt.Texts())
+	}
+	assertAuditNoEmojis(t, "capture_image", tt.Texts())
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_capture_image.png")
+	if err := tt.Click("收起"); err != nil {
+		t.Fatalf("close image capture view: %v", err)
 	}
 	settleAudit(tt)
 
@@ -255,6 +309,13 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if !app.ArchiveDialOpen {
 		t.Fatalf("expected ArchiveDialOpen=true after tapping view orb")
 	}
+	if _, hasCardsDup := tt.Find("卡片"); hasCardsDup {
+		t.Fatalf("expected Mind Palace binary toggle to pop out ONLY the alternate '脉络' icon, not '卡片'")
+	}
+	if cnt := countExactText(tt.Texts(), "脉络"); cnt != 1 {
+		t.Fatalf("expected popped-out '脉络' circle to be icon-only without visible ui.Text, got count=%d texts=%v", cnt, tt.Texts())
+	}
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_speed_dial.png")
 	if err := tt.Click("脉络"); err != nil {
 		t.Fatalf("switch mind palace mode to graph via circular orb: %v", err)
 	}
@@ -265,8 +326,15 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if _, ok := tt.Find("切换视窗（当前脉络）"); !ok {
 		t.Fatalf("expected bottom-right circle icon/state to switch to 脉络")
 	}
-	if !tt.HasText("AI 归档目录") || !tt.HasText("器物与光影美学") {
+	if !tt.HasText("器物与光影美学") {
 		t.Fatalf("expected AI File Explorer folders in 脉络 view, texts=%v", tt.Texts())
+	}
+	for _, noisy := range []string{"节点", "连线", "小岛", "个主题夹", "篇笔记", "上拉回到主页看板"} {
+		for _, txt := range tt.Texts() {
+			if strings.Contains(txt, noisy) {
+				t.Fatalf("expected noisy pulse/archive hint %q to be removed, found in %q", noisy, txt)
+			}
+		}
 	}
 	// Verify Graph stage renders in crisp Apple daylight white (never black!)
 	if img := tt.Image(); img != nil {
@@ -282,6 +350,12 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		t.Fatalf("re-open bottom-right archive view orb dial: %v", err)
 	}
 	settleAudit(tt)
+	if _, hasGraphDup := tt.Find("脉络"); hasGraphDup {
+		t.Fatalf("expected Mind Palace binary toggle in 脉络 mode to pop out ONLY '卡片', not '脉络'")
+	}
+	if cnt := countExactText(tt.Texts(), "卡片"); cnt != 1 {
+		t.Fatalf("expected popped-out '卡片' circle to be icon-only without visible ui.Text, got count=%d texts=%v", cnt, tt.Texts())
+	}
 	if err := tt.Click("卡片"); err != nil {
 		t.Fatalf("switch mind palace mode back to cards: %v", err)
 	}
@@ -589,14 +663,16 @@ func TestDashboardCaptureSpeedDialInteractions(t *testing.T) {
 	ax := archOrbRect.X + archOrbRect.W*0.5
 	ay := archOrbRect.Y + archOrbRect.H*0.5
 
-	// Press and drag upward directly onto "脉络" circle and release to switch from default 卡片 to 脉络!
+	// Press down immediately pops out ONLY the single alternate ("脉络") circle, and sliding onto it switches!
 	tt.FingerDown(ax, ay)
-	tt.Advance(30 * time.Millisecond)
-	tt.FingerMove(ax, ay-35) // drag > 8px immediately pops out [脉络, 卡片] circles!
 	tt.Frame()
 	if !app.ArchiveDialOpen {
-		t.Fatalf("expected ArchiveDialOpen=true on upward drag from view switcher circle")
+		t.Fatalf("expected ArchiveDialOpen=true immediately on press down in Mind Palace")
 	}
+	if _, hasCards := tt.Find("卡片"); hasCards {
+		t.Fatalf("expected binary Mind Palace dial to only pop out 1 alternate icon ('脉络'), not '卡片'")
+	}
+	settleAudit(tt)
 	graphOrbR, ok := tt.Find("脉络")
 	if !ok {
 		t.Fatalf("missing popped-out 脉络 circle")
@@ -604,7 +680,7 @@ func TestDashboardCaptureSpeedDialInteractions(t *testing.T) {
 	tt.FingerMove(graphOrbR.X+graphOrbR.W*0.5, graphOrbR.Y+graphOrbR.H*0.5)
 	tt.Frame()
 	if app.OrbDial.HoverIdx != 0 {
-		t.Fatalf("expected HoverIdx=0 (脉络) while dragging over 脉络 circle, got %d", app.OrbDial.HoverIdx)
+		t.Fatalf("expected HoverIdx=0 (脉络) while sliding over 脉络 circle, got %d", app.OrbDial.HoverIdx)
 	}
 	tt.FingerUp(graphOrbR.X+graphOrbR.W*0.5, graphOrbR.Y+graphOrbR.H*0.5)
 	settleAudit(tt)
@@ -615,6 +691,150 @@ func TestDashboardCaptureSpeedDialInteractions(t *testing.T) {
 	}
 	if _, ok := tt.Find("切换视窗（当前脉络）"); !ok {
 		t.Fatalf("expected main circle icon/state to update to 切换视窗（当前脉络）")
+	}
+}
+
+func TestOrbDialFloatAnimationMonochromeAndNoBoxShadow(t *testing.T) {
+	app, cleanup := newAuditTestApp(t)
+	defer cleanup()
+
+	// Use real motion (ReduceMotion: false) to verify genuine spring float-up choreography,
+	// monochrome B&W rendering, and zero rectangular box shadow when pressed/clicked.
+	tt := ui.NewTester(app.RootView, 412, 892)
+	tt.Frame()
+	tt.Advance(200 * time.Millisecond)
+	tt.Frame()
+
+	fabR, ok := tt.Find("记一笔")
+	if !ok {
+		t.Fatalf("missing bottom-right 记一笔 button")
+	}
+	cx := fabR.X + fabR.W*0.5
+	cy := fabR.Y + fabR.H*0.5
+
+	// 1. Verify resting main button is monochrome black (no red/vermilion tint)
+	if img := tt.Image(); img != nil {
+		// Sample slightly off-center inside the circle (avoiding the white '+' stroke)
+		px := img.RGBAAt(int(cx-12), int(cy-12))
+		diffRG := int(px.R) - int(px.G)
+		if diffRG < 0 {
+			diffRG = -diffRG
+		}
+		if px.R > 48 || diffRG > 6 {
+			t.Fatalf("expected monochrome black fill on main button, got RGBA=%+v", px)
+		}
+	}
+
+	// 2. Press down & verify ZERO rectangular ink shadow at the bounding-box corners outside the circle,
+	//    AND verify the 3 icon-only circles genuinely float upward over time!
+	cornerX := int(fabR.X+fabR.W) - 2
+	cornerY := int(fabR.Y) + 2
+	var beforeCorner [3]int
+	if img := tt.Image(); img != nil {
+		c0 := img.RGBAAt(cornerX, cornerY)
+		beforeCorner = [3]int{int(c0.R), int(c0.G), int(c0.B)}
+	}
+
+	tt.FingerDown(cx, cy)
+	tt.Advance(40 * time.Millisecond)
+	tt.Frame()
+
+	if img := tt.Image(); img != nil {
+		// Top-right corner of the 54x54 bounding square sits over clean right margin outside r=27 circle
+		corner := img.RGBAAt(cornerX, cornerY)
+		dr := int(corner.R) - beforeCorner[0]
+		if dr < 0 {
+			dr = -dr
+		}
+		if corner.R < 232 || dr > 4 {
+			t.Fatalf("detected ugly rectangular shadow/ink box at circle corner on press: before=%v after=%+v", beforeCorner, corner)
+		}
+	}
+
+	tt.FingerUp(cx, cy)
+	tt.Frame() // t = 40ms into open
+
+	voiceEarly, okV := tt.Find("语音")
+	imgEarly, okI := tt.Find("图文")
+	if !okV || !okI {
+		t.Fatalf("expected floating option buttons mounted during float-up, voice=%v img=%v", okV, okI)
+	}
+
+	tt.Advance(130 * time.Millisecond)
+	tt.Frame() // t = 170ms mid-flight
+	voiceMid, _ := tt.Find("语音")
+	imgMid, _ := tt.Find("图文")
+
+	for i := 0; i < 12; i++ {
+		tt.Advance(60 * time.Millisecond)
+		tt.Frame()
+	}
+	voiceEnd, _ := tt.Find("语音")
+	imgEnd, _ := tt.Find("图文")
+
+	if !(voiceEarly.Y > voiceMid.Y && voiceMid.Y > voiceEnd.Y) {
+		t.Fatalf("expected 语音 circle to smoothly float upward over time: earlyY=%.1f midY=%.1f endY=%.1f",
+			voiceEarly.Y, voiceMid.Y, voiceEnd.Y)
+	}
+	if !(imgEarly.Y > imgMid.Y && imgMid.Y > imgEnd.Y) {
+		t.Fatalf("expected 图文 circle to smoothly float upward over time: earlyY=%.1f midY=%.1f endY=%.1f",
+			imgEarly.Y, imgMid.Y, imgEnd.Y)
+	}
+
+	// Verify popped-out button surface is pure monochrome white (zero colored tint)
+	if img := tt.Image(); img != nil {
+		optSample := img.RGBAAt(int(voiceEnd.X+10), int(voiceEnd.Y+10))
+		if optSample.R < 245 || optSample.G < 245 || optSample.B < 245 {
+			t.Fatalf("expected monochrome white floating option circle, got RGBA=%+v", optSample)
+		}
+	}
+
+	// 3. Switch to Mind Palace and verify shared float-up animation + single-option slide switch!
+	app.closeOrbDials()
+	app.ActiveSpace = SpaceArchive
+	app.ArchiveMode = ArchiveCards
+	for i := 0; i < 10; i++ {
+		tt.Advance(60 * time.Millisecond)
+		tt.Frame()
+	}
+
+	archFab, ok := tt.Find("切换视窗（当前卡片）")
+	if !ok {
+		t.Fatalf("missing Mind Palace switcher button")
+	}
+	ax := archFab.X + archFab.W*0.5
+	ay := archFab.Y + archFab.H*0.5
+
+	tt.FingerDown(ax, ay)
+	tt.Advance(35 * time.Millisecond)
+	tt.Frame()
+	altEarly, ok := tt.Find("脉络")
+	if !ok {
+		t.Fatalf("expected single 脉络 orb to start floating up on press down")
+	}
+	tt.Advance(140 * time.Millisecond)
+	tt.Frame()
+	altMid, _ := tt.Find("脉络")
+	if !(altEarly.Y > altMid.Y) {
+		t.Fatalf("expected Mind Palace single orb to float upward smoothly: earlyY=%.1f midY=%.1f", altEarly.Y, altMid.Y)
+	}
+
+	// Slide finger up onto the floating orb and release -> switches to ArchiveGraph!
+	for i := 0; i < 6; i++ {
+		tt.Advance(45 * time.Millisecond)
+		tt.Frame()
+	}
+	altSettled, _ := tt.Find("脉络")
+	tt.FingerMove(altSettled.X+altSettled.W*0.5, altSettled.Y+altSettled.H*0.5)
+	tt.Advance(80 * time.Millisecond)
+	tt.Frame()
+	tt.FingerUp(altSettled.X+altSettled.W*0.5, altSettled.Y+altSettled.H*0.5)
+	for i := 0; i < 10; i++ {
+		tt.Advance(50 * time.Millisecond)
+		tt.Frame()
+	}
+	if app.ArchiveMode != ArchiveGraph {
+		t.Fatalf("expected Mind Palace mode to switch to ArchiveGraph after press-slide, got %v", app.ArchiveMode)
 	}
 }
 
@@ -731,6 +951,7 @@ func TestMindPalaceTagConvergenceAndZeroHashSlop(t *testing.T) {
 	settleAudit(tt)
 	assertAuditNoHashPrefixes(t, "share_poster_no_hash", tt.Texts())
 }
+
 func TestDashboardInlineSynthesis(t *testing.T) {
 	app, cleanup := newAuditTestApp(t)
 	defer cleanup()

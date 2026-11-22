@@ -64,13 +64,24 @@ func (a *App) renderArchiveHeader(c *ui.Context, pal SurfacePalette, phone bool)
 		padX = 18
 	}
 
+	portalGlow := a.mindPalacePortalPulse(c)
+	countBg := pal.Card
+	countBorder := pal.Border.Alpha(0.65)
+	countFg := pal.InkSecondary
+	if portalGlow > 0.005 {
+		countBg = lerpColor(countBg, ColorVermilion.Alpha(0.12), portalGlow)
+		countBorder = lerpColor(countBorder, ColorVermilion.Alpha(0.55), portalGlow)
+		countFg = lerpColor(countFg, ColorVermilion, portalGlow*0.9)
+	}
+
 	ui.Row(c).FillWidth().Padding(12, padX, 8, padX).Gap(8).AlignItems(ui.Center).Background(pal.Canvas).Children(func() {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Shrink(1).MinWidth(0).Children(func() {
 			ui.Text(c, "思维宫殿").FontSize(FontTitle).Bold().TextColor(pal.Ink).SingleLine()
 			ui.Textf(c, "%d", len(a.Nodes)).FontSize(FontCaption).FontWeight(600).
 				FontFeatures("tnum").Padding(2, 7).Radius(RadiusPill).
-				Background(pal.Card).Border(1, pal.Border.Alpha(0.65)).
-				TextColor(pal.InkSecondary).SingleLine()
+				Background(countBg).Border(1, countBorder).
+				Scale(1.0+0.08*portalGlow, 1.0+0.08*portalGlow).
+				TextColor(countFg).SingleLine()
 		})
 
 		ui.Spacer(c).Grow(1)
@@ -88,11 +99,12 @@ func (a *App) renderArchiveHeader(c *ui.Context, pal SurfacePalette, phone bool)
 				a.importCapsuleAsync()
 			}
 
-			if GhostIconAction(c, "archive_quick_add_btn", IconPlus, "随手记一笔", false).
-				Tooltip("随手记一笔").Clicked() {
+			addBtn := GhostIconAction(c, "archive_quick_add_btn", IconPlus, "随手记一笔", false).
+				Bind(&a.ArchiveAddHandle).Tooltip("随手记一笔")
+			if addBtn.Clicked() {
 				mygo.Haptics.Light()
 				a.closeOrbDials()
-				a.CaptureModalOpen = true
+				a.openCaptureModal(1, a.ArchiveAddHandle.Bounds(c))
 			}
 		})
 	})
@@ -105,11 +117,11 @@ func (a *App) renderArchiveBottomHandle(c *ui.Context, pal SurfacePalette, pushD
 	}
 	ready := pushDist >= pushThreshold && pushThreshold > 0
 
-	label := "上拉回到主页看板"
+	label := ""
 	if ready {
 		label = "松手回到主页看板"
 	} else if pushDist > 6 {
-		label = "继续上拉回到主页"
+		label = "继续上拉"
 	}
 
 	fg := pal.InkMuted
@@ -130,10 +142,12 @@ func (a *App) renderArchiveBottomHandle(c *ui.Context, pal SurfacePalette, pushD
 		mygo.Haptics.Selection()
 		a.returnToDashboard()
 	}).Children(func() {
-		ui.Column(c).FillWidth().AlignItems(ui.Center).Gap(5).Children(func() {
+		ui.Column(c).FillWidth().AlignItems(ui.Center).Gap(4).Children(func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
 				ui.Icon(c, IconChevronUp).Size(13.5, 13.5).TextColor(fg).Shrink(0)
-				ui.Text(c, label).FontSize(11.5).FontWeight(600).TextColor(fg).SingleLine()
+				if label != "" {
+					ui.Text(c, label).FontSize(11.5).FontWeight(600).TextColor(fg).SingleLine()
+				}
 			})
 			ui.Box(c).Width(36 + 12*progress).Height(3.5).Radius(2).Background(grabberCol)
 		})
@@ -288,7 +302,7 @@ func (a *App) renderArchiveTagDrawer(c *ui.Context, pal SurfacePalette, tags []s
 		pal,
 	).Children(func() {
 		ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-			headerText := fmt.Sprintf("全部主题 · 共 %d 个", len(a.Tags))
+			headerText := "全部主题"
 			if searchSuggestOnly {
 				headerText = "匹配的主题"
 			}
@@ -410,7 +424,6 @@ func (a *App) renderArchiveCards(c *ui.Context, pal SurfacePalette, phone bool) 
 						n := node
 						orbPal := ColorsForTheme(n.Theme)
 						isSel := !phone && n.ID == a.SelectedID
-						evCount := max(1, a.EvCounts[n.ID])
 
 						card := StyleSurfaceCard(
 							ui.ButtonBase(c).Key("arch_card_"+n.ID).FillWidth().Padding(15, 16),
@@ -462,11 +475,7 @@ func (a *App) renderArchiveCards(c *ui.Context, pal SurfacePalette, phone bool) 
 										}
 									})
 
-									metaNote := fmt.Sprintf("%s · %d 条", formatChineseShortDate(n.UpdatedAt), evCount)
-									if strings.TrimSpace(n.ActionPlanMD) != "" {
-										metaNote = fmt.Sprintf("含方案 · %s · %d 条", formatChineseShortDate(n.UpdatedAt), evCount)
-									}
-									ui.Text(c, metaNote).FontSize(FontCaption).FontFeatures("tnum").
+									ui.Text(c, formatChineseShortDate(n.UpdatedAt)).FontSize(FontCaption).FontFeatures("tnum").
 										TextColor(pal.InkMuted).SingleLine().Shrink(0)
 								})
 							})

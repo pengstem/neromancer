@@ -84,10 +84,15 @@ type App struct {
 	ArchiveScroll   ui.ScrollState
 	DetailScroll    ui.ScrollState
 	MarkdownOpts    markdown.Options
-	Globe           GlobeState
-	SpaceDeck       SpaceDeckState
-	Pulse           PulseViewState
-	OrbDial         OrbDialState
+	Globe            GlobeState
+	SpaceDeck        SpaceDeckState
+	Pulse            PulseViewState
+	OrbDial          OrbDialState
+	DashFabHandle    ui.Handle
+	DashDialHandles  [3]ui.Handle
+	DashPortalHandle ui.Handle
+	ArchiveAddHandle ui.Handle
+	CaptureAnim      CaptureTransitionState
 
 	// Optional AI spark prompt refreshed on pull-to-refresh
 	ShowcaseSpark string
@@ -112,7 +117,6 @@ type App struct {
 	CaptureSceneMood   string
 	CaptureSceneMusic  string
 	CaptureShowScene   bool
-	CaptureAutoOrg     bool
 	CaptureRecallHits  []domain.RecallMatch
 	AppendEvidenceText string
 
@@ -149,8 +153,7 @@ func NewApp(deps Deps) (*App, error) {
 		Deps:               deps,
 		ActiveSpace:        SpaceDashboard,
 		ArchiveMode:        ArchiveCards,
-		CaptureModalityIdx: 1, // Quick text/voice dual-ready
-		CaptureAutoOrg:     true,
+		CaptureModalityIdx: 1,
 		NodeByID:           make(map[string]domain.IdeaNode),
 		EvCounts:           make(map[string]int),
 		Children:           make(map[string][]string),
@@ -335,7 +338,6 @@ func (a *App) TriggerGlobeCaptureRipple(node domain.IdeaNode) {
 	}
 	a.Globe.RipplePending = true
 	a.Globe.RippleTerm = term
-	a.Globe.RippleTheme = node.Theme
 }
 
 // openNodeDetail opens the selected node in Detail Sheet (phone) or Archive Master-Detail split (desktop).
@@ -455,20 +457,23 @@ func (a *App) RootView(c *ui.Context) {
 	pal := a.Palette()
 
 	ui.Themed(c, NeromancerTheme()).Fill().Children(func() {
-		ui.Column(c).Fill().Background(pal.Canvas).Children(func() {
-			if a.QuickOrbOverlayOpen {
-				a.renderInAppQuickOrbBar(c, pal)
-			}
+		bgHidden := a.CaptureModalOpen && a.CaptureAnim.Phase == CaptureAnimOpen
+		ui.Column(c).Fill().Background(pal.Canvas).AccessHidden(bgHidden).Children(func() {
+			if !bgHidden {
+				if a.QuickOrbOverlayOpen {
+					a.renderInAppQuickOrbBar(c, pal)
+				}
 
-			a.renderSpaceDeck(c, pal)
+				a.renderSpaceDeck(c, pal)
+			}
 		})
 
 		// Non-shifting floating capsule toast overlay
 		a.renderBanner(c, pal)
 
-		// Mobile-friendly bottom sheets & drawers (key-isolated so sheet-on-sheet deferral stays deterministic)
+		// Mobile-friendly bottom sheets & full-screen capture morph layer
 		ui.Box(c).Key("modal_slot_detail").Children(func() { a.renderDetailSheet(c) })
-		ui.Box(c).Key("modal_slot_capture").Children(func() { a.renderCaptureModal(c) })
+		a.renderCaptureModal(c)
 		ui.Box(c).Key("modal_slot_evidence").Children(func() { a.renderEvidenceModal(c) })
 		ui.Box(c).Key("modal_slot_settings").Children(func() { a.renderSettingsModal(c) })
 		ui.Box(c).Key("modal_slot_share").Children(func() { a.renderShareModal(c) })
@@ -476,10 +481,13 @@ func (a *App) RootView(c *ui.Context) {
 }
 
 func (a *App) renderBanner(c *ui.Context, pal SurfacePalette) {
+	if a.CaptureAnim.Phase == CaptureAnimClosingPalace && !a.BannerIsErr {
+		return
+	}
 	topSafe, _, bottomSafe, _ := c.SafeArea()
 	phone := a.isPhoneLayout(c)
 	posOverlay := func(el ui.Element) ui.Element {
-		el.Absolute().Left(16).Right(16).ZIndex(90).AlignItems(ui.Center).PassThrough()
+		el.Absolute().Left(16).Right(16).ZIndex(95).AlignItems(ui.Center).PassThrough()
 		if phone {
 			return el.Top(52 + topSafe)
 		}
