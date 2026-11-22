@@ -117,10 +117,13 @@ func (s *CaptureService) CaptureQuick(ctx context.Context, in QuickCaptureInput)
 		isProvisional = true
 		title := deriveQuickTitle(text, modality)
 		summary := defaultSummary(text, modality)
-		tags := []string{modalityTag(modality)}
+		tags := inferQuickTags(text, modality)
 		iconKey := domain.InferIdeaIconKey(text, summary, tags, modality)
+		existingNodes, _ := s.store.ListNodes()
+		folder, relatedIDs := inferLocalFolderAndLinks(title, summary, tags, iconKey, existingNodes)
 		node = domain.IdeaNode{
 			ID:                    fmt.Sprintf("orb_%d", now.UnixNano()),
+			Folder:                folder,
 			Title:                 title,
 			ConversationalSummary: summary,
 			Tags:                  tags,
@@ -130,13 +133,15 @@ func (s *CaptureService) CaptureQuick(ctx context.Context, in QuickCaptureInput)
 				Caption:   "",
 				Energy:    0.72,
 			},
-			Weight:    0.62,
-			CreatedAt: now,
-			UpdatedAt: now,
+			Weight:     0.62,
+			RelatedIDs: relatedIDs,
+			CreatedAt:  now,
+			UpdatedAt:  now,
 		}
 		if err := s.store.UpsertNode(node); err != nil {
 			return nil, err
 		}
+		s.syncBidirectionalLinks(node.ID, relatedIDs)
 	}
 
 	ev := domain.RawEvidence{
@@ -196,6 +201,7 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 		}
 		digests = append(digests, ai.NodeDigest{
 			ID:      n.ID,
+			Folder:  domain.ResolveIdeaFolder(n),
 			Title:   n.Title,
 			Summary: n.ConversationalSummary,
 			Tags:    n.Tags,
@@ -216,6 +222,9 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 			if currentNodeID != "" && currentNodeID != target.ID {
 				_ = s.store.DeleteNode(currentNodeID)
 			}
+			if strings.TrimSpace(decision.Folder) != "" {
+				target.Folder = strings.TrimSpace(decision.Folder)
+			}
 			if strings.TrimSpace(decision.Title) != "" {
 				target.Title = strings.TrimSpace(decision.Title)
 			}
@@ -228,11 +237,12 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 				target.GuidingQuestions = decision.GuidingQuestions
 			}
 			target.Visual = resolveOrganizedVisual(target.Visual, decision.Visual, target.Title, target.ConversationalSummary, target.Tags, ev.Modality)
-			target.RelatedIDs = mergeUniqueStrings(target.RelatedIDs, decision.RelatedIDs)
+			target.RelatedIDs = filterSelfID(target.ID, mergeUniqueStrings(target.RelatedIDs, decision.RelatedIDs))
 			target.UpdatedAt = now
 			if err := s.store.UpsertNode(target); err != nil {
 				return domain.IdeaNode{}, "", err
 			}
+			s.syncBidirectionalLinks(target.ID, target.RelatedIDs)
 			return target, target.ID, nil
 		}
 	}
@@ -240,6 +250,9 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 	node, err := s.store.GetNode(currentNodeID)
 	if err != nil {
 		return domain.IdeaNode{}, "", err
+	}
+	if strings.TrimSpace(decision.Folder) != "" {
+		node.Folder = strings.TrimSpace(decision.Folder)
 	}
 	if strings.TrimSpace(decision.Title) != "" {
 		node.Title = strings.TrimSpace(decision.Title)
@@ -257,16 +270,20 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 		node.Weight = math.Min(1.0, decision.Weight)
 	}
 	node.Visual = resolveOrganizedVisual(node.Visual, decision.Visual, node.Title, node.ConversationalSummary, node.Tags, ev.Modality)
+	if strings.TrimSpace(node.Folder) == "" {
+		node.Folder = domain.InferIdeaFolder(node.Title, node.ConversationalSummary, node.Tags, node.Visual.MotifType)
+	}
 	if len(decision.GuidingQuestions) > 0 {
 		node.GuidingQuestions = decision.GuidingQuestions
 	}
 	if len(decision.RelatedIDs) > 0 {
-		node.RelatedIDs = decision.RelatedIDs
+		node.RelatedIDs = filterSelfID(node.ID, mergeUniqueStrings(node.RelatedIDs, decision.RelatedIDs))
 	}
 	node.UpdatedAt = now
 	if err := s.store.UpsertNode(node); err != nil {
 		return domain.IdeaNode{}, "", err
 	}
+	s.syncBidirectionalLinks(node.ID, node.RelatedIDs)
 	return node, "", nil
 }
 
@@ -379,6 +396,109 @@ func mergeUniqueTags(primary, secondary []string, maxCount int) []string {
 					return out
 				}
 			}
+		}
+	}
+	return out
+}
+
+func inferQuickTags(text, modality string) []string {
+	var matched []string
+	hay := strings.ToLower(strings.TrimSpace(text))
+	tagHints := []struct {
+		tag string
+		kws []string
+	}{
+		{"阳台植物", []string{"花", "郁金香", "薄荷", "绿植", "阳台", "花盆", "花瓶", "浇水"}},
+		{"光影质感", []string{"玻璃", "光影", "着色", "噪点", "手绘", "焦散", "颜色", "水彩", "shader"}},
+		{"强化学习", []string{"强化学习", "转移概率", "马尔可夫", "蒙特卡洛", "动态规划", "采样", "rl"}},
+		{"穿戴交互", []string{"手表", "盲操", "录音", "语音", "抬腕", "硬件"}},
+		{"图形学", []string{"渲染", "管线", "多边形", "法线", "引擎"}},
+		{"生活美学", []string{"咖啡", "散步", "书桌", "窗帘", "清晨", "日常"}},
+	}
+	for _, h := range tagHints {
+		for _, kw := range h.kws {
+			if strings.Contains(hay, kw) {
+				matched = append(matched, h.tag)
+				break
+			}
+		}
+		if len(matched) >= 2 {
+			break
+		}
+	}
+	if len(matched) == 0 {
+		return []string{modalityTag(modality)}
+	}
+	return matched
+}
+
+func inferLocalFolderAndLinks(title, summary string, tags []string, iconKey string, existing []domain.IdeaNode) (string, []string) {
+	probe := domain.IdeaNode{
+		Title:                 title,
+		ConversationalSummary: summary,
+		Tags:                  tags,
+		Visual:                domain.VisualMotif{MotifType: iconKey},
+	}
+	var related []string
+	folderVotes := make(map[string]int)
+	for _, other := range existing {
+		if notesNaturallyRelated(probe, other) {
+			related = append(related, other.ID)
+			f := domain.ResolveIdeaFolder(other)
+			if f != "" && f != "最近散点闪念" {
+				folderVotes[f]++
+			}
+		}
+	}
+	bestFolder := ""
+	bestCount := 0
+	for f, c := range folderVotes {
+		if c > bestCount {
+			bestCount = c
+			bestFolder = f
+		}
+	}
+	if bestFolder == "" {
+		bestFolder = domain.InferIdeaFolder(title, summary, tags, iconKey)
+	}
+	if len(related) > 4 {
+		related = related[:4]
+	}
+	return bestFolder, related
+}
+
+func (s *CaptureService) syncBidirectionalLinks(nodeID string, relatedIDs []string) {
+	if s.store == nil || nodeID == "" {
+		return
+	}
+	for _, relID := range relatedIDs {
+		relID = strings.TrimSpace(relID)
+		if relID == "" || relID == nodeID {
+			continue
+		}
+		other, err := s.store.GetNode(relID)
+		if err != nil {
+			continue
+		}
+		updated := filterSelfID(other.ID, mergeUniqueStrings(other.RelatedIDs, []string{nodeID}))
+		if len(updated) != len(other.RelatedIDs) {
+			other.RelatedIDs = updated
+			_ = s.store.UpsertNode(other)
+		}
+	}
+}
+
+func filterSelfID(selfID string, ids []string) []string {
+	var out []string
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || id == selfID {
+			continue
+		}
+		if _, dup := seen[id]; !dup {
+			seen[id] = struct{}{}
+			out = append(out, id)
 		}
 	}
 	return out

@@ -34,6 +34,7 @@ var (
 // NodeDigest gives the organizer compact context of existing orbs without inflating token usage.
 type NodeDigest struct {
 	ID      string   `json:"id"`
+	Folder  string   `json:"folder,omitempty"`
 	Title   string   `json:"title"`
 	Summary string   `json:"summary"`
 	Tags    []string `json:"tags"`
@@ -43,6 +44,7 @@ type NodeDigest struct {
 type OrganizeDecision struct {
 	Action                string             `json:"action"` // "merge" | "create"
 	TargetNodeID          string             `json:"target_node_id"`
+	Folder                string             `json:"folder"`
 	Title                 string             `json:"title"`
 	ConversationalSummary string             `json:"conversational_summary"`
 	Tags                  []string           `json:"tags"`
@@ -51,6 +53,13 @@ type OrganizeDecision struct {
 	Visual                domain.VisualMotif `json:"visual"`
 	GuidingQuestions      []string           `json:"guiding_questions"`
 	RelatedIDs            []string           `json:"related_ids"`
+}
+
+// FolderAssignment represents DeepSeek's folder & link synthesis for one IdeaNode.
+type FolderAssignment struct {
+	NodeID     string   `json:"node_id"`
+	Folder     string   `json:"folder"`
+	RelatedIDs []string `json:"related_ids"`
 }
 
 // ASRResult matches DeepSeek POST /v1/tools/asr response payload.
@@ -240,6 +249,7 @@ func (c *Client) IngestAndOrganize(ctx context.Context, ev domain.RawEvidence, c
 		return nil, fmt.Errorf("整理结果读取失败，请再试一次: %w", err)
 	}
 	decision.Tags = sanitizeAITags(decision.Tags, 4)
+	decision.Folder = strings.TrimSpace(strings.Trim(decision.Folder, "/\\#＃"))
 	if decision.Title == "" {
 		decision.Title = summarizeFallbackTitle(ev.RawText)
 	}
@@ -247,6 +257,28 @@ func (c *Client) IngestAndOrganize(ctx context.Context, ev domain.RawEvidence, c
 		decision.Weight = 0.72
 	}
 	return &decision, nil
+}
+
+// SummarizeVaultFolders asks DeepSeek to group vault IdeaNodes into natural Obsidian-like folders and enrich cross-links.
+func (c *Client) SummarizeVaultFolders(ctx context.Context, catalog []NodeDigest) ([]FolderAssignment, error) {
+	if len(catalog) == 0 {
+		return nil, nil
+	}
+	catalogJSON, _ := json.Marshal(catalog)
+	raw, err := c.chatJSON(ctx, folderSummarizeSystemPrompt, "【当前全部灵感节点】\n"+string(catalogJSON))
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Assignments []FolderAssignment `json:"assignments"`
+	}
+	if err := decodeJSONFlexible(raw, &out); err != nil {
+		return nil, fmt.Errorf("解析目录归纳结果失败: %w", err)
+	}
+	for i := range out.Assignments {
+		out.Assignments[i].Folder = strings.TrimSpace(strings.Trim(out.Assignments[i].Folder, "/\\#＃"))
+	}
+	return out.Assignments, nil
 }
 
 // GenerateGuidingQuestions generates 3 sharp, non-generic exploratory questions.

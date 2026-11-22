@@ -21,9 +21,10 @@ func (s *Store) SeedIfEmpty() error {
 	nodes := []domain.IdeaNode{
 		{
 			ID:                    "orb_tulip",
+			Folder:                "器物与光影美学",
 			Title:                 "用一个蓝色花瓶养一株郁金香",
 			ConversationalSummary: "散步路过花店时你想起阳台还空着，二十分钟后刷到手工器皿图又补了一笔：花瓶一定要是透亮钴蓝。暖珊瑚粉的花瓣撞上冷调蓝釉，每天早上拉开窗帘都像给书桌开了盏小夜灯。",
-			Tags:                  []string{"生活美学", "阳台植物", "颜色碰撞"},
+			Tags:                  []string{"生活美学", "阳台植物", "光影质感"},
 			Theme:                 domain.ThemeCoral,
 			Visual: domain.VisualMotif{
 				MotifType: domain.IconKeyBotanical,
@@ -38,12 +39,13 @@ func (s *Store) SeedIfEmpty() error {
 				"阳台早晨十点的光线穿过蓝玻璃投在白墙上，要不要顺手拍成一组七日延时？",
 			},
 			ActionPlanMD: "",
-			RelatedIDs:   []string{"orb_watch"},
+			RelatedIDs:   []string{"orb_shader", "orb_watch"},
 			CreatedAt:    now.Add(-48 * time.Hour),
 			UpdatedAt:    now.Add(-2 * time.Hour),
 		},
 		{
 			ID:                    "orb_rl_prose",
+			Folder:                "算法与系统直觉",
 			Title:                 "有模型与免模型强化学习到底差在哪一步？",
 			ConversationalSummary: "常听人说有模型学习和免模型学习（Model-Based / Model-Free），这两者究竟差在哪一步？一句话答案：差在智能体手里有没有转移概率。有就解方程或求和，没有就只能采样或求平均。",
 			Tags:                  []string{"学习笔记", "强化学习", "马尔可夫"},
@@ -66,9 +68,10 @@ func (s *Store) SeedIfEmpty() error {
 		},
 		{
 			ID:                    "orb_watch",
+			Folder:                "穿戴与声音交互",
 			Title:                 "手表端做一颗单键盲操语音记忆球",
 			ConversationalSummary: "在路上灵光一闪时掏手机解锁还是慢了半拍。手表上根本不需要复杂排版界面，只要表盘边缘留一颗温润的语音键：抬腕按住说十秒就收进气泡，回到电脑前再看 AI 把它变成什么样。",
-			Tags:                  []string{"穿戴交互", "多端协同", "硬件交互"},
+			Tags:                  []string{"穿戴交互", "多端协同", "生活美学"},
 			Theme:                 domain.ThemeMint,
 			Visual: domain.VisualMotif{
 				MotifType: domain.IconKeyWave,
@@ -87,9 +90,10 @@ func (s *Store) SeedIfEmpty() error {
 		},
 		{
 			ID:                    "orb_shader",
+			Folder:                "器物与光影美学",
 			Title:                 "用不完美噪点做温暖的手绘感着色器",
 			ConversationalSummary: "别一上来就追完美物理渲染了！昨晚试着故意把法线贴图弄歪一点，再叠上一层纸张纤维的颗粒抖动，冷冰冰的多边形突然像水彩插画书一样呼吸起来。",
-			Tags:                  []string{"图形学", "手绘质感", "着色器"},
+			Tags:                  []string{"图形学", "光影质感", "着色器"},
 			Theme:                 domain.ThemeLavender,
 			Visual: domain.VisualMotif{
 				MotifType: domain.IconKeyPrism,
@@ -101,7 +105,7 @@ func (s *Store) SeedIfEmpty() error {
 			GuidingQuestions: []string{
 				"如果把这套‘故意留瑕疵’的边缘抖动用在记忆球的发光边缘上，会不会比完美圆更像手吹玻璃？",
 			},
-			RelatedIDs: []string{"orb_rl_prose"},
+			RelatedIDs: []string{"orb_tulip", "orb_rl_prose"},
 			CreatedAt:  now.Add(-96 * time.Hour),
 			UpdatedAt:  now.Add(-12 * time.Hour),
 		},

@@ -238,16 +238,22 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	assertAuditNoHashPrefixes(t, "archive_cards", tt.Texts())
 	maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_cards.png")
 
-	// 5. Mind Palace Outline mode
+	// 5. Mind Palace Obsidian Graph & AI File Explorer ("脉络") — and verify "漫游" is completely gone!
+	if tt.HasText("漫游") {
+		t.Fatalf("expected '漫游' tab to be removed, texts=%v", tt.Texts())
+	}
 	if err := tt.Click("脉络"); err != nil {
-		t.Fatalf("switch mind palace mode to outline: %v", err)
+		t.Fatalf("switch mind palace mode to graph: %v", err)
 	}
 	settleAudit(tt)
-	if app.ArchiveMode != ArchiveOutline {
-		t.Fatalf("expected ArchiveOutline, got %v", app.ArchiveMode)
+	if app.ArchiveMode != ArchiveGraph {
+		t.Fatalf("expected ArchiveGraph, got %v", app.ArchiveMode)
 	}
-	assertAuditNoEmojis(t, "archive_outline", tt.Texts())
-	maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_outline.png")
+	if !tt.HasText("AI 归档目录") || !tt.HasText("器物与光影美学") {
+		t.Fatalf("expected Obsidian AI File Explorer folders in 脉络 view, texts=%v", tt.Texts())
+	}
+	assertAuditNoEmojis(t, "archive_graph", tt.Texts())
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_graph.png")
 
 	if err := tt.Click("卡片"); err != nil {
 		t.Fatalf("switch mind palace mode back to cards: %v", err)
@@ -300,29 +306,25 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		t.Fatalf("close raw evidence sheet: %v", err)
 	}
 	settleAudit(tt)
-	if err := tt.Click("关闭"); err != nil {
-		t.Fatalf("close detail sheet: %v", err)
+
+	// 8. Pure Share Feature inside Detail Sheet (replaces obsolete "漫游" screen)
+	if err := tt.Click("分享"); err != nil {
+		t.Fatalf("click share button in detail sheet: %v", err)
 	}
 	settleAudit(tt)
+	if !app.ShareModalOpen {
+		t.Fatalf("expected ShareModalOpen=true after clicking 分享")
+	}
+	if !tt.HasText("分享灵感") || !tt.HasText("保存海报") || !tt.HasText("系统分享") {
+		t.Fatalf("share sheet missing expected labels, texts=%v", tt.Texts())
+	}
+	assertAuditNoEmojis(t, "share_modal", tt.Texts())
+	maybeSaveAuditPNG(t, auditDir, tt, "ui_share_modal.png")
 
-	// 8. Roam & Poster Studio inside Archive
-	if err := tt.Click("漫游"); err != nil {
-		t.Fatalf("switch archive to roam mode: %v", err)
-	}
-	settleAudit(tt)
-	if app.ArchiveMode != ArchiveRoam {
-		t.Fatalf("expected ArchiveRoam, got %v", app.ArchiveMode)
-	}
-	if !tt.HasText("选一条灵感") || !tt.HasText("导出海报") || !tt.HasText("碰撞") {
-		t.Fatalf("roam view missing expected labels, texts=%v", tt.Texts())
-	}
-	assertAuditNoEmojis(t, "archive_roam", tt.Texts())
-	maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_roam.png")
-
-	// 9. Export 1200x1640 PNG poster only when saving visual audit artifacts (poster E2E is covered in main_test.go)
+	// 9. Export 1200x1640 PNG poster when saving visual audit artifacts
 	if auditDir != "" {
-		if err := tt.Click("导出海报"); err != nil {
-			t.Fatalf("click export poster: %v", err)
+		if err := tt.Click("保存海报"); err != nil {
+			t.Fatalf("click save poster: %v", err)
 		}
 		if app.LastExportedPath == "" {
 			t.Fatalf("expected LastExportedPath to be non-empty")
@@ -346,6 +348,16 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(auditDir, "ui_exported_poster.png"), rawPoster, 0o644); err != nil {
 			t.Fatalf("copy ui_exported_poster.png: %v", err)
 		}
+	} else {
+		app.ShareModalOpen = false
+	}
+	settleAudit(tt)
+
+	if app.DetailSheetOpen {
+		if err := tt.Click("关闭"); err != nil {
+			t.Fatalf("close detail sheet: %v", err)
+		}
+		settleAudit(tt)
 	}
 
 	// 10. Verify Sleep & Settings modals open cleanly from Dashboard with zero emojis
@@ -385,7 +397,7 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	app.ActiveSpace = SpaceArchive
 	app.ArchiveMode = ArchiveCards
 	settleAudit(ttMin)
-	if r, ok := ttMin.Find("漫游"); !ok || r.X+r.W > 360 {
+	if r, ok := ttMin.Find("脉络"); !ok || r.X+r.W > 360 {
 		t.Fatalf("360px archive header mode switch clipped: ok=%v rect=%+v", ok, r)
 	}
 	maybeSaveAuditPNG(t, auditDir, ttMin, "ui_360x620_archive.png")
@@ -577,7 +589,8 @@ func TestMindPalaceTagConvergenceAndZeroHashSlop(t *testing.T) {
 	app.EvidenceModalOpen = false
 	app.DetailSheetOpen = false
 
-	app.ArchiveMode = ArchiveRoam
+	app.ShareNodeID = "orb_tulip"
+	app.ShareModalOpen = true
 	settleAudit(tt)
-	assertAuditNoHashPrefixes(t, "roam_poster_no_hash", tt.Texts())
+	assertAuditNoHashPrefixes(t, "share_poster_no_hash", tt.Texts())
 }

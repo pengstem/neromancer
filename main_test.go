@@ -118,21 +118,34 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 		t.Fatalf("expected newly captured & seeded cards in archive, texts=%v", tt.Texts())
 	}
 
-	// 3. Switch to Roam & Poster Studio inside Archive and verify wired 1200x1640 PNG poster export.
-	if err := tt.Click("漫游"); err != nil {
-		t.Fatalf("switch to roam tab in archive: %v", err)
+	// 3. Switch to Obsidian Graph & AI File Explorer ("脉络") and verify auto-clustering + pure Share poster export.
+	if err := tt.Click("脉络"); err != nil {
+		t.Fatalf("switch to graph tab in archive: %v", err)
 	}
 	settleSheet(tt)
-	if app.ArchiveMode != appui.ArchiveRoam {
-		t.Fatalf("expected ArchiveRoam, got %v", app.ArchiveMode)
+	if app.ArchiveMode != appui.ArchiveGraph {
+		t.Fatalf("expected ArchiveGraph, got %v", app.ArchiveMode)
 	}
-	if !tt.HasText("把游戏引擎 FrameGraph 渲染管线类比成厨房出菜台") {
-		t.Fatalf("expected seeded roam slice in roam view")
+	if !tt.HasText("器物与光影美学") || !tt.HasText("在阳台装一个自动虹吸滴灌棉线") {
+		t.Fatalf("expected newly captured note grouped into AI folder in 脉络 view, texts=%v", tt.Texts())
 	}
 
-	if err := tt.Click("导出海报"); err != nil {
-		t.Fatalf("click export poster: %v", err)
+	if err := tt.Click("在阳台装一个自动虹吸滴灌棉线"); err != nil {
+		t.Fatalf("click captured note row in AI file explorer: %v", err)
 	}
+	settleSheet(tt)
+	if !app.DetailSheetOpen {
+		t.Fatalf("expected DetailSheetOpen=true after clicking file row")
+	}
+	if err := tt.Click("分享"); err != nil {
+		t.Fatalf("click 分享 in detail sheet: %v", err)
+	}
+	settleSheet(tt)
+
+	if err := tt.Click("保存海报"); err != nil {
+		t.Fatalf("click 保存海报: %v", err)
+	}
+	settleSheet(tt)
 	if app.LastExportedPath == "" {
 		t.Fatalf("expected exported PNG path to be set")
 	}
@@ -150,6 +163,13 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	}
 	if filepath.Ext(app.LastExportedPath) != ".png" {
 		t.Fatalf("unexpected extension: %s", app.LastExportedPath)
+	}
+
+	if app.DetailSheetOpen {
+		if err := tt.Click("关闭"); err != nil {
+			t.Fatalf("close detail sheet: %v", err)
+		}
+		settleSheet(tt)
 	}
 
 	// 4. Return cleanly back to Dashboard via "回到主页看板".

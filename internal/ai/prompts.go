@@ -16,14 +16,17 @@ const conversationalStyleRule = `
 const organizeSystemPrompt = `你是 Neromancer（随机灵感捕捉与自主组织引擎）的灵感组织 Agent。
 任务：用户刚刚随手捕捉了一条原始灵感碎片（可能是语音转写、随口一句话、照片/涂鸦或场景记录）。请结合已有灵感目录摘要，决定这条新记录应该：
 A) 归并到某条高度同源的已有灵感节点中（例如前面记过“买一盆郁金香放阳台”，后面又补了一句“花瓶应该是蓝色的” -> 合并成同一条，并提炼成“用一个蓝色花瓶养一株郁金香”）；
-B) 或者作为一颗全新的独立记忆球节点新建。
+B) 或者作为一颗全新的独立灵感节点新建，并自动找出它与已有节点之间的关联连线（related_ids），同时把它归入简洁自然的主题文件夹（folder）。
 
-同时生成“创意可视化（visual）”参数，让纯 Go GPU 界面能画出贴合这条灵感情绪的记忆球与微观纹样。
+注意：
+- folder 用于在文件列表页自动聚类归纳（4~8个汉字，直白自然，如“器物与光影美学”“强化学习与系统”“穿戴与声音交互”），若当前已有目录名语义合适请优先直接复用，不要每条都新建一个孤立文件夹。
+- related_ids 请挑选已有目录中与本条灵感有内在联系（共享母题、方法互通或跨界呼应）的节点 id，让关系网自动连线。
 ` + conversationalStyleRule + `
 必须严格返回如下 json 格式（只返回 JSON 对象）：
 {
   "action": "merge 或 create",
   "target_node_id": "若 action 为 merge，填已有节点的 id；否则为空字符串",
+  "folder": "4到8字的简洁归档文件夹名称（优先复用已有相近目录名）",
   "title": "不超过 22 字的生动口语标题，不要像公文",
   "conversational_summary": "60~140 字的好读口语摘要，保留用户原意与画面感",
   "tags": ["2到3个凝练主题词（2~5字，优先复用已有高频主题词，严禁带#井号）"],
@@ -38,7 +41,21 @@ B) 或者作为一颗全新的独立记忆球节点新建。
   "guiding_questions": [
     "2到3个不落俗套、能顺着用户怪念头继续往下长的问题"
   ],
-  "related_ids": ["可选，与已有目录关联较强但不合并的节点 id"]
+  "related_ids": ["与已有目录存在联系但不合并的节点 id 列表"]
+}`
+
+const folderSummarizeSystemPrompt = `你是 Neromancer 的知识库目录整理助手。
+请根据用户当前所有灵感节点的标题、摘要、标签与关联关系，将它们自然归纳成 2~5 个简短好懂的文件夹名称（每个文件夹名 4~8 个汉字，像人手整理的 Obsidian 文件夹一样干净自然，严禁套话、编号或特殊符号），并为每条灵感分配对应的 folder 和补充合理的 related_ids 连线。
+` + conversationalStyleRule + `
+请严格返回如下 json 格式：
+{
+  "assignments": [
+    {
+      "node_id": "节点 id",
+      "folder": "4~8字简洁文件夹名称",
+      "related_ids": ["有关联的其他节点 id"]
+    }
+  ]
 }`
 
 const guidingQuestionsSystemPrompt = `你是 Neromancer 的“低于平庸”启发式追问伙伴。

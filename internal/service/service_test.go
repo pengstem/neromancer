@@ -238,6 +238,75 @@ func TestDashboardDigestAndAutoIconOnCapture(t *testing.T) {
 	}
 }
 
+func TestPulseGraphAutoLinkAndAIFolderTree(t *testing.T) {
+	st, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.SeedIfEmpty(); err != nil {
+		t.Fatal(err)
+	}
+
+	tmpDir := t.TempDir()
+	mm := media.NewManager(filepath.Join(tmpDir, "audio"), filepath.Join(tmpDir, "images"))
+	aiClient := ai.NewClient("https://api.deepseek.com", "", "deepseek-flash")
+	capSvc := NewCaptureService(st, aiClient, mm)
+	orgSvc := NewOrganizeService(st)
+
+	// Capturing a related botanical/light idea offline should immediately assign folder & auto-link to orb_tulip!
+	out, err := capSvc.CaptureQuick(context.Background(), QuickCaptureInput{
+		RawText:  "在阳台玻璃瓶旁边再养一株薄荷看清晨光影",
+		Modality: "text",
+	})
+	if err != nil {
+		t.Fatalf("CaptureQuick failed: %v", err)
+	}
+	if out.Node.Folder != "器物与光影美学" {
+		t.Fatalf("expected auto-assigned folder '器物与光影美学', got %q", out.Node.Folder)
+	}
+	if len(out.Node.RelatedIDs) == 0 {
+		t.Fatalf("expected newly captured related idea to auto-link to existing nodes")
+	}
+
+	nodes, _, _, _, err := orgSvc.ListVault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs, err := orgSvc.ListAllEvidences()
+	if err != nil {
+		t.Fatal(err)
+	}
+	insights, _ := st.ListActiveSleepInsights()
+
+	pg := orgSvc.BuildPulseGraph(nodes, evs, insights, PulseGraphOptions{
+		ShowTags:      true,
+		ShowEvidences: true,
+	})
+	if len(pg.Nodes) < len(nodes)+len(evs) {
+		t.Fatalf("expected note + tag + evidence vertices in PulseGraph, got %d", len(pg.Nodes))
+	}
+	if len(pg.Edges) == 0 {
+		t.Fatalf("expected connected edges in PulseGraph")
+	}
+	newIdx, ok := pg.NoteIndexByID[out.Node.ID]
+	if !ok {
+		t.Fatalf("newly captured node missing from PulseGraph")
+	}
+	tulipIdx := pg.NoteIndexByID["orb_tulip"]
+	if !pg.NeighborsByIdx[newIdx][tulipIdx] {
+		t.Fatalf("expected newly captured idea to have a direct edge to orb_tulip in PulseGraph")
+	}
+	if len(pg.Folders) < 3 {
+		t.Fatalf("expected AI-summarized folder list with >=3 folders, got %d", len(pg.Folders))
+	}
+	for _, nd := range pg.Nodes {
+		if nd.X < 0.05 || nd.X > 0.95 || nd.Y < 0.05 || nd.Y > 0.95 || math.IsNaN(nd.X) || math.IsNaN(nd.Y) {
+			t.Fatalf("graph node %s out of normalized bounds: (%v, %v)", nd.ID, nd.X, nd.Y)
+		}
+	}
+}
+
 func TestWordCloudEdgeCases(t *testing.T) {
 	st, err := store.Open(":memory:")
 	if err != nil {

@@ -30,9 +30,8 @@ const (
 type ArchiveViewMode int
 
 const (
-	ArchiveCards   ArchiveViewMode = iota // 卡片（默认）
-	ArchiveOutline                        // 脉络树
-	ArchiveRoam                           // 漫游与海报分享
+	ArchiveCards ArchiveViewMode = iota // 卡片（默认）
+	ArchiveGraph                        // 脉络（Obsidian 暗色关系网 + AI 归档文件目录）
 )
 
 // Deps bundles runtime infrastructure & domain services for the native UI.
@@ -67,8 +66,10 @@ type App struct {
 	AnimOrigin           time.Time
 
 	// Cached vault state (reloaded cleanly on state mutations)
+	VaultGen          int
 	Nodes             []domain.IdeaNode
 	NodeByID          map[string]domain.IdeaNode
+	AllEvidences      []domain.RawEvidence
 	EvCounts          map[string]int
 	Roots             []string
 	Children          map[string][]string
@@ -76,19 +77,16 @@ type App struct {
 	DashboardDigest   service.DashboardDigest
 	SelectedID        string
 	SelectedEvidences []domain.RawEvidence
-	RoamSlices        []domain.RoamSlice
 	SleepInsights     []domain.SleepInsight
 
 	// Interactive widget states kept across frames
-	OutlineState    ui.OutlineState[string]
-	OutlineChoice   string
 	DashboardScroll ui.ScrollState
 	ArchiveScroll   ui.ScrollState
-	RoamScroll      ui.ScrollState
 	DetailScroll    ui.ScrollState
 	MarkdownOpts    markdown.Options
 	Globe           GlobeState
 	SpaceDeck       SpaceDeckState
+	Pulse           PulseViewState
 
 	// Optional AI spark prompt refreshed on pull-to-refresh
 	ShowcaseSpark string
@@ -121,10 +119,9 @@ type App struct {
 	FloatQuickText string
 	FloatOnToggle  func()
 
-	// Share / Roam state
-	ShareNodeID       string
-	LastExportedPath  string
-	CollisionTargetID string
+	// Share state
+	ShareNodeID      string
+	LastExportedPath string
 
 	// Settings state
 	SettingsBaseURL    string
@@ -159,6 +156,7 @@ func NewApp(deps Deps) (*App, error) {
 		SettingsBaseURL:    deps.Config.DeepSeekBaseURL,
 		SettingsAPIKey:     deps.Config.DeepSeekAPIKey,
 		SettingsModel:      deps.Config.DeepSeekModel,
+		Pulse:              newPulseViewState(),
 	}
 
 	if deps.Share != nil {
@@ -179,8 +177,6 @@ func NewApp(deps Deps) (*App, error) {
 			deps.AI.UpdateCredentials(a.SettingsBaseURL, a.SettingsAPIKey, a.SettingsModel)
 		}
 	}
-
-	a.OutlineState.List.Key = func(row int) any { return a.OutlineState.Item(row) }
 
 	if err := a.ReloadVault(); err != nil {
 		return nil, err
@@ -227,7 +223,10 @@ func (a *App) ReloadVault() error {
 	a.Roots = roots
 	a.Children = children
 	a.Tags = a.Deps.Organize.CollectTags(nodes)
-	a.OutlineState.Generation++
+	if allEvs, err := a.Deps.Organize.ListAllEvidences(); err == nil {
+		a.AllEvidences = allEvs
+	}
+	a.VaultGen++
 
 	if a.SelectedID == "" || func() bool { _, ok := byID[a.SelectedID]; return !ok }() {
 		if len(nodes) > 0 {
@@ -236,18 +235,12 @@ func (a *App) ReloadVault() error {
 			a.SelectedID = ""
 		}
 	}
-	if a.CollisionTargetID == "" || func() bool { _, ok := byID[a.CollisionTargetID]; return !ok }() {
-		a.CollisionTargetID = a.SelectedID
-	}
 	if a.ShareNodeID == "" || func() bool { _, ok := byID[a.ShareNodeID]; return !ok }() {
 		a.ShareNodeID = a.SelectedID
 	}
 
 	a.refreshSelectedDetails()
 
-	if slices, err := a.Deps.Store.ListRoamSlices(); err == nil {
-		a.RoamSlices = slices
-	}
 	if insights, err := a.Deps.Store.ListActiveSleepInsights(); err == nil {
 		a.SleepInsights = insights
 	}
@@ -338,9 +331,6 @@ func (a *App) openNodeDetail(c *ui.Context, id string) {
 		a.DetailSheetOpen = true
 	} else {
 		a.ActiveSpace = SpaceArchive
-		if a.ArchiveMode == ArchiveRoam {
-			a.ArchiveMode = ArchiveCards
-		}
 	}
 }
 
@@ -354,9 +344,12 @@ func (a *App) refreshSelectedDetails() {
 	}
 }
 
-// SelectNode switches the active detail node and reloads its immutable raw evidences & snapshots.
+// SelectNode switches the active detail node, reveals its AI folder in Pulse view, and reloads its raw evidences.
 func (a *App) SelectNode(id string) {
 	a.SelectedID = id
+	if n, ok := a.NodeByID[id]; ok && a.Pulse.CollapsedFolders != nil {
+		delete(a.Pulse.CollapsedFolders, domain.ResolveIdeaFolder(n))
+	}
 	a.refreshSelectedDetails()
 }
 

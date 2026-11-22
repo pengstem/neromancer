@@ -250,6 +250,24 @@ func (s *Store) CountEvidencesByNode() (map[string]int, error) {
 	return counts, nil
 }
 
+// ListAllEvidences returns all immutable raw evidences sorted by CapturedAt ascending.
+func (s *Store) ListAllEvidences() ([]domain.RawEvidence, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]domain.RawEvidence, 0, len(s.data.Evidences))
+	for _, ev := range s.data.Evidences {
+		out = append(out, ev)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CapturedAt.Equal(out[j].CapturedAt) {
+			return out[i].CapturedAt.Before(out[j].CapturedAt)
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
+}
+
 // SearchAssociativeRecall surfaces past inspirations matching keywords in the active thought/query.
 func (s *Store) SearchAssociativeRecall(query string, limit int) ([]domain.RecallMatch, error) {
 	q := strings.TrimSpace(query)

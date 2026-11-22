@@ -186,6 +186,46 @@ func ResolveIdeaIconKey(node IdeaNode) string {
 	return IconKeyBulb
 }
 
+// InferIdeaFolder maps an idea's text, tags, and semantic icon into a concise human-readable
+// folder category so newly captured thoughts naturally settle into a clean file directory.
+func InferIdeaFolder(title, summary string, tags []string, iconKey string) string {
+	switch NormalizeIconKey(iconKey) {
+	case IconKeyBotanical, IconKeyPrism, IconKeyCamera:
+		return "器物与光影美学"
+	case IconKeyCompass, IconKeyCode:
+		return "算法与系统直觉"
+	case IconKeyWave, IconKeyMusic:
+		return "穿戴与声音交互"
+	case IconKeyBook:
+		return "阅读与随笔摘录"
+	case IconKeyCoffee:
+		return "日常习惯与生活"
+	}
+	inferred := InferIdeaIconKey(title, summary, tags, "")
+	switch inferred {
+	case IconKeyBotanical, IconKeyPrism, IconKeyCamera:
+		return "器物与光影美学"
+	case IconKeyCompass, IconKeyCode:
+		return "算法与系统直觉"
+	case IconKeyWave, IconKeyMusic:
+		return "穿戴与声音交互"
+	case IconKeyBook:
+		return "阅读与随笔摘录"
+	case IconKeyCoffee:
+		return "日常习惯与生活"
+	default:
+		return "最近散点闪念"
+	}
+}
+
+// ResolveIdeaFolder returns the node's AI-assigned folder or falls back to semantic inference.
+func ResolveIdeaFolder(node IdeaNode) string {
+	if f := strings.TrimSpace(strings.Trim(node.Folder, "/\\#＃")); f != "" {
+		return f
+	}
+	return InferIdeaFolder(node.Title, node.ConversationalSummary, node.Tags, node.Visual.MotifType)
+}
+
 // SceneContext stores ambient recall clues captured with zero user typing burden.
 type SceneContext struct {
 	TimeOfDay   string `json:"time_of_day"`
@@ -229,11 +269,12 @@ func stripLeadingClock(s string) string {
 
 // IdeaNode represents an organized, deduplicated memory orb inside Mind Space.
 type IdeaNode struct {
-	ID                    string         `json:"id"`
-	ParentID              string         `json:"parent_id,omitempty"`
-	Title                 string         `json:"title"`
-	ConversationalSummary string         `json:"conversational_summary"`
-	Tags                  []string       `json:"tags"`
+	ID                    string      `json:"id"`
+	ParentID              string      `json:"parent_id,omitempty"`
+	Folder                string      `json:"folder,omitempty"`
+	Title                 string      `json:"title"`
+	ConversationalSummary string      `json:"conversational_summary"`
+	Tags                  []string    `json:"tags"`
 	Theme                 OrbTheme    `json:"theme"`
 	Visual                VisualMotif `json:"visual"`
 	Weight                float64     `json:"weight"` // 0.1 ~ 1.0; drives orb radius & glow
