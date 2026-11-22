@@ -23,15 +23,15 @@ type Space int
 
 const (
 	SpaceDashboard Space = iota // 主页 Bento 智库看板
-	SpaceArchive                // 灵感档案室（位于主页上方，从上往下拉出）
+	SpaceArchive                // 思维宫殿（位于主页上方，从上往下拉出）
 )
 
-// ArchiveViewMode controls how ideas are organized inside the Archive Vault.
+// ArchiveViewMode controls how ideas are organized inside the Mind Palace.
 type ArchiveViewMode int
 
 const (
-	ArchiveCards   ArchiveViewMode = iota // 档案卡（默认）
-	ArchiveOutline                        // 目录树
+	ArchiveCards   ArchiveViewMode = iota // 卡片（默认）
+	ArchiveOutline                        // 脉络树
 	ArchiveRoam                           // 漫游与海报分享
 )
 
@@ -58,12 +58,13 @@ type App struct {
 	Services ui.Services
 
 	// Navigation & Appearance state
-	ActiveSpace       Space
-	ArchiveMode       ArchiveViewMode
-	ActiveTag         string
-	SearchQuery       string
-	ArchiveSearchOpen bool
-	AnimOrigin        time.Time
+	ActiveSpace          Space
+	ArchiveMode          ArchiveViewMode
+	ActiveTag            string
+	SearchQuery          string
+	ArchiveSearchOpen    bool
+	ArchiveTagDrawerOpen bool
+	AnimOrigin           time.Time
 
 	// Cached vault state (reloaded cleanly on state mutations)
 	Nodes             []domain.IdeaNode
@@ -260,25 +261,33 @@ func (a *App) returnToDashboard() {
 	a.ActiveSpace = SpaceDashboard
 }
 
-// enterArchiveWithTag transitions smoothly from Dashboard into the Archive Vault with an optional tag filter.
+// enterArchiveWithTag transitions smoothly from Dashboard into the Mind Palace with an optional tag filter.
 func (a *App) enterArchiveWithTag(tag string) {
 	a.CaptureDialOpen = false
-	a.ActiveTag = strings.TrimSpace(tag)
+	a.ActiveTag = cleanTagLabel(tag)
 	a.SearchQuery = ""
 	a.ArchiveSearchOpen = false
+	a.ArchiveTagDrawerOpen = false
 	a.ActiveSpace = SpaceArchive
 	a.ArchiveMode = ArchiveCards
 	a.ArchiveScroll.Y = 0
 }
 
-// enterArchiveWithTerm transitions directly from a tapped Globe word into the Archive Vault filtered by tag or search query.
+// filterByTagFromDetail jumps from a tag chip inside Detail directly into Mind Palace filtered by that tag.
+func (a *App) filterByTagFromDetail(tag string) {
+	a.DetailSheetOpen = false
+	a.enterArchiveWithTag(tag)
+}
+
+// enterArchiveWithTerm transitions directly from a tapped Globe word into the Mind Palace filtered by tag or search query.
 func (a *App) enterArchiveWithTerm(term service.WordCloudTerm) {
 	a.CaptureDialOpen = false
 	a.ActiveSpace = SpaceArchive
 	a.ArchiveMode = ArchiveCards
 	a.ArchiveScroll.Y = 0
 	a.ArchiveSearchOpen = false
-	if tag := strings.TrimSpace(term.FilterTag); tag != "" {
+	a.ArchiveTagDrawerOpen = false
+	if tag := cleanTagLabel(term.FilterTag); tag != "" {
 		a.ActiveTag = tag
 		a.SearchQuery = ""
 	} else {
@@ -494,9 +503,10 @@ func (a *App) renderBanner(c *ui.Context, pal SurfacePalette) {
 
 func (a *App) renderInAppQuickOrbBar(c *ui.Context, pal SurfacePalette) {
 	ui.Row(c).FillWidth().Padding(8, 12).Margin(10, 16, 0, 16).Gap(8).AlignItems(ui.Center).
-		Radius(14).Background(pal.Card).Border(1, pal.Border).
+		Radius(14).Background(pal.Card).
+		Shadow(0, 2, 10, 0, ui.RGBA(18, 22, 33, 0.05)).
 		Children(func() {
-			IdeaIconBadge(c, domain.IconKeyBulb, domain.ThemeAmber, IconBadgeProps{Size: 28, IconSize: 15, Radius: 8})
+			ui.Icon(c, IconBulb).Size(17, 17).TextColor(ColorsForTheme(domain.ThemeAmber).BadgeText).Shrink(0)
 			ui.TextInput(c, &a.FloatQuickText).Placeholder("随手记一句…").Grow(1)
 			if PillAction(c, "quick_orb_submit", IconPlus, "记下来", true).Clicked() && strings.TrimSpace(a.FloatQuickText) != "" {
 				a.submitFloatingCapture("")

@@ -83,10 +83,9 @@ func (a *App) renderPosterStudioSection(c *ui.Context, pal SurfacePalette) {
 			})
 		}
 
-		// Live Poster Preview inside alabaster border mat
-		ui.Box(c).FillWidth().Padding(14).Radius(18).
-			Background(pal.Card).Border(1, pal.Border).
-			Shadow(0, 4, 18, 0, ui.RGBA(0, 0, 0, 0.06)).
+		// Live Poster Preview on a single clean shadow card (no 4-layer nested frames!)
+		ui.Box(c).FillWidth().Radius(18).
+			Shadow(0, 4, 18, 0, ui.RGBA(18, 22, 33, 0.06)).
 			Children(func() {
 				renderPosterArtCard(c, pal, targetNode, evCount, false)
 			})
@@ -122,29 +121,24 @@ func renderPosterArtCard(c *ui.Context, pal SurfacePalette, node domain.IdeaNode
 	softTint, badgeBg, badgeText := mindOrbSurface(pal, node.Theme)
 	iconKey := domain.ResolveIdeaIconKey(node)
 
-	pad := float32(16)
+	pad := float32(18)
 	gap := float32(12)
-	emblemBox := float32(84)
 	emblemInner := float32(68)
 	emblemIcon := float32(34)
-	emblemRad := float32(18)
 	titleSize := float32(17)
 	bodySize := float32(13)
 	maxSummaryLines := 4
 	if exportMode {
 		pad = 32
 		gap = 16
-		emblemBox = 148
 		emblemInner = 122
 		emblemIcon = 60
-		emblemRad = 28
 		titleSize = 25
 		bodySize = 15
 		maxSummaryLines = 6
 	}
 
-	card := ui.Column(c).Padding(pad).Gap(gap).Radius(14).
-		Border(1, pal.Border).
+	card := ui.Column(c).Padding(pad).Gap(gap).Radius(16).
 		LinearGradient(ui.LinearGradient{
 			From:  pal.Card,
 			To:    softTint,
@@ -171,17 +165,13 @@ func renderPosterArtCard(c *ui.Context, pal SurfacePalette, node domain.IdeaNode
 			ui.Spacer(c).Grow(1)
 		}
 
-		// 2. Centered Framed SVG Emblem + Title + Summary + Tags + Caption
+		// 2. Centered Soft-Tinted SVG Emblem + Title + Summary + Tonal Tags + Caption (no outer double frame, no '#'!)
 		ui.Column(c).FillWidth().Gap(gap).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(emblemBox, emblemBox).Radius(emblemRad+4).Center().
-				Background(pal.Card).Border(1, pal.Border).
-				Children(func() {
-					IdeaIconBadge(c, iconKey, node.Theme, IconBadgeProps{
-						Size:     emblemInner,
-						IconSize: emblemIcon,
-						Radius:   emblemRad,
-					})
-				})
+			IdeaIconBadge(c, iconKey, node.Theme, IconBadgeProps{
+				Size:     emblemInner,
+				IconSize: emblemIcon,
+				Radius:   emblemInner * 0.5,
+			})
 
 			ui.Text(c, node.Title).
 				FontSize(titleSize).Bold().LineHeight(1.32).
@@ -193,12 +183,19 @@ func renderPosterArtCard(c *ui.Context, pal SurfacePalette, node domain.IdeaNode
 
 			if len(node.Tags) > 0 {
 				ui.Row(c).FillWidth().Wrap().Gap(6).Center().Children(func() {
-					limit := min(len(node.Tags), 4)
-					for i := 0; i < limit; i++ {
-						tag := node.Tags[i]
-						ui.Text(c, "#"+tag).Key(fmt.Sprintf("poster_tag_%s_%d", node.ID, i)).
-							FontSize(10.5).FontWeight(500).Padding(3, 9).Radius(999).
-							Background(badgeBg).TextColor(badgeText)
+					shown := 0
+					for i, rawTag := range node.Tags {
+						tag := cleanTagLabel(rawTag)
+						if tag == "" {
+							continue
+						}
+						ui.Text(c, tag).Key(fmt.Sprintf("poster_tag_%s_%d", node.ID, i)).
+							FontSize(10.5).FontWeight(500).Padding(3, 9).Radius(6).
+							Background(badgeBg.Alpha(0.82)).TextColor(badgeText)
+						shown++
+						if shown >= 4 {
+							break
+						}
 					}
 				})
 			}
@@ -282,7 +279,8 @@ func (a *App) renderRoamSliceCard(c *ui.Context, pal SurfacePalette, item domain
 	iconKey := domain.InferIdeaIconKey(item.Title, item.Snippet, item.DomainTags, "")
 
 	card := ui.Column(c).Key("roam_"+item.ID).Padding(16).Gap(10).Radius(16).
-		Background(pal.Card).Border(1, pal.Border)
+		Background(pal.Card).
+		Shadow(0, 2, 10, 0, ui.RGBA(18, 22, 33, 0.04))
 	if phone {
 		card.FillWidth()
 	} else {
@@ -290,12 +288,8 @@ func (a *App) renderRoamSliceCard(c *ui.Context, pal SurfacePalette, item domain
 	}
 
 	card.Children(func() {
-		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-			IdeaIconBadge(c, iconKey, item.Theme, IconBadgeProps{
-				Size:     28,
-				IconSize: 15,
-				Radius:   8,
-			})
+		ui.Row(c).FillWidth().Gap(7).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, SVGForIconKey(iconKey)).Size(16, 16).TextColor(badgeText).Shrink(0)
 			ui.Text(c, item.AuthorAlias).FontSize(12).FontWeight(600).
 				TextColor(badgeText).Grow(1).MinWidth(0).SingleLine()
 			ui.Box(c).Size(6, 6).Radius(3).Background(orbPal.Mid).Shrink(0)
@@ -311,10 +305,14 @@ func (a *App) renderRoamSliceCard(c *ui.Context, pal SurfacePalette, item domain
 
 		if len(item.DomainTags) > 0 {
 			ui.Row(c).FillWidth().Wrap().Gap(6).Children(func() {
-				for ti, tag := range item.DomainTags {
-					ui.Text(c, "#"+tag).Key(fmt.Sprintf("rtag_%s_%d", item.ID, ti)).
-						FontSize(11).FontWeight(500).Padding(3, 9).Radius(999).
-						Background(badgeBg).TextColor(badgeText)
+				for ti, rawTag := range item.DomainTags {
+					tag := cleanTagLabel(rawTag)
+					if tag == "" {
+						continue
+					}
+					ui.Text(c, tag).Key(fmt.Sprintf("rtag_%s_%d", item.ID, ti)).
+						FontSize(11).FontWeight(500).Padding(2.5, 8).Radius(6).
+						Background(badgeBg.Alpha(0.78)).TextColor(badgeText)
 				}
 			})
 		}

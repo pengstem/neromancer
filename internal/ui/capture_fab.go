@@ -74,8 +74,8 @@ func (a *App) renderDashboardCaptureSpeedDial(c *ui.Context, pal SurfacePalette,
 					}
 					scale := pill.Spring("press", pressTarget)
 
-					pill.Padding(6, 7, 6, 13).Radius(999).
-						Background(pal.Card).Border(1, pal.Border).
+					pill.Padding(8, 13).Radius(999).
+						Background(pal.Card).
 						Shadow(0, 4, 14, 0, ui.RGBA(20, 21, 25, 0.10)).
 						Scale(scale, scale).
 						Cursor(ui.CursorPointer).Label(item.label)
@@ -86,13 +86,9 @@ func (a *App) renderDashboardCaptureSpeedDial(c *ui.Context, pal SurfacePalette,
 						a.CaptureModalityIdx = idx
 						a.CaptureModalOpen = true
 					}).Children(func() {
-						ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
+						ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+							ui.Icon(c, item.icon).Size(15, 15).TextColor(orbPal.BadgeText)
 							ui.Text(c, item.label).FontSize(12.5).Bold().TextColor(pal.Ink).SingleLine()
-							ui.Box(c).Size(28, 28).Radius(14).Center().
-								Background(orbPal.BadgeBg).
-								Children(func() {
-									ui.Icon(c, item.icon).Size(14, 14).TextColor(orbPal.BadgeText)
-								})
 						})
 					})
 				}
@@ -170,7 +166,7 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 				}
 
 				ui.Box(c).FillWidth().Padding(12, 14).Radius(14).
-					Background(pal.SoftPanel).Border(1, pal.Border).
+					Background(pal.SoftPanel).
 					Children(func() {
 						ta := ui.TextAreaBase(c, &a.CaptureText).
 							Placeholder("想到什么直接记下来…").
@@ -190,13 +186,11 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 
 				if len(a.CaptureRecallHits) > 0 && strings.TrimSpace(a.CaptureText) != "" {
 					hit := a.CaptureRecallHits[0]
-					ui.Row(c).FillWidth().Padding(10, 12).Gap(10).AlignItems(ui.Center).Radius(12).
-						Background(pal.SoftPanel).Border(1, pal.Border).Children(func() {
-						IdeaIconBadge(c, domain.ResolveIdeaIconKey(hit.Node), hit.Node.Theme, IconBadgeProps{
-							Size:     26,
-							IconSize: 14,
-							Radius:   7,
-						})
+					hitPal := ColorsForTheme(hit.Node.Theme)
+					ui.Row(c).FillWidth().Padding(10, 12).Gap(9).AlignItems(ui.Center).Radius(12).
+						Background(pal.SoftPanel).Children(func() {
+						ui.Icon(c, SVGForIconKey(domain.ResolveIdeaIconKey(hit.Node))).
+							Size(16, 16).TextColor(hitPal.BadgeText).Shrink(0)
 						ui.Textf(c, "之前记过：《%s》", hit.Node.Title).
 							FontSize(12.5).Bold().TextColor(pal.Ink).Grow(1).MinWidth(0).MaxLines(1)
 						if PillAction(c, "capture_merge_hit", IconCheck, "合并进去", false).Clicked() {

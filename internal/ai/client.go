@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -209,12 +210,18 @@ func (c *Client) TranscribeAudio(ctx context.Context, audioPath string) (*ASRRes
 // When ev.ImagePath points to an image, it passes an inline Base64 image_url multimodal block to deepseek-flash.
 func (c *Client) IngestAndOrganize(ctx context.Context, ev domain.RawEvidence, catalog []NodeDigest) (*OrganizeDecision, error) {
 	catalogJSON, _ := json.Marshal(catalog)
+	existingTags := topCatalogTags(catalog, 16)
+	existingTagHint := "（暂无已有主题词）"
+	if len(existingTags) > 0 {
+		existingTagHint = strings.Join(existingTags, "、")
+	}
 	promptText := fmt.Sprintf(
-		"【新捕捉到的原始证据】\n- 模态：%s\n- 记录时间：%s\n- 场景：%s\n- 原文内容：%s\n\n【当前已有灵感目录摘要】\n%s",
+		"【新捕捉到的原始证据】\n- 模态：%s\n- 记录时间：%s\n- 场景：%s\n- 原文内容：%s\n\n【当前已有高频主题标签（若语义相近请优先直接复用，不要带#号）】\n%s\n\n【当前已有灵感目录摘要】\n%s",
 		ev.Modality,
 		ev.CapturedAt.Format("2006-01-02 15:04"),
 		ev.Scene.SummaryLine(),
 		defaultString(ev.RawText, "（用户上传了一张图片/涂鸦，请直接理解图像内容）"),
+		existingTagHint,
 		string(catalogJSON),
 	)
 
@@ -232,6 +239,7 @@ func (c *Client) IngestAndOrganize(ctx context.Context, ev domain.RawEvidence, c
 	if err := decodeJSONFlexible(raw, &decision); err != nil {
 		return nil, fmt.Errorf("整理结果读取失败，请再试一次: %w", err)
 	}
+	decision.Tags = sanitizeAITags(decision.Tags, 4)
 	if decision.Title == "" {
 		decision.Title = summarizeFallbackTitle(ev.RawText)
 	}
@@ -305,6 +313,7 @@ func (c *Client) CollideInspirations(ctx context.Context, mine domain.IdeaNode, 
 	if err := decodeJSONFlexible(raw, &out); err != nil {
 		return nil, fmt.Errorf("解析灵感碰撞 JSON 失败: %w", err)
 	}
+	out.Tags = sanitizeAITags(out.Tags, 4)
 	return &out, nil
 }
 
@@ -535,4 +544,58 @@ func summarizeFallbackTitle(text string) string {
 		return string(runes[:18]) + "…"
 	}
 	return string(runes)
+}
+
+func sanitizeAITags(tags []string, maxCount int) []string {
+	seen := make(map[string]struct{}, len(tags))
+	var out []string
+	for _, raw := range tags {
+		t := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(raw), "#＃"))
+		if t == "" {
+			continue
+		}
+		if _, ok := seen[t]; ok {
+			continue
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+		if maxCount > 0 && len(out) >= maxCount {
+			break
+		}
+	}
+	return out
+}
+
+func topCatalogTags(catalog []NodeDigest, limit int) []string {
+	counts := make(map[string]int)
+	for _, d := range catalog {
+		for _, raw := range d.Tags {
+			t := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(raw), "#＃"))
+			if t != "" {
+				counts[t]++
+			}
+		}
+	}
+	type pair struct {
+		tag   string
+		count int
+	}
+	list := make([]pair, 0, len(counts))
+	for t, c := range counts {
+		list = append(list, pair{tag: t, count: c})
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].count != list[j].count {
+			return list[i].count > list[j].count
+		}
+		return list[i].tag < list[j].tag
+	})
+	if limit > 0 && len(list) > limit {
+		list = list[:limit]
+	}
+	out := make([]string, len(list))
+	for i, p := range list {
+		out[i] = p.tag
+	}
+	return out
 }

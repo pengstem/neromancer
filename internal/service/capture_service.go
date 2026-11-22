@@ -222,7 +222,7 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 			if strings.TrimSpace(decision.ConversationalSummary) != "" {
 				target.ConversationalSummary = strings.TrimSpace(decision.ConversationalSummary)
 			}
-			target.Tags = mergeUniqueStrings(target.Tags, decision.Tags)
+			target.Tags = mergeUniqueTags(target.Tags, decision.Tags, 4)
 			target.Weight = math.Min(1.0, math.Max(target.Weight, decision.Weight)+0.08)
 			if len(decision.GuidingQuestions) > 0 {
 				target.GuidingQuestions = decision.GuidingQuestions
@@ -248,7 +248,7 @@ func (s *CaptureService) OrganizeEvidenceIntoCatalog(ctx context.Context, ev dom
 		node.ConversationalSummary = strings.TrimSpace(decision.ConversationalSummary)
 	}
 	if len(decision.Tags) > 0 {
-		node.Tags = decision.Tags
+		node.Tags = mergeUniqueTags(nil, decision.Tags, 4)
 	}
 	if decision.Theme != "" {
 		node.Theme = domain.NormalizeTheme(decision.Theme)
@@ -357,6 +357,27 @@ func mergeUniqueStrings(a, b []string) []string {
 			if _, ok := seen[item]; !ok {
 				seen[item] = struct{}{}
 				out = append(out, item)
+			}
+		}
+	}
+	return out
+}
+
+func mergeUniqueTags(primary, secondary []string, maxCount int) []string {
+	seen := make(map[string]struct{}, len(primary)+len(secondary))
+	var out []string
+	for _, list := range [][]string{secondary, primary} {
+		for _, item := range list {
+			t := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(item), "#＃"))
+			if t == "" {
+				continue
+			}
+			if _, ok := seen[t]; !ok {
+				seen[t] = struct{}{}
+				out = append(out, t)
+				if maxCount > 0 && len(out) >= maxCount {
+					return out
+				}
 			}
 		}
 	}

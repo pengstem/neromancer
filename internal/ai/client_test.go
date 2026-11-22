@@ -130,3 +130,44 @@ func TestTranscribeAudioDeepSeekASR(t *testing.T) {
 		t.Fatalf("unexpected ASR response: %+v", res)
 	}
 }
+
+func TestIngestAndOrganizeReusesExistingTagsAndStripsHashes(t *testing.T) {
+	var userPrompt string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if len(payload.Messages) >= 2 {
+			userPrompt = payload.Messages[1].Content
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"{\"action\":\"create\",\"title\":\"新笔记\",\"conversational_summary\":\"摘要\",\"tags\":[\"#生活器物\",\"＃阳台植物\",\"生活器物\",\"\"],\"theme\":\"mint\",\"weight\":0.8}"}}]}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "sk-test", "deepseek-flash")
+	decision, err := c.IngestAndOrganize(context.Background(), domain.RawEvidence{
+		ID:         "ev_hash",
+		Modality:   "text",
+		RawText:    "换个陶土盆透气更好",
+		CapturedAt: time.Now(),
+	}, []NodeDigest{
+		{ID: "n1", Title: "花瓶", Tags: []string{"#生活器物", "阳台植物"}},
+		{ID: "n2", Title: "咖啡杯", Tags: []string{"生活器物"}},
+	})
+	if err != nil {
+		t.Fatalf("IngestAndOrganize: %v", err)
+	}
+	if !strings.Contains(userPrompt, "生活器物、阳台植物") {
+		t.Fatalf("expected existing high-frequency tags injected into user prompt, got: %s", userPrompt)
+	}
+	if len(decision.Tags) != 2 || decision.Tags[0] != "生活器物" || decision.Tags[1] != "阳台植物" {
+		t.Fatalf("expected sanitized deduplicated tags without '#', got %+v", decision.Tags)
+	}
+}

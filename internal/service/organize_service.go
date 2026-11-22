@@ -101,11 +101,17 @@ func (s *OrganizeService) MergeNodes(sourceID, targetID string) (domain.IdeaNode
 func (s *OrganizeService) CollectTags(nodes []domain.IdeaNode) []TagCount {
 	counts := make(map[string]int)
 	for _, n := range nodes {
+		seenInNode := make(map[string]struct{}, len(n.Tags))
 		for _, tag := range n.Tags {
-			t := strings.TrimSpace(tag)
-			if t != "" {
-				counts[t]++
+			t := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(tag), "#＃"))
+			if t == "" {
+				continue
 			}
+			if _, dup := seenInNode[t]; dup {
+				continue
+			}
+			seenInNode[t] = struct{}{}
+			counts[t]++
 		}
 	}
 	out := make([]TagCount, 0, len(counts))

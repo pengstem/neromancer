@@ -92,7 +92,9 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 	ambientActive := a.stepGlobePhysics(c, terms, pts)
 
 	ui.Column(c).Key("dash_globe_card").FillWidth().Padding(14).Gap(10).Radius(16).
-		Background(pal.Card).Border(1, pal.Border).Children(func() {
+		Background(pal.Card).
+		Shadow(0, 2, 10, 0, ui.RGBA(18, 22, 33, 0.04)).
+		Children(func() {
 		ui.Text(c, "灵感星云球").FontSize(13.5).Bold().TextColor(pal.Ink).SingleLine()
 
 		if len(terms) == 0 {

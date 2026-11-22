@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"image/png"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/pengstem/neromancer/internal/ai"
 	"github.com/pengstem/neromancer/internal/config"
+	"github.com/pengstem/neromancer/internal/domain"
 	"github.com/pengstem/neromancer/internal/media"
 	"github.com/pengstem/neromancer/internal/service"
 	"github.com/pengstem/neromancer/internal/store"
@@ -137,8 +139,8 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	if r, ok := tt.Find("记一笔"); !ok || r.X < 300 || r.Y < 750 {
 		t.Fatalf("expected unified bottom-right \"记一笔\" seal button, got ok=%v rect=%+v", ok, r)
 	}
-	if r, ok := tt.Find("进入灵感档案室"); !ok || r.Y > 80 {
-		t.Fatalf("dashboard missing top pull-down portal \"进入灵感档案室\", got ok=%v rect=%+v", ok, r)
+	if r, ok := tt.Find("进入思维宫殿"); !ok || r.Y > 80 {
+		t.Fatalf("dashboard missing top pull-down portal \"进入思维宫殿\", got ok=%v rect=%+v", ok, r)
 	}
 	if _, ok := tt.Find("灵感"); ok {
 		t.Fatalf("expected bottom nav bar \"灵感\" to be removed")
@@ -213,31 +215,32 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 		settleAudit(tt)
 	}
 
-	// 4. Inspiration Archive Vault (Cards mode via top portal)
-	if err := tt.Click("进入灵感档案室"); err != nil {
-		t.Fatalf("enter archive vault: %v", err)
+	// 4. Mind Palace (Cards mode via top portal)
+	if err := tt.Click("进入思维宫殿"); err != nil {
+		t.Fatalf("enter Mind Palace: %v", err)
 	}
 	settleAudit(tt)
 	if app.ActiveSpace != SpaceArchive || app.ArchiveMode != ArchiveCards {
 		t.Fatalf("expected SpaceArchive/ArchiveCards, got space=%v mode=%v", app.ActiveSpace, app.ArchiveMode)
 	}
-	if !tt.HasText("灵感档案室") || !tt.HasText("用一个蓝色花瓶养一株郁金香") {
-		t.Fatalf("archive cards missing expected labels, texts=%v", tt.Texts())
+	if !tt.HasText("思维宫殿") || !tt.HasText("用一个蓝色花瓶养一株郁金香") {
+		t.Fatalf("mind palace cards missing expected labels, texts=%v", tt.Texts())
 	}
 	if tt.HasText("记灵感") {
 		t.Fatalf("expected duplicate archive capture FAB \"记灵感\" to be removed")
 	}
 	for _, forbidden := range []string{"闪念", "萌芽", "孵化中", "已沉淀", "变化记录"} {
 		if tt.HasText(forbidden) {
-			t.Fatalf("expected idea status/stage label %q to be removed from archive cards, texts=%v", forbidden, tt.Texts())
+			t.Fatalf("expected idea status/stage label %q to be removed from mind palace cards, texts=%v", forbidden, tt.Texts())
 		}
 	}
 	assertAuditNoEmojis(t, "archive_cards", tt.Texts())
+	assertAuditNoHashPrefixes(t, "archive_cards", tt.Texts())
 	maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_cards.png")
 
-	// 5. Archive Outline mode
-	if err := tt.Click("目录"); err != nil {
-		t.Fatalf("switch archive mode to outline: %v", err)
+	// 5. Mind Palace Outline mode
+	if err := tt.Click("脉络"); err != nil {
+		t.Fatalf("switch mind palace mode to outline: %v", err)
 	}
 	settleAudit(tt)
 	if app.ArchiveMode != ArchiveOutline {
@@ -246,8 +249,8 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	assertAuditNoEmojis(t, "archive_outline", tt.Texts())
 	maybeSaveAuditPNG(t, auditDir, tt, "ui_archive_outline.png")
 
-	if err := tt.Click("档案卡"); err != nil {
-		t.Fatalf("switch archive mode back to cards: %v", err)
+	if err := tt.Click("卡片"); err != nil {
+		t.Fatalf("switch mind palace mode back to cards: %v", err)
 	}
 	settleAudit(tt)
 
@@ -464,4 +467,117 @@ func TestDashboardCaptureSpeedDialInteractions(t *testing.T) {
 	if app.CaptureDialOpen || !app.CaptureModalOpen || app.CaptureModalityIdx != 2 {
 		t.Fatalf("expected image capture sheet open, got dial=%v modal=%v idx=%d", app.CaptureDialOpen, app.CaptureModalOpen, app.CaptureModalityIdx)
 	}
+}
+
+func assertAuditNoHashPrefixes(t *testing.T, viewName string, texts []string) {
+	t.Helper()
+	for _, txt := range texts {
+		trimmed := strings.TrimSpace(txt)
+		if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "＃") {
+			t.Fatalf("found ugly '#' prefix in %s text %q", viewName, txt)
+		}
+	}
+}
+
+func TestMindPalaceTagConvergenceAndZeroHashSlop(t *testing.T) {
+	app, cleanup := newAuditTestApp(t)
+	defer cleanup()
+
+	// Populate 18 extra ideas with diverse auto-generated tags (including legacy '#' dirty tags)
+	// to verify the filter bar never overflows horizontally and '#' never leaks into UI.
+	extraTags := []string{
+		"生活器物", "声音采集", "空间叙事", "合成器", "胶片摄影",
+		"建筑光影", "手冲咖啡", "编译原理", "发酵实验", "独立游戏",
+		"#旧版脏井号", "夜间散步", "植物标本", "交互手感", "纸张肌理",
+	}
+	now := time.Now()
+	for i := 0; i < 18; i++ {
+		t1 := extraTags[i%len(extraTags)]
+		t2 := extraTags[(i+3)%len(extraTags)]
+		tags := []string{t1, t2}
+		if i == 17 {
+			tags = []string{"苔藓微景观"}
+		}
+		err := app.Deps.Store.UpsertNode(domain.IdeaNode{
+			ID:                    fmt.Sprintf("orb_extra_%d", i),
+			Title:                 fmt.Sprintf("测试灵感第 %d 号", i+1),
+			ConversationalSummary: "验证多标签场景下思维宫殿的收敛筛选与去井号贴片。",
+			Tags:                  tags,
+			Theme:                 domain.ThemeSky,
+			Weight:                0.7,
+			CreatedAt:             now.Add(time.Duration(-i-10) * time.Hour),
+			UpdatedAt:             now.Add(time.Duration(-i-10) * time.Hour),
+		})
+		if err != nil {
+			t.Fatalf("UpsertNode %d: %v", i, err)
+		}
+	}
+	if err := app.ReloadVault(); err != nil {
+		t.Fatalf("ReloadVault: %v", err)
+	}
+
+	app.ActiveSpace = SpaceArchive
+	app.ArchiveMode = ArchiveCards
+
+	// 1. Verify narrow 360px phone screen keeps '+N' overflow trigger strictly inside viewport.
+	ttNarrow := newFastTester(app.RootView, 360, 620)
+	settleAudit(ttNarrow)
+	moreRect, ok := ttNarrow.Find("展开全部主题")
+	if !ok || moreRect.X+moreRect.W > 360 {
+		t.Fatalf("expected '+N' overflow filter button within 360px width, ok=%v rect=%+v", ok, moreRect)
+	}
+	assertAuditNoHashPrefixes(t, "mind_palace_360", ttNarrow.Texts())
+
+	// 2. Verify standard 412px phone screen opens multi-row tag drawer, selects an overflow tag, and surfaces it inline.
+	tt := newFastTester(app.RootView, 412, 892)
+	settleAudit(tt)
+	assertAuditNoHashPrefixes(t, "mind_palace_412", tt.Texts())
+	if r, ok := tt.Find("苔藓微景观"); ok && r.Y < 400 {
+		t.Fatalf("expected long-tail tag '苔藓微景观' not in top inline bar before opening '+N' drawer, got rect=%+v", r)
+	}
+
+	if err := tt.Click("展开全部主题"); err != nil {
+		t.Fatalf("click expand all topics: %v", err)
+	}
+	settleAudit(tt)
+	if !app.ArchiveTagDrawerOpen {
+		t.Fatalf("expected ArchiveTagDrawerOpen=true")
+	}
+	if !tt.HasText("旧版脏井号") || !tt.HasText("苔藓微景观") {
+		t.Fatalf("expected cleaned & long-tail tags inside drawer, texts=%v", tt.Texts())
+	}
+	assertAuditNoHashPrefixes(t, "mind_palace_drawer", tt.Texts())
+
+	if err := tt.Click("苔藓微景观"); err != nil {
+		t.Fatalf("click overflow tag '苔藓微景观' in drawer: %v", err)
+	}
+	settleAudit(tt)
+	if app.ArchiveTagDrawerOpen {
+		t.Fatalf("expected ArchiveTagDrawerOpen=false after selecting tag")
+	}
+	if app.ActiveTag != "苔藓微景观" {
+		t.Fatalf("expected ActiveTag='苔藓微景观', got %q", app.ActiveTag)
+	}
+	if r, ok := tt.Find("苔藓微景观"); !ok || r.Y > 140 || !tt.HasText("测试灵感第 18 号") {
+		t.Fatalf("expected selected overflow tag pinned in top inline bar (Y <= 140) & matching card visible, ok=%v rect=%+v", ok, r)
+	}
+
+	// 3. Verify Detail Sheet & Evidence Sheet & Roam have zero '#' prefixes.
+	app.ActiveTag = ""
+	app.SelectNode("orb_tulip")
+	app.DetailSheetOpen = true
+	settleAudit(tt)
+	assertAuditNoHashPrefixes(t, "detail_sheet_no_hash", tt.Texts())
+
+	if err := tt.Click("原始记录"); err != nil {
+		t.Fatalf("open raw evidence sheet: %v", err)
+	}
+	settleAudit(tt)
+	assertAuditNoHashPrefixes(t, "raw_evidence_no_hash", tt.Texts())
+	app.EvidenceModalOpen = false
+	app.DetailSheetOpen = false
+
+	app.ArchiveMode = ArchiveRoam
+	settleAudit(tt)
+	assertAuditNoHashPrefixes(t, "roam_poster_no_hash", tt.Texts())
 }

@@ -14,15 +14,15 @@ func TestSpaceDeckPullDownOpensArchiveAndShowsBothFloors(t *testing.T) {
 	settleAudit(tt)
 
 	// Top pull-down portal must live at the top of the Dashboard.
-	portalRect, ok := tt.Find("进入灵感档案室")
+	portalRect, ok := tt.Find("进入思维宫殿")
 	if !ok {
-		t.Fatalf("expected top archive portal on Dashboard")
+		t.Fatalf("expected top Mind Palace portal on Dashboard")
 	}
 	if portalRect.Y > 80 {
-		t.Fatalf("expected top archive portal near top edge (Y <= 80), got %+v", portalRect)
+		t.Fatalf("expected top Mind Palace portal near top edge (Y <= 80), got %+v", portalRect)
 	}
 
-	// Finger drags top-to-bottom from Dashboard header/hero area to pull open Archive from above.
+	// Finger drags top-to-bottom from Dashboard header/hero area to pull open Mind Palace from above.
 	startX := float32(180)
 	startY := portalRect.Y + portalRect.H*0.5
 	tt.FingerDown(startX, startY)
@@ -34,11 +34,11 @@ func TestSpaceDeckPullDownOpensArchiveAndShowsBothFloors(t *testing.T) {
 	tt.Frame()
 
 	// Mid-pull: WeChat "second floor" connected transition — both floors visibly move together.
-	if !tt.HasText("灵感档案室") || !tt.HasText("AI 灵感画像") {
-		t.Fatalf("expected both Archive and Dashboard floors mounted mid-pull, texts=%v", tt.Texts())
+	if !tt.HasText("思维宫殿") || !tt.HasText("AI 灵感画像") {
+		t.Fatalf("expected both Mind Palace and Dashboard floors mounted mid-pull, texts=%v", tt.Texts())
 	}
-	if !tt.HasText("松手打开灵感档案室") {
-		t.Fatalf("expected release cue \"松手打开灵感档案室\" after crossing pull threshold, texts=%v", tt.Texts())
+	if !tt.HasText("松手打开思维宫殿") {
+		t.Fatalf("expected release cue \"松手打开思维宫殿\" after crossing pull threshold, texts=%v", tt.Texts())
 	}
 	if tt.HasText("松手回到主页看板") {
 		t.Fatalf("unexpected Archive return release cue while pulling down from Dashboard, texts=%v", tt.Texts())
@@ -70,7 +70,7 @@ func TestSpaceDeckShortPullBouncesBackToDashboard(t *testing.T) {
 	tt := newFastTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
-	portalRect, ok := tt.Find("进入灵感档案室")
+	portalRect, ok := tt.Find("进入思维宫殿")
 	if !ok {
 		t.Fatalf("missing top portal")
 	}
@@ -117,13 +117,13 @@ func TestSpaceDeckPushUpFromArchiveBottomHandleReturnsHome(t *testing.T) {
 	tt.Advance(20 * time.Millisecond)
 	tt.Frame()
 
-	if !tt.HasText("AI 灵感画像") || !tt.HasText("灵感档案室") {
-		t.Fatalf("expected both floors visible while pushing Archive upward, texts=%v", tt.Texts())
+	if !tt.HasText("AI 灵感画像") || !tt.HasText("思维宫殿") {
+		t.Fatalf("expected both floors visible while pushing Mind Palace upward, texts=%v", tt.Texts())
 	}
 	if !tt.HasText("松手回到主页看板") {
 		t.Fatalf("expected release cue \"松手回到主页看板\", texts=%v", tt.Texts())
 	}
-	if tt.HasText("松手打开灵感档案室") {
+	if tt.HasText("松手打开思维宫殿") {
 		t.Fatalf("unexpected Dashboard open release cue while pushing up from Archive, texts=%v", tt.Texts())
 	}
 

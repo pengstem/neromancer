@@ -469,8 +469,9 @@ func matchNode(node domain.IdeaNode, tokens []string) (reason, excerpt string) {
 		return "标题提到", node.Title
 	}
 	for _, tag := range node.Tags {
-		if containsAnyToken(tag, tokens) {
-			return "标签 #" + tag, node.Title
+		cleanTag := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(tag), "#＃"))
+		if cleanTag != "" && containsAnyToken(cleanTag, tokens) {
+			return "主题 · " + cleanTag, node.Title
 		}
 	}
 	if containsAnyToken(node.ConversationalSummary, tokens) {

@@ -43,10 +43,8 @@ func (a *App) FloatingOrbView(c *ui.Context) {
 		ui.Column(c).Fill().Padding(14).Gap(10).Radius(18).
 			Background(pal.Card).Border(1, pal.Border).
 			Children(func() {
-				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).DragWindow().Children(func() {
-					ui.Box(c).Size(24, 24).Radius(7).Shrink(0).Center().Background(pal.Ink).Children(func() {
-						ui.Icon(c, IconSpark).Size(13, 13).TextColor(pal.Card)
-					})
+				ui.Row(c).FillWidth().Gap(7).AlignItems(ui.Center).DragWindow().Children(func() {
+					ui.Icon(c, IconSpark).Size(15, 15).TextColor(pal.Ink).Shrink(0)
 					ui.Text(c, "随手记").FontSize(13).Bold().TextColor(pal.Ink).Grow(1)
 					if PillAction(c, "float_main_win", IconArchiveFolder, "主界面", false).Clicked() && a.MainWin != nil {
 						a.MainWin.Show()

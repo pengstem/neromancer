@@ -48,11 +48,7 @@ func (a *App) renderDetailContent(c *ui.Context) {
 	node, ok := a.SelectedNode()
 	if !ok {
 		ui.Column(c).Fill().Center().Padding(28, 28, 48, 28).Gap(10).Children(func() {
-			IdeaIconBadge(c, domain.IconKeyBulb, domain.ThemeAmber, IconBadgeProps{
-				Size:     48,
-				IconSize: 24,
-				Radius:   13,
-			})
+			ui.Icon(c, IconBulb).Size(28, 28).TextColor(ColorsForTheme(domain.ThemeAmber).BadgeText)
 			ui.Text(c, "点选一条灵感查看详情").FontSize(16).Bold().TextColor(pal.Ink)
 			ui.Text(c, "整理后的摘要、追问和最初的原记录都在这里。").
 				FontSize(13).TextColor(pal.InkSecondary).TextAlign(ui.Center)
@@ -65,26 +61,27 @@ func (a *App) renderDetailContent(c *ui.Context) {
 	evCount := len(a.SelectedEvidences)
 
 	ui.Scroll(c).TrackScroll(&a.DetailScroll).Grow(1).Basis(0).MinHeight(0).FillWidth().Children(func() {
-		ui.Column(c).FillWidth().Padding(16, 18, 36, 18).Gap(18).Children(func() {
-			// Top Identity Hero: 48px auto-matched SVG badge + 20px Bold Title + date/records caption
-			ui.Row(c).FillWidth().Gap(14).AlignItems(ui.Center).Children(func() {
-				IdeaIconBadge(c, domain.ResolveIdeaIconKey(node), node.Theme, IconBadgeProps{
-					Size:     48,
-					IconSize: 24,
-					Radius:   13,
-				})
-				ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
-					ui.Text(c, node.Title).FontSize(20).Bold().LineHeight(1.28).TextColor(pal.Ink).MaxLines(3)
-					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, formatChineseShortDate(node.UpdatedAt)).
-							FontSize(12).FontFeatures("tnum").TextColor(pal.InkMuted)
-						ui.Text(c, "·").FontSize(12).TextColor(pal.InkMuted)
-						ui.Textf(c, "%d 条原记录", evCount).FontSize(12).TextColor(pal.InkMuted)
+		ui.Column(c).FillWidth().Padding(16, 18, 36, 18).Gap(16).Children(func() {
+			// Top Identity Hero: Naked semantic SVG icon + 20px Bold Title + date/records caption (no 48x48 box!)
+			ui.Column(c).FillWidth().Gap(6).Children(func() {
+				ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Start).Children(func() {
+					ui.Box(c).Padding(4, 0, 0, 0).Shrink(0).Children(func() {
+						ui.Icon(c, SVGForIconKey(domain.ResolveIdeaIconKey(node))).
+							Size(21, 21).TextColor(badgeText)
 					})
+					ui.Text(c, node.Title).FontSize(20).Bold().LineHeight(1.28).
+						TextColor(pal.Ink).Grow(1).MinWidth(0).MaxLines(3)
+				})
+
+				ui.Row(c).Padding(0, 0, 0, 31).Gap(6).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, formatChineseShortDate(node.UpdatedAt)).
+						FontSize(12).FontFeatures("tnum").TextColor(pal.InkMuted)
+					ui.Text(c, "·").FontSize(12).TextColor(pal.InkMuted)
+					ui.Textf(c, "%d 条原记录", evCount).FontSize(12).FontFeatures("tnum").TextColor(pal.InkMuted)
 				})
 			})
 
-			// Crisp Top Action Bar: "原始记录" (with count pill) & "分享"
+			// Crisp Top Action Bar: "原始记录" (primary solid pill) & borderless "分享"
 			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 				evBtn := ui.ButtonBase(c).Key("detail_raw_ev").
 					Padding(8, 13).Radius(999).Gap(7).AlignItems(ui.Center).Shrink(0).
@@ -97,6 +94,7 @@ func (a *App) renderDetailContent(c *ui.Context) {
 					ui.Icon(c, IconArchive).FontSize(14).TextColor(pal.Card)
 					ui.Text(c, "原始记录").FontSize(13).FontWeight(600).TextColor(pal.Card).SingleLine()
 					ui.Textf(c, "%d", evCount).FontSize(11).FontWeight(700).
+						FontFeatures("tnum").
 						Padding(1, 6).Radius(999).
 						Background(pal.Card.Alpha(0.18)).TextColor(pal.Card).SingleLine()
 				})
@@ -108,14 +106,25 @@ func (a *App) renderDetailContent(c *ui.Context) {
 				}
 			})
 
-			// Tag row & separate italic visual caption row
+			// Tonal borderless tag chips WITHOUT '#' (tapping jumps straight to Mind Palace filtered by that tag)
 			if len(node.Tags) > 0 {
 				ui.Row(c).FillWidth().Wrap().Gap(6).AlignItems(ui.Center).Children(func() {
-					for i, tag := range node.Tags {
-						t := tag
-						ui.Text(c, "#"+t).Key(fmt.Sprintf("dtag_%d_%s", i, t)).FontSize(11).FontWeight(500).
-							Padding(3, 10).Radius(999).
-							Background(badgeBg).TextColor(badgeText)
+					for i, rawTag := range node.Tags {
+						t := cleanTagLabel(rawTag)
+						if t == "" {
+							continue
+						}
+						chip := ui.ButtonBase(c).Key(fmt.Sprintf("dtag_%d_%s", i, t)).
+							Padding(3.5, 9).Radius(6).
+							Background(badgeBg.Alpha(0.82)).
+							Cursor(ui.CursorPointer).Label(t)
+						mobile.Ink(chip)
+						chip.OnClick(func() {
+							mygo.Haptics.Selection()
+							a.filterByTagFromDetail(t)
+						}).Children(func() {
+							ui.Text(c, t).FontSize(11.5).FontWeight(500).TextColor(badgeText).SingleLine()
+						})
 					}
 				})
 			}
@@ -142,10 +151,10 @@ func (a *App) renderDetailContent(c *ui.Context) {
 }
 
 func (a *App) renderGuidingQuestionsSection(c *ui.Context, pal SurfacePalette, accentNumCol ui.Color, node domain.IdeaNode) {
-	ui.Column(c).FillWidth().Gap(10).Children(func() {
+	ui.Column(c).FillWidth().Gap(6).Children(func() {
 		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "再想一步").FontSize(14).Bold().TextColor(pal.Ink).Grow(1)
-			if PillAction(c, "detail_refresh_q", IconRefresh, "换个角度", false).Shrink(0).Clicked() {
+			if GhostTextAction(c, "detail_refresh_q", IconRefresh, "换个角度").Shrink(0).Clicked() {
 				nodeID := node.ID
 				a.RunAsync("正在想几个新角度…", func(ctx context.Context) error {
 					_, err := a.Deps.Incubate.RefreshGuidingQuestions(ctx, nodeID)
@@ -156,49 +165,52 @@ func (a *App) renderGuidingQuestionsSection(c *ui.Context, pal SurfacePalette, a
 
 		if len(node.GuidingQuestions) == 0 {
 			ui.Text(c, "还没有追问，点右上角「换个角度」让 AI 陪你往下想。").
-				FontSize(13).LineHeight(1.5).TextColor(pal.InkSecondary).
-				Padding(12, 14).Radius(12).Background(pal.SoftPanel.Alpha(0.55))
+				FontSize(13).LineHeight(1.5).TextColor(pal.InkSecondary).Padding(4, 0)
 			return
 		}
 
+		// De-boxed typographic numbered list separated by subtle hairlines
 		for i, q := range node.GuidingQuestions {
+			if i > 0 {
+				ui.Box(c).FillWidth().Height(1).Background(pal.Border.Alpha(0.55))
+			}
 			ui.Row(c).Key(fmt.Sprintf("gq_%d", i)).FillWidth().
-				Padding(12, 14).Gap(10).Radius(12).
-				Background(pal.SoftPanel.Alpha(0.65)).
-				Border(1, pal.Border.Alpha(0.6)).
-				AlignItems(ui.Start).
+				Padding(9, 2).Gap(10).AlignItems(ui.Start).
 				Children(func() {
-					ui.Textf(c, "0%d", i+1).FontSize(11).FontWeight(700).
-						TextColor(accentNumCol).Padding(2, 0, 0, 0).Shrink(0)
-					ui.Text(c, q).FontSize(13).LineHeight(1.55).TextColor(pal.Ink).Grow(1).MinWidth(0)
+					ui.Textf(c, "%02d", i+1).FontSize(11.5).FontWeight(700).
+						FontFeatures("tnum").TextColor(accentNumCol).Padding(2, 0, 0, 0).Shrink(0)
+					ui.Text(c, q).FontSize(13.5).LineHeight(1.56).TextColor(pal.Ink).Grow(1).MinWidth(0)
 				})
 		}
 	})
 }
 
 func (a *App) renderActionPlanSection(c *ui.Context, pal SurfacePalette, node domain.IdeaNode) {
-	ui.Column(c).FillWidth().Padding(14, 16).Gap(12).Radius(16).
-		Background(pal.Canvas).Border(1, pal.Border).
-		Children(func() {
-			ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-				ui.Row(c).Grow(1).MinWidth(0).Gap(7).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, IconSpark).FontSize(15).TextColor(pal.Accent)
-					ui.Text(c, "行动方案").FontSize(14).Bold().TextColor(pal.Ink)
-				})
-				if PillAction(c, "detail_ai_plan", IconSpark, "AI 帮忙", true).Shrink(0).Clicked() {
-					nodeID := node.ID
-					a.RunAsync("正在帮你整理行动步骤…", func(ctx context.Context) error {
-						_, err := a.Deps.Incubate.GenerateActionPlan(ctx, nodeID)
-						return err
-					})
-				}
-			})
+	ui.Column(c).FillWidth().Gap(12).Children(func() {
+		ui.Box(c).FillWidth().Height(1).Background(pal.Border.Alpha(0.7))
 
-			if strings.TrimSpace(node.ActionPlanMD) != "" {
-				ui.Divider(c)
-				markdown.View(c, node.ActionPlanMD, &a.MarkdownOpts).FillWidth()
+		ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Grow(1).MinWidth(0).Gap(7).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, IconSpark).FontSize(15).TextColor(pal.Accent)
+				ui.Text(c, "行动方案").FontSize(14).Bold().TextColor(pal.Ink)
+			})
+			if PillAction(c, "detail_ai_plan", IconSpark, "AI 帮忙", true).Shrink(0).Clicked() {
+				nodeID := node.ID
+				a.RunAsync("正在帮你整理行动步骤…", func(ctx context.Context) error {
+					_, err := a.Deps.Incubate.GenerateActionPlan(ctx, nodeID)
+					return err
+				})
 			}
 		})
+
+		if strings.TrimSpace(node.ActionPlanMD) != "" {
+			ui.Box(c).FillWidth().Padding(14, 16).Radius(14).
+				Background(pal.SoftPanel.Alpha(0.72)).
+				Children(func() {
+					markdown.View(c, node.ActionPlanMD, &a.MarkdownOpts).FillWidth()
+				})
+		}
+	})
 }
 
 func (a *App) renderEvidenceModal(c *ui.Context) {
@@ -237,30 +249,31 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 
 			ui.Divider(c)
 
-			// Immutable RawEvidence archive tape
+			// Immutable RawEvidence archive tape (de-boxed timeline rhythm, zero '#' syntax)
 			ui.Scroll(c).Grow(1).Basis(0).MinHeight(0).FillWidth().Children(func() {
-				ui.Column(c).FillWidth().Gap(12).Padding(2, 0, 8, 0).Children(func() {
+				ui.Column(c).FillWidth().Gap(4).Padding(2, 0, 8, 0).Children(func() {
 					for i, ev := range a.SelectedEvidences {
 						item := ev
 						modIcon, modLabel := detailModalityMeta(item.Modality)
+						if i > 0 {
+							ui.Box(c).FillWidth().Height(1).Background(pal.Border.Alpha(0.65))
+						}
 
 						ui.Column(c).Key("ev_item_"+item.ID).FillWidth().
-							Padding(14).Gap(10).Radius(14).
-							Background(pal.Canvas).Border(1, pal.Border).
+							Padding(12, 2).Gap(9).
 							Children(func() {
-								// Modality + timestamp + scene metadata row
+								// Naked modality + tabular index + timestamp + scene metadata row
 								ui.Row(c).FillWidth().Wrap().Gap(8).AlignItems(ui.Center).Children(func() {
-									ui.Row(c).Gap(4).Padding(2, 8).Radius(999).
-										Background(pal.SoftPanel).AlignItems(ui.Center).Children(func() {
-										ui.Icon(c, modIcon).FontSize(11).TextColor(pal.Accent)
-										ui.Textf(c, "#%d %s", i+1, modLabel).
-											FontSize(11).FontWeight(600).TextColor(pal.Accent)
+									ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+										ui.Icon(c, modIcon).FontSize(12).TextColor(pal.Accent)
+										ui.Textf(c, "%02d · %s", i+1, modLabel).
+											FontSize(11.5).FontWeight(700).FontFeatures("tnum").TextColor(pal.Accent)
 									})
 
 									ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 										ui.Icon(c, IconClock).FontSize(11).TextColor(pal.InkMuted)
 										ui.Text(c, item.CapturedAt.Format("2006-01-02 15:04")).
-											FontSize(11).TextColor(pal.InkMuted)
+											FontSize(11).FontFeatures("tnum").TextColor(pal.InkMuted)
 									})
 
 									ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
@@ -270,13 +283,12 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 									})
 								})
 
-								// Verbatim RawText quote block
+								// Verbatim RawText quote block without nested outer card box
 								if strings.TrimSpace(item.RawText) != "" {
-									ui.Row(c).FillWidth().Gap(10).Padding(10, 12).Radius(10).
-										Background(pal.Card).AlignItems(ui.Stretch).
+									ui.Row(c).FillWidth().Gap(10).Padding(2, 0).AlignItems(ui.Stretch).
 										Children(func() {
-											ui.Box(c).Width(2.5).Radius(2).Background(pal.Accent.Alpha(0.6)).Shrink(0)
-											ui.Text(c, item.RawText).FontSize(14).LineHeight(1.55).
+											ui.Box(c).Width(2.5).Radius(2).Background(pal.Accent.Alpha(0.55)).Shrink(0)
+											ui.Text(c, item.RawText).FontSize(14).LineHeight(1.56).
 												TextColor(pal.Ink).Grow(1).MinWidth(0)
 										})
 								}

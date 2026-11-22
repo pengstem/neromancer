@@ -1,10 +1,17 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/mobile"
 	"github.com/pengstem/neromancer/internal/domain"
 )
+
+// cleanTagLabel strips any legacy leading '#' / '＃' and surrounding spaces so tags never show raw hash syntax.
+func cleanTagLabel(tag string) string {
+	return strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(tag), "#＃"))
+}
 
 func mustIconSVG(inner string) *ui.SVG {
 	const head = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">`
@@ -200,7 +207,7 @@ func GhostIconAction(c *ui.Context, key string, ic *ui.SVG, label string, active
 	return b
 }
 
-// PillAction builds a tactile capsule button pairing a 14px SVG icon and single-line label.
+// PillAction builds a tactile borderless capsule button pairing a 14px SVG icon and single-line label.
 func PillAction(c *ui.Context, key string, ic *ui.SVG, label string, primary bool) ui.Element {
 	t := c.Theme()
 	b := ui.ButtonBase(c)
@@ -208,16 +215,14 @@ func PillAction(c *ui.Context, key string, ic *ui.SVG, label string, primary boo
 		b.Key(key)
 	}
 
-	bg := t.Surface
-	hover := t.SurfaceHover
-	pressed := t.SurfacePressed
-	border := t.Border
+	bg := ui.Hex("#ECEDF2")
+	hover := ui.Hex("#E2E5EC")
+	pressed := ui.Hex("#D8DCE6")
 	fg := t.Text
 	if primary {
 		bg = t.Accent
 		hover = t.AccentHover
 		pressed = t.AccentPressed
-		border = ui.Transparent
 		fg = t.AccentText
 	}
 
@@ -231,9 +236,6 @@ func PillAction(c *ui.Context, key string, ic *ui.SVG, label string, primary boo
 	b.Padding(7, 12).Gap(6).Radius(999).Center().
 		Background(face).TextColor(fg).
 		Cursor(ui.CursorPointer).Shrink(0).Clip().Label(label)
-	if border.A > 0 {
-		b.Border(1, border)
-	}
 	mobile.Ink(b)
 
 	b.Children(func() {
@@ -242,6 +244,37 @@ func PillAction(c *ui.Context, key string, ic *ui.SVG, label string, primary boo
 		}
 		if label != "" {
 			ui.Text(c, label).FontSize(12.5).Bold().SingleLine()
+		}
+	})
+	return b
+}
+
+// GhostTextAction builds a borderless, zero-fill inline icon+text action for quiet secondary triggers.
+func GhostTextAction(c *ui.Context, key string, ic *ui.SVG, label string) ui.Element {
+	t := c.Theme()
+	b := ui.ButtonBase(c)
+	if key != "" {
+		b.Key(key)
+	}
+
+	face := ui.Transparent
+	if b.Pressed() {
+		face = t.SurfacePressed
+	} else if b.Hovered() {
+		face = t.SurfaceHover
+	}
+
+	b.Padding(5, 8).Gap(5).Radius(8).Center().
+		Background(face).TextColor(t.TextMuted).
+		Cursor(ui.CursorPointer).Shrink(0).Clip().Label(label)
+	mobile.Ink(b)
+
+	b.Children(func() {
+		if ic != nil {
+			ui.Icon(c, ic).Size(13.5, 13.5)
+		}
+		if label != "" {
+			ui.Text(c, label).FontSize(12).FontWeight(600).SingleLine()
 		}
 	})
 	return b

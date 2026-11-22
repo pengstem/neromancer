@@ -311,8 +311,8 @@ func TestGlobeWordCloudDirectArchiveFilterCoversConceptsAndTags(t *testing.T) {
 		if app.SearchQuery != conceptWord || app.ActiveTag != "" {
 			t.Fatalf("expected SearchQuery=%q ActiveTag=\"\", got query=%q tag=%q", conceptWord, app.SearchQuery, app.ActiveTag)
 		}
-		if !tt.HasText("灵感档案室") || tt.HasText("看相关档案") {
-			t.Fatalf("expected Archive view without homepage focus popup, texts=%v", tt.Texts())
+		if !tt.HasText("思维宫殿") || tt.HasText("看相关档案") {
+			t.Fatalf("expected Mind Palace view without homepage focus popup, texts=%v", tt.Texts())
 		}
 	}
 }

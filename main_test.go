@@ -106,9 +106,9 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 		t.Fatalf("expected auto-matched botanical icon for balcony thought, got %q", capturedNode.Visual.MotifType)
 	}
 
-	// 2. Enter Inspiration Archive Vault and confirm newly captured card is visible alongside seeded nodes.
-	if err := tt.Click("进入灵感档案室"); err != nil {
-		t.Fatalf("enter archive vault: %v", err)
+	// 2. Enter Mind Palace and confirm newly captured card is visible alongside seeded nodes.
+	if err := tt.Click("进入思维宫殿"); err != nil {
+		t.Fatalf("enter Mind Palace: %v", err)
 	}
 	settleSheet(tt)
 	if app.ActiveSpace != appui.SpaceArchive || app.ArchiveMode != appui.ArchiveCards {
