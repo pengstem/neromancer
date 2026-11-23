@@ -36,7 +36,7 @@ go tool mygo dev -platform android
 go tool mygo build -platform android
 ```
 
-产物位于 `dist/android/`（含 `neromancer-0.1.0.apk` 与 `.aab`）。正式签名可在 [mygo.json](mygo.json) 配置 `keystore` / `keyAlias`。
+产物位于 `dist/android/`（含 `neromancer-<version>.apk` 与 `.aab`）。正式签名可在 [mygo.json](mygo.json) 配置 `keystore` / `keyAlias`。
 
 ### 4. 自动化测试
 

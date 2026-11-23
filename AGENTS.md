@@ -50,4 +50,5 @@ go test -race ./...
 go build -o bin/neromancer .
 ```
 
-2. **自动提交**：当进行相应的改动并通过上述验证之后，自行执行 `git commit` 提交对应变更。
+2. **版本号自维护**：涉及应用代码、UI 交互或打包配置的改动，在提交或构建安装包前自行按 SemVer 评估并更新 `mygo.json` 中的 `"version"`（`mygo` 会按 `major*10000 + minor*100 + patch` 自动同步计算 Android `versionCode`）：日常修 bug、样式微调或性能优化升修订号（`patch`），新增功能或较大视图改版升次版本号（`minor`），重大架构升级升主版本号（`major`）；仅改文档或测试时无需升版。
+3. **自动提交**：当进行相应的改动并通过上述验证之后，自行执行 `git commit` 提交对应变更。
