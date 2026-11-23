@@ -255,6 +255,13 @@ func (a *App) renderFloatingOrbCircle(
 		})
 }
 
+func captureFabAnchorPads(phone bool, bottomSafe float32) (rightPad, bottomPad float32) {
+	if phone {
+		return 18, 20 + bottomSafe
+	}
+	return 28, 26 + bottomSafe
+}
+
 func (a *App) renderFloatingOrbDial(c *ui.Context, pal SurfacePalette, archiveProgress float32) {
 	if a.DetailSheetOpen || a.EvidenceModalOpen || a.SettingsModalOpen || a.ShareModalOpen {
 		return
@@ -310,18 +317,7 @@ func (a *App) renderFloatingOrbDial(c *ui.Context, pal SurfacePalette, archivePr
 		}
 	}
 
-	dashRight := float32(18)
-	archRight := float32(18)
-	dashBottom := float32(20)
-	archBottom := float32(46)
-	if !phone {
-		dashRight = 28
-		archRight = 28
-		dashBottom = 26
-		archBottom = 48
-	}
-	rightPad := dashRight + (archRight-dashRight)*t
-	bottomPad := dashBottom + (archBottom-dashBottom)*t + bottomSafe
+	rightPad, bottomPad := captureFabAnchorPads(phone, bottomSafe)
 
 	dashOptions := [3]orbDialOption{
 		{

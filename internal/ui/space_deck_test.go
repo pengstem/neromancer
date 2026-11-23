@@ -254,3 +254,105 @@ func TestSpaceDeckGlobeVerticalDragDoesNotOpenArchive(t *testing.T) {
 		t.Fatalf("expected 3D Globe to rotate on downward drag, diff=%v", diff)
 	}
 }
+
+func TestSpaceDeckBottomRightOrbZeroShiftAcrossSpaces(t *testing.T) {
+	assertSameRect := func(t *testing.T, label string, got, want struct{ X, Y, W, H float32 }) {
+		t.Helper()
+		if math.Abs(float64(got.X-want.X)) > 0.01 ||
+			math.Abs(float64(got.Y-want.Y)) > 0.01 ||
+			math.Abs(float64(got.W-want.W)) > 0.01 ||
+			math.Abs(float64(got.H-want.H)) > 0.01 {
+			t.Fatalf("%s: expected FAB rect %+v to match %+v without shift", label, got, want)
+		}
+	}
+
+	viewports := []struct {
+		name  string
+		w, h  int
+		phone bool
+	}{
+		{name: "phone_412", w: 412, h: 892, phone: true},
+		{name: "phone_360", w: 360, h: 620, phone: true},
+		{name: "desktop_1280", w: 1280, h: 800, phone: false},
+	}
+
+	for _, vp := range viewports {
+		t.Run(vp.name, func(t *testing.T) {
+			app, cleanup := newAuditTestApp(t)
+			defer cleanup()
+
+			tt := newFastTester(app.RootView, vp.w, vp.h)
+			settleAudit(tt)
+
+			dashR, ok := tt.Find("记一笔")
+			if !ok {
+				t.Fatalf("missing Dashboard FAB")
+			}
+			want := struct{ X, Y, W, H float32 }{dashR.X, dashR.Y, dashR.W, dashR.H}
+
+			// Pull partway down from top portal so 0 < archiveProgress < 1.
+			portalR, ok := tt.Find("进入思维宫殿")
+			if !ok {
+				t.Fatalf("missing top Mind Palace portal")
+			}
+			px := portalR.X + portalR.W*0.5
+			py := portalR.Y + portalR.H*0.5
+			tt.FingerDown(px, py)
+			tt.Advance(20 * time.Millisecond)
+			tt.FingerMove(px, py+180)
+			tt.Advance(20 * time.Millisecond)
+			tt.Frame()
+
+			midR, foundMid := tt.Find("记一笔")
+			if !foundMid {
+				midR, foundMid = tt.Find("切换视窗（当前卡片）")
+			}
+			if !foundMid {
+				t.Fatalf("missing FAB during mid-pull")
+			}
+			assertSameRect(t, "mid_pull", struct{ X, Y, W, H float32 }{midR.X, midR.Y, midR.W, midR.H}, want)
+
+			// Complete pull into SpaceArchive (Cards mode).
+			tt.FingerMove(px, py+float32(vp.h)*0.65)
+			tt.Advance(20 * time.Millisecond)
+			tt.FingerUp(px, py+float32(vp.h)*0.65)
+			settleAudit(tt)
+
+			if app.ActiveSpace != SpaceArchive {
+				t.Fatalf("expected SpaceArchive after full pull, got %v", app.ActiveSpace)
+			}
+
+			archCardsR, ok := tt.Find("切换视窗（当前卡片）")
+			if !ok {
+				t.Fatalf("missing Archive Cards FAB")
+			}
+			assertSameRect(t, "archive_cards", struct{ X, Y, W, H float32 }{archCardsR.X, archCardsR.Y, archCardsR.W, archCardsR.H}, want)
+
+			if vp.phone {
+				backR, ok := tt.Find("回到主页看板")
+				if !ok {
+					t.Fatalf("missing bottom return handle in Archive")
+				}
+				if backR.X+backR.W >= archCardsR.X {
+					t.Fatalf("expected centered return handle (%+v) not to overlap bottom-right FAB (%+v)", backR, archCardsR)
+				}
+			}
+
+			// Switch to ArchiveGraph mode and re-check FAB coordinates.
+			if err := tt.Click("切换视窗（当前卡片）"); err != nil {
+				t.Fatalf("open Archive dial: %v", err)
+			}
+			settleAudit(tt)
+			if err := tt.Click("脉络"); err != nil {
+				t.Fatalf("switch to ArchiveGraph: %v", err)
+			}
+			settleAudit(tt)
+
+			archGraphR, ok := tt.Find("切换视窗（当前脉络）")
+			if !ok {
+				t.Fatalf("missing Archive Graph FAB")
+			}
+			assertSameRect(t, "archive_graph", struct{ X, Y, W, H float32 }{archGraphR.X, archGraphR.Y, archGraphR.W, archGraphR.H}, want)
+		})
+	}
+}

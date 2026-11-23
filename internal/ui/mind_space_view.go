@@ -131,25 +131,28 @@ func (a *App) renderArchiveBottomHandle(c *ui.Context, pal SurfacePalette, pushD
 		grabberCol = ColorVermilion.Alpha(0.78)
 	}
 
-	bar := ui.ButtonBase(c).Key("archive_back_home").
-		FillWidth().
-		Padding(8, 16, 10+bottomSafe, 16).
-		Background(pal.Canvas).
-		Cursor(ui.CursorPointer).
-		Label("回到主页看板")
-	mobile.Ink(bar)
-	bar.OnClick(func() {
-		mygo.Haptics.Selection()
-		a.returnToDashboard()
-	}).Children(func() {
-		ui.Column(c).FillWidth().AlignItems(ui.Center).Gap(4).Children(func() {
-			ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
-				ui.Icon(c, IconChevronUp).Size(13.5, 13.5).TextColor(fg).Shrink(0)
-				if label != "" {
-					ui.Text(c, label).FontSize(11.5).FontWeight(600).TextColor(fg).SingleLine()
-				}
+	ui.Row(c).FillWidth().Justify(ui.Center).Padding(0, 16, bottomSafe, 16).Background(pal.Canvas).Children(func() {
+		bar := ui.ButtonBase(c).Key("archive_back_home").
+			MinWidth(136).
+			Padding(8, 24, 10, 24).
+			Radius(RadiusPill).
+			Background(ui.Transparent).
+			Cursor(ui.CursorPointer).
+			Label("回到主页看板")
+		mobile.Ink(bar)
+		bar.OnClick(func() {
+			mygo.Haptics.Selection()
+			a.returnToDashboard()
+		}).Children(func() {
+			ui.Column(c).AlignItems(ui.Center).Gap(4).Children(func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
+					ui.Icon(c, IconChevronUp).Size(13.5, 13.5).TextColor(fg).Shrink(0)
+					if label != "" {
+						ui.Text(c, label).FontSize(11.5).FontWeight(600).TextColor(fg).SingleLine()
+					}
+				})
+				ui.Box(c).Width(36 + 12*progress).Height(3.5).Radius(2).Background(grabberCol)
 			})
-			ui.Box(c).Width(36 + 12*progress).Height(3.5).Radius(2).Background(grabberCol)
 		})
 	})
 }

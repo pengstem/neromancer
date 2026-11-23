@@ -192,12 +192,7 @@ func (a *App) resolveCaptureOriginRect(c *ui.Context, winW, winH float32, prefer
 	}
 	phone := a.isPhoneLayout(c)
 	_, _, bottomSafe, _ := c.SafeArea()
-	rightPad := float32(18)
-	bottomPad := float32(20) + bottomSafe
-	if !phone {
-		rightPad = 28
-		bottomPad = 26 + bottomSafe
-	}
+	rightPad, bottomPad := captureFabAnchorPads(phone, bottomSafe)
 	return ui.Rect{
 		X: winW - rightPad - orbDialMainSize,
 		Y: winH - bottomPad - orbDialMainSize,
