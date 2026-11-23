@@ -6,7 +6,6 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/pengstem/neromancer/internal/domain"
 	"github.com/pengstem/neromancer/internal/service"
 )
 
@@ -42,9 +41,7 @@ type GlobeState struct {
 	LastHapticAt   time.Time
 
 	RipplePending bool
-	RippleStart   time.Time
 	RippleTerm    string
-	RippleTheme   domain.OrbTheme
 
 	// Cached static sphere geometry & base text metrics (rebuilt only when WordCloud or TextScale changes).
 	CacheVaultGen  int
@@ -86,7 +83,6 @@ const (
 	globeFrictionRate  = 3.4
 	globeDragSens      = 0.0085
 	globeFocusDuration = 360 * time.Millisecond
-	globeRippleDur     = 1100 * time.Millisecond
 )
 
 func (a *App) ensureGlobeCache(c *ui.Context, terms []service.WordCloudTerm) {
@@ -185,15 +181,10 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 		ui.Column(c).Key("dash_globe_card").FillWidth().Padding(14, 16).Gap(8),
 		pal,
 	).Children(func() {
-		ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "灵感星云球").FontSize(FontBody).Bold().TextColor(pal.Ink).SingleLine()
-			if len(terms) > 0 {
-				ui.Text(c, "拖拽旋转 · 点词筛选").FontSize(FontCaption).TextColor(pal.InkMuted).SingleLine()
-			}
-		})
+		ui.Text(c, "灵感星云球").FontSize(FontBody).Bold().TextColor(pal.Ink).SingleLine()
 
 		if len(terms) == 0 {
-			ui.Text(c, "记下几条想法后，这里会自动浮现你的灵感星云球。").
+			ui.Text(c, "暂无灵感词条").
 				FontSize(FontMeta).TextColor(pal.InkSecondary).Padding(8, 0)
 			return
 		}
@@ -324,71 +315,14 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 				}
 			}
 
-			leadPal := metrics[0].OrbPal
-			rippleStart := a.Globe.RippleStart
-			rippleTheme := a.Globe.RippleTheme
-			reduceMotion := c.Preferences().ReduceMotion
-
-			// Stage wrapper: clipped to isolate repaint damage from outer card shadows.
+			// Stage wrapper: clipped to isolate repaint damage from outer card shadows, with zero background rings/circles.
 			ui.Box(c).Key("dash_globe_stage").FillWidth().Height(stageH).Clip().
 				Draw(func(p *ui.Painter, r ui.Rect) {
-					if !rippleStart.IsZero() && !reduceMotion {
-						elapsed := p.Now().Sub(rippleStart)
-						if elapsed >= 0 && elapsed < globeRippleDur {
-							prog := float32(elapsed.Seconds() / globeRippleDur.Seconds())
-							ease := 1.0 - (1.0-prog)*(1.0-prog)
-							alpha := (1.0 - prog) * 0.42
-							rCol := ColorsForTheme(rippleTheme).Mid
-							rcx, rcy := r.X+r.W*0.5, r.Y+r.H*0.5
-
-							var ring ui.Path
-							ring.Circle(rcx, rcy, 14+ease*(min(r.W, r.H)*0.44))
-							p.StrokePath(&ring, 2.2*(1.0-0.55*prog), rCol.Alpha(alpha))
-
-							if prog < 0.45 {
-								sp := prog / 0.45
-								sx := r.X + r.W*0.78 - sp*(r.W*0.28)
-								sy := r.Y + r.H*0.18 + sp*(r.H*0.32)
-								var comet ui.Path
-								comet.Circle(sx, sy, 3.6*(1.0-sp*0.6))
-								p.FillPath(&comet, rCol.Alpha((1.0-sp)*0.75))
-							}
-							p.AnimationFrame()
-						}
-					}
-
 					if ambientActive && p.Accelerated() {
 						p.AnimationFrameRate(30)
 					}
 				}).
 				Children(func() {
-					// Cached still backdrop layer: renders the soft radial mist and orbital rings into a GPU bitmap once,
-					// avoiding per-frame evaluation while words rotate above it.
-					ui.Box(c).Key("dash_globe_mist").
-						Absolute().Left(0).Top(0).Right(0).Bottom(0).
-						IgnoreInput(true).PassThrough().Cache().
-						Draw(func(p *ui.Painter, r ui.Rect) {
-							p.FillRadialGradient(r, ui.RadialGradient{
-								Center: ui.Point{X: 0.5, Y: 0.5},
-								Radius: min(r.W, r.H) * 0.54,
-								Oklab:  true,
-								Stops: []ui.GradientStop{
-									{Color: leadPal.Mid.Alpha(0.075), At: 0},
-									{Color: leadPal.Core.Alpha(0.055), At: 0.48},
-									{Color: pal.Border.Alpha(0.18), At: 0.80},
-									{Color: pal.Card.Alpha(0.0), At: 1},
-								},
-							}, 0)
-
-							mcx, mcy := r.X+r.W*0.5, r.Y+r.H*0.5
-							outerR := min(r.W, r.H) * 0.43
-							var outerRing, innerRing ui.Path
-							outerRing.Circle(mcx, mcy, outerR)
-							innerRing.Circle(mcx, mcy, outerR*0.60)
-							p.StrokePath(&outerRing, 1.0, pal.Border.Alpha(0.52))
-							p.StrokePath(&innerRing, 1.0, pal.Border.Alpha(0.32))
-						})
-
 					// Single stationary circular hit-zone owns all pointer/touch dragging so words crossing
 					// z = 0 never drop active touch capture, while left/right margins remain scrollable.
 					hz := ui.Box(c).Key("dash_globe_hitzone").
@@ -482,7 +416,6 @@ func (a *App) stepGlobePhysics(c *ui.Context, terms []service.WordCloudTerm, pts
 
 	if st.RipplePending {
 		st.RipplePending = false
-		st.RippleStart = now
 		if st.RippleTerm != "" {
 			for i, t := range terms {
 				if t.Word == st.RippleTerm || (t.FilterTag != "" && t.FilterTag == st.RippleTerm) {

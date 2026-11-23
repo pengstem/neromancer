@@ -659,15 +659,6 @@ func (a *App) renderObsidianGraphStage(c *ui.Context, pg service.PulseGraph, est
 				})
 			}
 		}
-
-		// Bottom-right quiet island, vertex & edge count
-		ui.Box(c).Absolute().Right(13).Bottom(9).PassThrough().Children(func() {
-			statText := fmt.Sprintf("%d 小岛 · %d 节点", pg.IslandCount, len(pg.Nodes))
-			if pg.IslandCount <= 1 {
-				statText = fmt.Sprintf("%d 节点 · %d 连线", len(pg.Nodes), len(pg.Edges))
-			}
-			ui.Text(c, statText).FontSize(FontCaption).FontFeatures("tnum").TextColor(pal.InkMuted).SingleLine()
-		})
 	})
 }
 
@@ -1260,18 +1251,8 @@ func (a *App) renderPulseSplitGrabber(c *ui.Context, availH float32) {
 
 func (a *App) renderObsidianFileExplorer(c *ui.Context, pg service.PulseGraph, phone bool) {
 	pal := a.Palette()
-	totalNotes := 0
-	for _, fd := range pg.Folders {
-		totalNotes += len(fd.Notes)
-	}
 
-	ui.Column(c).Grow(1).FillWidth().MinHeight(0).Padding(2, 14, 0, 14).Gap(5).Background(pal.Canvas).Children(func() {
-		ui.Row(c).FillWidth().Padding(2, 4, 2, 4).Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "AI 归档目录").FontSize(FontCaption).FontWeight(600).LetterSpacing(0.3).TextColor(pal.InkSecondary)
-			ui.Textf(c, "%d 个主题夹 · %d 篇笔记", len(pg.Folders), totalNotes).
-				FontSize(FontCaption).FontFeatures("tnum").TextColor(pal.InkMuted)
-		})
-
+	ui.Column(c).Grow(1).FillWidth().MinHeight(0).Padding(2, 14, 0, 14).Background(pal.Canvas).Children(func() {
 		ui.Box(c).Key("pulse_tree_wrap").Grow(1).FillWidth().MinHeight(0).Children(func() {
 			ui.Scroll(c).Key("pulse_tree_scroll").TrackScroll(&a.Pulse.TreeScroll).Fill().
 				HandleInput(func(ev ui.InputEvent) bool {

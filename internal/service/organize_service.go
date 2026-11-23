@@ -196,7 +196,7 @@ func (s *OrganizeService) BuildDashboardDigest(nodes []domain.IdeaNode, evCounts
 
 	if len(nodes) == 0 {
 		digest.PersonaHeadline = "开始记录你的第一个想法"
-		digest.PersonaSummary = "随口说一句话或拍张图，系统会自动归类并提炼关键词。"
+		digest.PersonaSummary = "随手记下一句话、一段录音或一张图。"
 		return digest
 	}
 	digest.WordCloud = buildWordCloudTerms(nodes, evCounts, now)
@@ -335,15 +335,15 @@ func (s *OrganizeService) BuildDashboardDigest(nodes []domain.IdeaNode, evCounts
 		c0, c1 := digest.Clusters[0], digest.Clusters[1]
 		digest.PersonaHeadline = fmt.Sprintf("%s × %s", c0.Name, c1.Name)
 		digest.PersonaSummary = fmt.Sprintf(
-			"已记录 %d 篇灵感与 %d 条原始记录，重心聚焦在「%s」与「%s」（%d%%）。",
-			len(nodes), digest.TotalEvidences, c0.Name, c1.Name, c0.Percent+c1.Percent,
+			"最近常围绕「%s」与「%s」延展新想法。",
+			c0.Name, c1.Name,
 		)
 	} else {
 		c0 := digest.Clusters[0]
 		digest.PersonaHeadline = fmt.Sprintf("专注 %s", c0.Name)
 		digest.PersonaSummary = fmt.Sprintf(
-			"已记录 %d 篇灵感与 %d 条原始记录，当前都围绕「%s」展开。",
-			len(nodes), digest.TotalEvidences, c0.Name,
+			"最近的想法主要围绕「%s」展开。",
+			c0.Name,
 		)
 	}
 

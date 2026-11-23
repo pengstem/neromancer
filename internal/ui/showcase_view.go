@@ -339,11 +339,6 @@ func (a *App) renderDashboardSynthesisCard(c *ui.Context, pal SurfacePalette) {
 		ui.Text(c, ins.SparkSummary).
 			FontSize(FontBody).LineHeight(1.56).TextColor(pal.InkSecondary).MaxLines(4)
 
-		if act := strings.TrimSpace(ins.SuggestedAction); act != "" {
-			ui.Text(c, act).
-				FontSize(FontMeta).LineHeight(1.48).TextColor(pal.InkMuted).MaxLines(2)
-		}
-
 		var linked []domain.IdeaNode
 		for _, nid := range ins.ConnectedNodeIDs {
 			if nd, ok := a.NodeByID[nid]; ok {

@@ -57,8 +57,6 @@ func (a *App) renderDetailContent(c *ui.Context) {
 		ui.Column(c).Fill().Center().Padding(28, 28, 48, 28).Gap(10).Children(func() {
 			ui.Icon(c, IconBulb).Size(24, 24).TextColor(ColorVermilion)
 			ui.Text(c, "点选一条灵感查看详情").FontSize(FontCardTitle).Bold().TextColor(pal.Ink)
-			ui.Text(c, "整理后的摘要、追问和最初的原记录都在这里。").
-				FontSize(FontBody).TextColor(pal.InkSecondary).TextAlign(ui.Center)
 		})
 		return
 	}
@@ -79,11 +77,9 @@ func (a *App) renderDetailContent(c *ui.Context) {
 						TextColor(pal.Ink).Grow(1).MinWidth(0).MaxLines(3)
 				})
 
-				ui.Row(c).Padding(0, 0, 0, 30).Gap(6).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Padding(0, 0, 0, 30).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, formatChineseShortDate(node.UpdatedAt)).
 						FontSize(FontMeta).FontFeatures("tnum").TextColor(pal.InkMuted)
-					ui.Text(c, "·").FontSize(FontMeta).TextColor(pal.InkMuted)
-					ui.Textf(c, "%d 条原记录", evCount).FontSize(FontMeta).FontFeatures("tnum").TextColor(pal.InkMuted)
 				})
 			})
 
@@ -132,9 +128,6 @@ func (a *App) renderDetailContent(c *ui.Context) {
 					}
 				})
 			}
-			if capText := strings.TrimSpace(node.Visual.Caption); capText != "" {
-				ui.Text(c, capText).FontSize(FontMeta).Italic().TextColor(pal.InkMuted)
-			}
 
 			ui.Row(c).FillWidth().Gap(14).Padding(14, 16).Radius(RadiusCard).
 				Background(softTint).Border(1, orbPal.Mid.Alpha(0.18)).AlignItems(ui.Stretch).
@@ -164,7 +157,7 @@ func (a *App) renderGuidingQuestionsSection(c *ui.Context, pal SurfacePalette, a
 		})
 
 		if len(node.GuidingQuestions) == 0 {
-			ui.Text(c, "还没有追问，点右上角「换个角度」让 AI 陪你往下想。").
+			ui.Text(c, "暂无追问").
 				FontSize(FontBody).LineHeight(1.5).TextColor(pal.InkSecondary).Padding(4, 0)
 			return
 		}
@@ -230,11 +223,10 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 		}
 		ui.Column(c).Grow(1).Basis(0).MinHeight(0).FillWidth().Padding(14, 18, 16, 18).Gap(10).Children(func() {
 			RenderSheetHeader(c, pal, SheetHeaderProps{
-				Icon:      IconArchive,
-				Title:     "原始记录",
-				BadgeText: fmt.Sprintf("%d 条", len(a.SelectedEvidences)),
-				Subtitle:  node.Title,
-				CloseKey:  "ev_close",
+				Icon:     IconArchive,
+				Title:    "原始记录",
+				Subtitle: node.Title,
+				CloseKey: "ev_close",
 				OnClose: func() {
 					a.EvidenceModalOpen = false
 				},
@@ -314,21 +306,7 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 											Children(func() {
 												ui.Image(c, src).Size(156, 112).Radius(RadiusTag).Fit(ui.Contain)
 											})
-									} else if item.Modality == "image" {
-										ui.Row(c).FillWidth().Padding(9, 12).Gap(8).Radius(RadiusControl).AlignItems(ui.Center).
-											Background(pal.SoftPanel).Border(1, pal.Border).Children(func() {
-											ui.Icon(c, IconImage).Size(15, 15).TextColor(pal.InkMuted).Shrink(0)
-											ui.Text(c, "图片未附带本地文件（仅留存文字描述）").
-												FontSize(FontMeta).TextColor(pal.InkMuted).Grow(1).MinWidth(0)
-										})
 									}
-								} else if item.Modality == "image" {
-									ui.Row(c).FillWidth().Padding(9, 12).Gap(8).Radius(RadiusControl).AlignItems(ui.Center).
-										Background(pal.SoftPanel).Border(1, pal.Border).Children(func() {
-										ui.Icon(c, IconImage).Size(15, 15).TextColor(pal.InkMuted).Shrink(0)
-										ui.Text(c, "图片未附带本地文件（仅留存文字描述）").
-											FontSize(FontMeta).TextColor(pal.InkMuted).Grow(1).MinWidth(0)
-									})
 								}
 							})
 					}

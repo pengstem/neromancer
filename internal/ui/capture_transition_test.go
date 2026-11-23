@@ -120,7 +120,7 @@ func TestCaptureThreeModesEnterDedicatedFormatsWithoutSwitcher(t *testing.T) {
 		{
 			dialLabel:   "文字",
 			wantTitle:   "文字记录",
-			wantUnique:  "想到什么直接写，AI 自动帮你归类串联",
+			wantUnique:  "",
 			forbidTexts: []string{"语音记录", "图文记录", "点一下开始说话", "导入录音", "拍照", "相册选图", "记录方式", "语音", "图文", "图片"},
 		},
 		{
@@ -141,7 +141,7 @@ func TestCaptureThreeModesEnterDedicatedFormatsWithoutSwitcher(t *testing.T) {
 		}
 		settleAudit(tt)
 
-		if !tt.HasText(tc.wantTitle) || !tt.HasText(tc.wantUnique) {
+		if !tt.HasText(tc.wantTitle) || (tc.wantUnique != "" && !tt.HasText(tc.wantUnique)) {
 			t.Fatalf("%s mode missing dedicated UI (%q / %q), texts=%v", tc.dialLabel, tc.wantTitle, tc.wantUnique, tt.Texts())
 		}
 		if _, hasSeg := tt.Find("记录方式"); hasSeg {
@@ -233,12 +233,13 @@ func TestCaptureSmoothLocalToFullscreenAndShrinkIntoTopMindPalace(t *testing.T) 
 	}
 
 	// Beat 1 end (~350ms): full-screen has condensed back into the centered Idea Capsule over the Homepage!
+	const capsuleLabel = "《把傍晚火烧云的渐变存成一组配色卡》"
 	tt.Advance(330 * time.Millisecond) // t = 350ms (u ≈ 0.46)
 	tt.Frame()
-	if !tt.HasText("正在收入上方思维宫殿…") || !tt.HasText("AI 灵感画像") {
+	if !tt.HasText(capsuleLabel) || !tt.HasText("AI 灵感画像") {
 		t.Fatalf("expected condensed Idea Capsule floating above visible Homepage at Beat 1, texts=%v", tt.Texts())
 	}
-	capMidR, okCapMid := tt.Find("正在收入上方思维宫殿…")
+	capMidR, okCapMid := tt.Find(capsuleLabel)
 	if !okCapMid {
 		t.Fatalf("missing floating capsule text at 350ms")
 	}
@@ -246,7 +247,7 @@ func TestCaptureSmoothLocalToFullscreenAndShrinkIntoTopMindPalace(t *testing.T) 
 	// Beat 2 mid (~530ms): capsule glides upward toward the Mind Palace!
 	tt.Advance(180 * time.Millisecond) // t = 530ms (u ≈ 0.70)
 	tt.Frame()
-	capUpperR, okCapUpper := tt.Find("正在收入上方思维宫殿…")
+	capUpperR, okCapUpper := tt.Find(capsuleLabel)
 	if !okCapUpper {
 		t.Fatalf("missing floating capsule text at 530ms")
 	}
@@ -254,7 +255,7 @@ func TestCaptureSmoothLocalToFullscreenAndShrinkIntoTopMindPalace(t *testing.T) 
 	// Beat 2 near top (~700ms): capsule reaches the top Mind Palace header & triggers portal pulse!
 	tt.Advance(170 * time.Millisecond) // t = 700ms (u ≈ 0.90)
 	tt.Frame()
-	capTopR, okCapTop := tt.Find("正在收入上方思维宫殿…")
+	capTopR, okCapTop := tt.Find(capsuleLabel)
 	if !okCapTop {
 		t.Fatalf("missing floating capsule text at 700ms")
 	}

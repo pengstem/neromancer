@@ -105,34 +105,30 @@ func cubicBezier32(p0, p1, p2, p3, u float32) float32 {
 }
 
 type captureModeSpec struct {
-	title    string
-	subtitle string
-	icon     *ui.SVG
-	theme    domain.OrbTheme
+	title string
+	icon  *ui.SVG
+	theme domain.OrbTheme
 }
 
 func specForCaptureModality(idx int) captureModeSpec {
 	switch idx {
 	case 0:
 		return captureModeSpec{
-			title:    "语音记录",
-			subtitle: "说完自动转写，AI 帮你归入思维宫殿",
-			icon:     IconMic,
-			theme:    domain.ThemeMint,
+			title: "语音记录",
+			icon:  IconMic,
+			theme: domain.ThemeMint,
 		}
 	case 2:
 		return captureModeSpec{
-			title:    "图文记录",
-			subtitle: "留住画面与当下的闪念，自动整理归档",
-			icon:     IconImage,
-			theme:    domain.ThemeAmber,
+			title: "图文记录",
+			icon:  IconImage,
+			theme: domain.ThemeAmber,
 		}
 	default:
 		return captureModeSpec{
-			title:    "文字记录",
-			subtitle: "想到什么直接写，AI 自动帮你归类串联",
-			icon:     IconQuill,
-			theme:    domain.ThemeSky,
+			title: "文字记录",
+			icon:  IconQuill,
+			theme: domain.ThemeSky,
 		}
 	}
 }
@@ -493,12 +489,8 @@ func (a *App) renderFlyingPalaceCapsule(c *ui.Context, pal SurfacePalette, vRect
 						Children(func() {
 							ui.Icon(c, iconSVG).Size(15, 15).TextColor(subColors.BadgeText)
 						})
-					ui.Column(c).Grow(1).MinWidth(0).Gap(1.5).Children(func() {
-						ui.Textf(c, "《%s》", title).
-							FontSize(FontBody).Bold().TextColor(pal.Ink).SingleLine()
-						ui.Text(c, "正在收入上方思维宫殿…").
-							FontSize(FontCaption).TextColor(subColors.BadgeText).SingleLine()
-					})
+					ui.Textf(c, "《%s》", title).
+						FontSize(FontBody).Bold().TextColor(pal.Ink).Grow(1).MinWidth(0).SingleLine()
 				})
 		})
 }
@@ -530,10 +522,7 @@ func (a *App) renderDedicatedCaptureWorkspace(
 							ui.Icon(c, spec.icon).Size(17, 17).TextColor(modeColors.BadgeText)
 						})
 
-					ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-						ui.Text(c, spec.title).FontSize(FontTitle).Bold().TextColor(pal.Ink).SingleLine()
-						ui.Text(c, spec.subtitle).FontSize(FontCaption).TextColor(pal.InkMuted).SingleLine()
-					})
+					ui.Text(c, spec.title).FontSize(FontTitle).Bold().TextColor(pal.Ink).Grow(1).MinWidth(0).SingleLine()
 
 					closeBtn := GhostIconAction(c, "capture_close", IconClose, "收起", false)
 					if interactive && closeBtn.Clicked() {
@@ -732,12 +721,8 @@ func (a *App) renderImageDedicatedEditor(c *ui.Context, pal SurfacePalette, mode
 					ui.Icon(c, IconImage).Size(24, 24).TextColor(modeColors.BadgeText)
 				})
 
-			ui.Column(c).Center().Gap(4).Children(func() {
-				ui.Text(c, "拍下眼前的画面，或从相册选一张图").
-					FontSize(FontBody).Bold().TextColor(pal.Ink)
-				ui.Text(c, "图片原件会完整留存，随时可回溯当时的现场").
-					FontSize(FontCaption).TextColor(pal.InkMuted)
-			})
+			ui.Text(c, "拍下眼前的画面，或从相册选一张图").
+				FontSize(FontBody).Bold().TextColor(pal.Ink)
 
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Center().Wrap().Children(func() {
 				if PillAction(c, "capture_camera", IconCamera, "拍照", true).Clicked() && interactive {
@@ -848,7 +833,7 @@ func (a *App) toggleVoiceRecording() {
 		}
 		mygo.Haptics.Success()
 		a.CaptureAudioPath = path
-		a.setBanner(fmt.Sprintf("已录 %.1f 秒，保存后会自动转成文字", float64(durMs)/1000.0))
+		a.setBanner(fmt.Sprintf("已录音 %.1f 秒", float64(durMs)/1000.0))
 		return
 	}
 
@@ -859,7 +844,6 @@ func (a *App) toggleVoiceRecording() {
 		return
 	}
 	a.CaptureAudioPath = path
-	a.setBanner("正在录音，说完点一下即可结束")
 }
 
 func (a *App) captureCameraAsync() {
@@ -989,12 +973,12 @@ func (a *App) submitQuickCapture(targetNodeID string) {
 	a.TriggerGlobeCaptureRipple(out.Node)
 
 	if strings.TrimSpace(targetNodeID) != "" {
-		a.setBanner(fmt.Sprintf("已合并进《%s》，当时的原记录也留好了", out.Node.Title))
+		a.setBanner(fmt.Sprintf("已归入：《%s》", out.Node.Title))
 		return
 	}
 
 	if a.Deps.AI == nil || !a.Deps.AI.Configured() {
-		a.setBanner(fmt.Sprintf("已记下：《%s》（填好 DeepSeek Key 后可自动整理）", out.Node.Title))
+		a.setBanner(fmt.Sprintf("已记下：《%s》", out.Node.Title))
 		return
 	}
 
@@ -1009,7 +993,7 @@ func (a *App) submitQuickCapture(targetNodeID string) {
 			a.SelectNode(organized.ID)
 			a.TriggerGlobeCaptureRipple(organized)
 			if mergedInto != "" {
-				a.setBanner(fmt.Sprintf("已合并到《%s》，当时的原记录也留好了", organized.Title))
+				a.setBanner(fmt.Sprintf("已归入：《%s》", organized.Title))
 			} else {
 				a.setBanner(fmt.Sprintf("已整理好：《%s》", organized.Title))
 			}

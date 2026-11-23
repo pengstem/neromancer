@@ -5,7 +5,6 @@ import (
 	"image"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -16,8 +15,7 @@ import (
 
 // renderPosterArtCard renders the unified Bento Gallery Emblem poster layout shared across
 // the share sheet modal and 1200x1640 PNG export.
-func renderPosterArtCard(c *ui.Context, pal SurfacePalette, node domain.IdeaNode, evCount int, exportMode bool) {
-	orbPal := ColorsForTheme(node.Theme)
+func renderPosterArtCard(c *ui.Context, pal SurfacePalette, node domain.IdeaNode, _ int, exportMode bool) {
 	softTint, badgeBg, badgeText := mindOrbSurface(pal, node.Theme)
 	iconKey := domain.ResolveIdeaIconKey(node)
 
@@ -100,10 +98,6 @@ func renderPosterArtCard(c *ui.Context, pal SurfacePalette, node domain.IdeaNode
 					}
 				})
 			}
-
-			if capText := strings.TrimSpace(node.Visual.Caption); capText != "" {
-				ui.Text(c, capText).FontSize(11).Italic().TextColor(orbPal.BadgeText.Alpha(0.75)).TextAlign(ui.Center)
-			}
 		})
 
 		if exportMode {
@@ -112,8 +106,7 @@ func renderPosterArtCard(c *ui.Context, pal SurfacePalette, node domain.IdeaNode
 
 		ui.Box(c).FillWidth().Height(1).Background(pal.Border.Alpha(0.85))
 
-		ui.Row(c).FillWidth().Justify(ui.SpaceBetween).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Textf(c, "%d 条原记录", max(1, evCount)).FontSize(10.5).TextColor(pal.InkMuted)
+		ui.Row(c).FillWidth().Justify(ui.End).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, formatPosterDate(node.UpdatedAt)).FontSize(10.5).FontFeatures("tnum").TextColor(pal.InkMuted)
 		})
 	})

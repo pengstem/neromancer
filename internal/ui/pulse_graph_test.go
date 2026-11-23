@@ -20,11 +20,11 @@ func TestObsidianPulseGraphAndFileExplorerInteractions(t *testing.T) {
 	tt := newFastTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
-	// 1. Verify "漫游" is absent and multi-island Obsidian Graph + AI File Explorer folders render.
+	// 1. Verify "漫游" & cluttered graph/folder stat hints are absent and multi-island Obsidian Graph + AI File Explorer folders render.
 	if tt.HasText("漫游") {
 		t.Fatalf("expected '漫游' to be completely removed, got texts=%v", tt.Texts())
 	}
-	if !tt.HasText("AI 归档目录") || !tt.HasText("器物与光影美学") || !tt.HasText("算法与系统直觉") {
+	if !tt.HasText("器物与光影美学") || !tt.HasText("算法与系统直觉") {
 		t.Fatalf("missing expected AI folders in Pulse view, texts=%v", tt.Texts())
 	}
 
