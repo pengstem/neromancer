@@ -76,25 +76,12 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette, padX, pul
 	}
 	ready := pullDist >= pullThreshold && pullThreshold > 0
 
-	pullLabel := "思维宫殿"
-	if ready {
-		pullLabel = "松手打开思维宫殿"
-	} else if pullDist > 6 {
-		pullLabel = "继续下拉"
-	}
-
-	pillBg := pal.Card
-	pillBorder := pal.Border.Alpha(0.75)
-	pillFg := pal.InkSecondary
 	grabberCol := pal.InkMuted.Alpha(0.45 * progress)
 	if ready {
-		pillBg = ColorVermilion.Alpha(0.10)
-		pillBorder = ColorVermilion.Alpha(0.35)
-		pillFg = ColorVermilion
 		grabberCol = ColorVermilion.Alpha(0.80)
 	}
 
-	headerCol := ui.Column(c).Key("dash_top_pull_header").FillWidth().Padding(11, padX, 8, padX).Gap(5)
+	headerCol := ui.Column(c).Key("dash_top_pull_header").FillWidth().Padding(10, padX, 6, padX).Gap(5)
 	if pullDist > 0.5 {
 		headerCol.BorderWidth(1, 0, 0, 0).BorderColor(pal.Border.Alpha(0.6))
 	}
@@ -107,24 +94,7 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette, padX, pul
 		}
 
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(gap).Children(func() {
-			portal := ui.ButtonBase(c).Key("dash_enter_archive").
-				Padding(6, 12).Radius(RadiusPill).
-				Background(pillBg).Border(1, pillBorder).
-				Shadow(0, 1, 4, 0, ui.RGBA(18, 22, 33, 0.03)).
-				Cursor(ui.CursorPointer).
-				Shrink(1).MinWidth(0).
-				Label("进入思维宫殿")
-			mobile.Ink(portal)
-			portal.OnClick(func() {
-				mygo.Haptics.Selection()
-				a.enterArchiveWithTag("")
-			}).Children(func() {
-				ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
-					ui.Icon(c, IconChevronDown).Size(14, 14).TextColor(pillFg).Shrink(0)
-					ui.Text(c, pullLabel).
-						FontSize(FontMeta).FontWeight(600).TextColor(pillFg).SingleLine().MinWidth(0)
-				})
-			})
+			a.renderDashboardPortalCue(c, pal, pullDist, pullThreshold)
 
 			ui.Spacer(c).Grow(1)
 

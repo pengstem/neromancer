@@ -64,6 +64,7 @@ type App struct {
 	ArchiveSearchOpen    bool
 	ArchiveTagDrawerOpen bool
 	AnimOrigin           time.Time
+	PortalCueOrigin      time.Time
 
 	// Cached vault state (reloaded cleanly on state mutations)
 	VaultGen          int

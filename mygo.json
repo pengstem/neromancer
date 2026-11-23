@@ -2,7 +2,7 @@
   "name": "Neromancer",
   "slug": "neromancer",
   "identifier": "run.neromancer.app",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "icon": "resources/icon.png",
   "urlSchemes": ["neromancer"],
   "android": {
