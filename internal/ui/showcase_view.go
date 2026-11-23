@@ -63,13 +63,6 @@ func (a *App) renderDashboardView(c *ui.Context, pullDist, pullThreshold float32
 }
 
 func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette, padX, pullDist, pullThreshold float32) {
-	winW, _ := c.Size()
-	compact := winW > 0 && winW < 380
-	gap := float32(6)
-	if compact {
-		gap = 5
-	}
-
 	progress := float32(0)
 	if pullThreshold > 0 {
 		progress = min(float32(1), max(float32(0), pullDist/pullThreshold))
@@ -93,28 +86,15 @@ func (a *App) renderDashboardHeader(c *ui.Context, pal SurfacePalette, padX, pul
 				Background(grabberCol).AlignSelf(ui.Center)
 		}
 
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(gap).Children(func() {
-			a.renderDashboardPortalCue(c, pal, pullDist, pullThreshold)
-
-			ui.Spacer(c).Grow(1)
-
-			ui.Row(c).Gap(gap).AlignItems(ui.Center).Shrink(0).Children(func() {
-				if a.BusyTask != "" {
-					ui.Spinner(c).Size(14, 14)
-				}
-
-				configured := a.Deps.AI != nil && a.Deps.AI.Configured()
-				ui.Box(c).Key("dash_settings_wrap").Size(32, 32).Shrink(0).Children(func() {
-					if GhostIconAction(c, "dash_settings_btn", IconSliders, "DeepSeek 设置", a.SettingsModalOpen).Tooltip("DeepSeek 设置").Clicked() {
-						a.closeOrbDials()
-						a.SettingsModalOpen = true
-					}
-					if configured {
-						ui.Box(c).Absolute().Top(5).Right(5).Size(6, 6).Radius(3).
-							Background(ColorSuccessInk).PassThrough()
-					}
-				})
+		ui.Box(c).FillWidth().Height(32).Children(func() {
+			ui.Row(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+				a.renderDashboardPortalCue(c, pal, pullDist, pullThreshold)
 			})
+			if a.BusyTask != "" {
+				ui.Box(c).Absolute().Right(0).Top(9).Size(14, 14).PassThrough().Children(func() {
+					ui.Spinner(c).Size(14, 14)
+				})
+			}
 		})
 	})
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +46,9 @@ func newAuditTestApp(t testing.TB) (*App, func()) {
 		t.Fatal(err)
 	}
 	if err := st.SeedIfEmpty(); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetSetting(settingDeepSeekOnboardingSeen, "1"); err != nil {
 		t.Fatal(err)
 	}
 	mm := media.NewManager(cfg.AudioDir(), cfg.ImageDir())
@@ -153,6 +157,11 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	}
 	if r, ok := tt.Find("进入思维宫殿"); !ok || r.Y > 80 {
 		t.Fatalf("dashboard missing top pull-down portal \"进入思维宫殿\", got ok=%v rect=%+v", ok, r)
+	} else if centerX := r.X + r.W*0.5; math.Abs(float64(centerX-206)) > 12 {
+		t.Fatalf("expected top pull-down portal horizontally centered near X=206, got centerX=%.1f rect=%+v", centerX, r)
+	}
+	if _, ok := tt.Find("DeepSeek 设置"); ok {
+		t.Fatalf("expected top-right \"DeepSeek 设置\" button to be removed from Dashboard")
 	}
 	if _, ok := tt.Find("灵感"); ok {
 		t.Fatalf("expected bottom nav bar \"灵感\" to be removed")
@@ -482,10 +491,11 @@ func TestVisualAuditAndAntiSlopScreenshots(t *testing.T) {
 	}
 	assertAuditNoEmojis(t, "dashboard_inline_synthesis", tt.Texts())
 
-	if err := tt.Click("DeepSeek 设置"); err != nil {
-		t.Fatalf("open settings modal: %v", err)
-	}
+	app.openSettingsPrompt(settingsPromptFirstLaunch, "")
 	settleAudit(tt)
+	if !tt.HasText("DeepSeek 设置") {
+		t.Fatalf("expected DeepSeek settings sheet to render when opened, texts=%v", tt.Texts())
+	}
 	assertAuditNoEmojis(t, "settings_modal", tt.Texts())
 	if err := tt.Click("关闭"); err != nil {
 		t.Fatalf("close settings modal: %v", err)
@@ -973,17 +983,20 @@ func TestDashboardInlineSynthesis(t *testing.T) {
 	tt := newFastTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
-	// Top-right header must NOT place a "灵感串联" button next to DeepSeek settings.
-	settingsRect, ok := tt.Find("DeepSeek 设置")
+	// Top-right header must NOT place a "灵感串联" or "DeepSeek 设置" button in the top bar.
+	if _, ok := tt.Find("DeepSeek 设置"); ok {
+		t.Fatalf("expected top-right \"DeepSeek 设置\" button to be removed from Dashboard")
+	}
+	portalRect, ok := tt.Find("进入思维宫殿")
 	if !ok {
-		t.Fatalf("missing DeepSeek 设置 button in top header")
+		t.Fatalf("missing centered 进入思维宫殿 cue in top header")
 	}
 	synthTitleRect, ok := tt.Find("灵感串联")
 	if !ok {
 		t.Fatalf("missing inline 灵感串联 section on Dashboard")
 	}
-	if synthTitleRect.Y <= settingsRect.Y+settingsRect.H {
-		t.Fatalf("expected 灵感串联 in Dashboard body below top header, got headerY=%.1f synthY=%.1f", settingsRect.Y, synthTitleRect.Y)
+	if synthTitleRect.Y <= portalRect.Y+portalRect.H {
+		t.Fatalf("expected 灵感串联 in Dashboard body below top header, got headerY=%.1f synthY=%.1f", portalRect.Y, synthTitleRect.Y)
 	}
 
 	// Paging 1 / 2 (newest first) -> 2 / 2 -> 1 / 2

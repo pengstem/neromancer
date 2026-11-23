@@ -72,6 +72,16 @@ func TestEndToEndAndroidMobileWorkflow(t *testing.T) {
 	tt := ui.NewTesterWith(app.RootView, 412, 892, ui.TesterOptions{
 		Preferences: ui.Preferences{ReduceMotion: true},
 	})
+	settleSheet(tt)
+
+	// 0. First launch without an API key automatically invites the user to configure DeepSeek once.
+	if !app.SettingsModalOpen {
+		t.Fatalf("expected first-launch DeepSeek onboarding sheet to open automatically")
+	}
+	if err := tt.Click("先跳过"); err != nil {
+		t.Fatalf("skip first-launch DeepSeek onboarding: %v", err)
+	}
+	settleSheet(tt)
 
 	// 1. Capture a new text thought via bottom-right Speed-Dial and verify persistence + auto-matched icon.
 	if err := tt.Click("记一笔"); err != nil {

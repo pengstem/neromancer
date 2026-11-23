@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -131,10 +132,11 @@ type App struct {
 	LastExportedPath string
 
 	// Settings state
-	SettingsBaseURL    string
-	SettingsAPIKey     string
-	SettingsModel      string
-	SettingsTestStatus string
+	SettingsBaseURL      string
+	SettingsAPIKey       string
+	SettingsModel        string
+	SettingsTestStatus   string
+	SettingsPromptReason string
 
 	// Feedback & async indicator
 	BusyTask     string
@@ -182,6 +184,12 @@ func NewApp(deps Deps) (*App, error) {
 		}
 		if deps.AI != nil {
 			deps.AI.UpdateCredentials(a.SettingsBaseURL, a.SettingsAPIKey, a.SettingsModel)
+		}
+		if deps.AI == nil || !deps.AI.Configured() {
+			if seen, _ := deps.Store.GetSetting(settingDeepSeekOnboardingSeen); seen != "1" {
+				a.SettingsModalOpen = true
+				a.SettingsPromptReason = settingsPromptFirstLaunch
+			}
 		}
 	}
 
@@ -424,10 +432,73 @@ func (a *App) RunAsync(label string, work func(ctx context.Context) error) {
 		a.Dispatch(func() {
 			a.BusyTask = ""
 			if err != nil {
-				a.setErrorBanner(err.Error())
+				a.handleAsyncError(err)
 			}
 			_ = a.ReloadVault()
 		})
+	}()
+}
+
+func (a *App) markSettingsOnboardingSeen() {
+	if a.Deps.Store != nil {
+		_ = a.Deps.Store.SetSetting(settingDeepSeekOnboardingSeen, "1")
+	}
+}
+
+func (a *App) openSettingsPrompt(reason, statusMsg string) {
+	a.closeOrbDials()
+	a.SettingsPromptReason = reason
+	a.SettingsTestStatus = statusMsg
+	a.SettingsModalOpen = true
+}
+
+func (a *App) openSettingsForIssue(err error) {
+	a.BannerText = ""
+	a.BannerIsErr = false
+	a.BannerShowAI = false
+	status := ""
+	if err != nil {
+		if errors.Is(err, ai.ErrMissingAPIKey) {
+			status = err.Error()
+		} else {
+			status = "连接失败：" + err.Error()
+		}
+	}
+	a.openSettingsPrompt(settingsPromptUnavailable, status)
+}
+
+func (a *App) handleAsyncError(err error) {
+	if err == nil {
+		return
+	}
+	if ai.IsConfigUnusableError(err) {
+		if !a.SettingsModalOpen {
+			a.openSettingsForIssue(err)
+		}
+		return
+	}
+	if !a.SettingsModalOpen {
+		a.setErrorBanner(err.Error())
+	}
+}
+
+// CheckAIHealthAsync silently verifies configured DeepSeek credentials at startup and
+// automatically opens the DeepSeek settings sheet if the config is detected to be unusable.
+func (a *App) CheckAIHealthAsync() {
+	if a.Deps.AI == nil || !a.Deps.AI.Configured() {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_, err := a.Deps.AI.TestConnection(ctx)
+		if ai.IsConfigUnusableError(err) {
+			a.Dispatch(func() {
+				if !a.SettingsModalOpen {
+					a.openSettingsForIssue(err)
+				}
+			})
+		}
 	}()
 }
 
@@ -440,7 +511,7 @@ func (a *App) setBanner(msg string) {
 func (a *App) setErrorBanner(msg string) {
 	a.BannerText = msg
 	a.BannerIsErr = true
-	a.BannerShowAI = strings.Contains(msg, "DeepSeek API Key")
+	a.BannerShowAI = strings.Contains(msg, "DeepSeek")
 }
 
 func (a *App) isPhoneLayout(c *ui.Context) bool {

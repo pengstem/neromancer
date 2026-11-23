@@ -28,8 +28,40 @@ const maxASRBytes = 8 * 1024 * 1024 // DeepSeek /v1/tools/asr max 8 MiB
 
 var (
 	// ErrMissingAPIKey indicates the user has not configured a DeepSeek API key yet.
-	ErrMissingAPIKey = errors.New("还没填写 DeepSeek API Key，点右上角「DeepSeek 设置」填一下就能用了")
+	ErrMissingAPIKey = errors.New("还没填写 DeepSeek API Key，填一下就能用了")
 )
+
+// APIError represents an HTTP error response returned by the DeepSeek endpoint.
+type APIError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	if strings.TrimSpace(e.Message) != "" {
+		return fmt.Sprintf("DeepSeek API 错误 (%d): %s", e.StatusCode, e.Message)
+	}
+	return fmt.Sprintf("DeepSeek API 返回 HTTP %d", e.StatusCode)
+}
+
+// IsConfigUnusableError reports whether err indicates missing, unauthorized, exhausted,
+// or unreachable-model/endpoint credentials that require the user to update DeepSeek settings.
+func IsConfigUnusableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrMissingAPIKey) {
+		return true
+	}
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound:
+			return true
+		}
+	}
+	return false
+}
 
 // NodeDigest gives the organizer compact context of existing orbs without inflating token usage.
 type NodeDigest struct {
@@ -545,9 +577,9 @@ func formatAPIError(status int, body []byte) error {
 		} `json:"error"`
 	}
 	if err := json.Unmarshal(body, &errPayload); err == nil && errPayload.Error.Message != "" {
-		return fmt.Errorf("DeepSeek API 错误 (%d): %s", status, errPayload.Error.Message)
+		return &APIError{StatusCode: status, Message: errPayload.Error.Message}
 	}
-	return fmt.Errorf("DeepSeek API 返回 HTTP %d: %s", status, strings.TrimSpace(string(body)))
+	return &APIError{StatusCode: status, Message: strings.TrimSpace(string(body))}
 }
 
 func normalizeBaseURL(raw string) string {

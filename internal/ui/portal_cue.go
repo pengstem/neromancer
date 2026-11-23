@@ -190,8 +190,8 @@ func (a *App) renderDashboardPortalCue(c *ui.Context, pal SurfacePalette, pullDi
 			pullLabel = "松手打开思维宫殿"
 			fg = ColorVermilion
 		}
-		portal.Padding(0, 8).Children(func() {
-			ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
+		portal.Padding(0, 10).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Justify(ui.Center).Gap(5).Children(func() {
 				ui.Icon(c, IconChevronDown).Size(13.5, 13.5).TextColor(fg).Shrink(0)
 				ui.Text(c, pullLabel).
 					FontSize(FontMeta).FontWeight(500).TextColor(fg).SingleLine().MinWidth(0)
@@ -200,7 +200,7 @@ func (a *App) renderDashboardPortalCue(c *ui.Context, pal SurfacePalette, pullDi
 		return
 	}
 
-	portal.Width(82).Draw(func(p *ui.Painter, r ui.Rect) {
+	portal.Width(96).Draw(func(p *ui.Painter, r ui.Rect) {
 		baseInk := pal.InkSecondary
 		if pressed || hovered {
 			baseInk = pal.Ink
@@ -209,12 +209,10 @@ func (a *App) renderDashboardPortalCue(c *ui.Context, pal SurfacePalette, pullDi
 			baseInk = lerpColor(baseInk, ColorVermilion, portalGlow*0.85)
 		}
 
-		anchorCX := r.X + 12
+		anchorCX := r.X + r.W*0.5
 		cy := r.Y + r.H*0.5
-		textX := r.X + 4
 
 		if p.Preferences().ReduceMotion {
-			drawHairlineChevron(p, r.X+10, cy+0.5, 4.2, 2.1, 1.35, baseInk.Alpha(0.62))
 			span := ui.Span{
 				Text:          "思维宫殿",
 				Size:          12.5,
@@ -222,8 +220,11 @@ func (a *App) renderDashboardPortalCue(c *ui.Context, pal SurfacePalette, pullDi
 				LetterSpacing: 0.3,
 				Color:         baseInk.Alpha(0.76),
 			}
-			_, th := p.MeasureText(0, span)
-			p.RichText(r.X+20, r.Y+(r.H-th)*0.5, 0, span)
+			tw, th := p.MeasureText(0, span)
+			totalW := float32(10) + 5 + tw
+			startX := r.X + (r.W-totalW)*0.5
+			drawHairlineChevron(p, startX+5, cy+0.5, 4.2, 2.1, 1.35, baseInk.Alpha(0.62))
+			p.RichText(startX+15, r.Y+(r.H-th)*0.5, 0, span)
 			return
 		}
 
@@ -255,10 +256,12 @@ func (a *App) renderDashboardPortalCue(c *ui.Context, pal SurfacePalette, pullDi
 				Color:         baseInk.Alpha(0.80 * f.TextAlpha),
 			}
 			tw, th := p.MeasureText(0, span)
+			tx := r.X + (r.W-tw)*0.5
+			ty := r.Y + (r.H-th)*0.5
 			xf := ui.Scaling(f.TextScale*glowScale, f.TextScale*glowScale).
 				Then(ui.Translation(0, f.TextY+pullY))
-			p.Transform(xf, textX+tw*0.35, cy, func() {
-				p.RichText(textX, r.Y+(r.H-th)*0.5, 0, span)
+			p.Transform(xf, anchorCX, cy, func() {
+				p.RichText(tx, ty, 0, span)
 			})
 		}
 

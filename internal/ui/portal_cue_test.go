@@ -88,10 +88,16 @@ func TestPortalCueInteractiveAndRenderStages(t *testing.T) {
 
 	portalRect, ok := tt.Find("进入思维宫殿")
 	if !ok {
-		t.Fatalf("expected accessible top-left portal button \"进入思维宫殿\"")
+		t.Fatalf("expected accessible centered portal button \"进入思维宫殿\"")
 	}
 	if portalRect.Y > 80 {
 		t.Fatalf("expected portal near top edge (Y <= 80), got %+v", portalRect)
+	}
+	if centerX := portalRect.X + portalRect.W*0.5; math.Abs(float64(centerX-206)) > 12 {
+		t.Fatalf("expected portal horizontally centered near X=206, got centerX=%.1f rect=%+v", centerX, portalRect)
+	}
+	if _, ok := tt.Find("DeepSeek 设置"); ok {
+		t.Fatalf("expected top-right \"DeepSeek 设置\" button to be removed")
 	}
 
 	auditDir := resolveVisualAuditDir()

@@ -96,6 +96,7 @@ func main() {
 			Content:         ui.View(app.RootView),
 		})
 		app.MainWin = mainWin
+		app.CheckAIHealthAsync()
 	})
 
 	if err := mygo.App.Run(); err != nil {

@@ -9,6 +9,12 @@ import (
 	"github.com/egoist/mygo/ui/mobile"
 )
 
+const (
+	settingDeepSeekOnboardingSeen = "deepseek_onboarding_seen"
+	settingsPromptFirstLaunch     = "first_launch"
+	settingsPromptUnavailable     = "unavailable"
+)
+
 var deepSeekModelChoices = []string{
 	"deepseek-flash",
 	"deepseek-v4-pro",
@@ -19,6 +25,15 @@ var deepSeekModelChoices = []string{
 func (a *App) renderSettingsModal(c *ui.Context) {
 	pal := a.Palette()
 	configured := a.Deps.AI != nil && a.Deps.AI.Configured()
+	wasOpen := a.SettingsModalOpen
+
+	subtitle := "填好后自动生效，之后就不用再管了"
+	switch a.SettingsPromptReason {
+	case settingsPromptFirstLaunch:
+		subtitle = "填一次 API Key，AI 就能自动帮你整理灵感，之后就不用再管了"
+	case settingsPromptUnavailable:
+		subtitle = "检测到当前配置暂时不能用了，重新填一下就能恢复"
+	}
 
 	sheetBg := pal.Card
 	mobile.Sheet(c, &a.SettingsModalOpen, mobile.SheetOptions{
@@ -29,14 +44,17 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 		ui.Scroll(c).Fill().Children(func() {
 			ui.Column(c).FillWidth().Padding(14, 18, 22, 18).Gap(14).Children(func() {
 				RenderSheetHeader(c, pal, SheetHeaderProps{
-					Icon:  IconSliders,
-					Title: "DeepSeek 设置",
+					Icon:     IconSliders,
+					Title:    "DeepSeek 设置",
+					Subtitle: subtitle,
 					ExtraBadge: func() {
 						a.renderConnectionBadge(c, pal, configured)
 					},
 					CloseKey: "settings_close",
 					OnClose: func() {
 						a.SettingsModalOpen = false
+						a.SettingsPromptReason = ""
+						a.markSettingsOnboardingSeen()
 					},
 				})
 
@@ -92,6 +110,14 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 				}
 
 				ui.Row(c).FillWidth().Wrap().Justify(ui.End).Gap(8).AlignItems(ui.Center).Children(func() {
+					if a.SettingsPromptReason == settingsPromptFirstLaunch {
+						if GhostTextAction(c, "settings_skip", nil, "先跳过").Clicked() {
+							mygo.Haptics.Selection()
+							a.markSettingsOnboardingSeen()
+							a.SettingsModalOpen = false
+							a.SettingsPromptReason = ""
+						}
+					}
 					if PillAction(c, "settings_test", IconRefresh, "测试连接", false).Clicked() {
 						a.persistDeepSeekSettings()
 						a.SettingsTestStatus = "正在测试连接…"
@@ -104,19 +130,27 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 									a.SettingsTestStatus = msg
 								}
 							})
-							return err
+							return nil
 						})
 					}
 					if PillAction(c, "settings_save", IconCheck, "保存", true).Clicked() {
 						mygo.Haptics.Success()
 						a.persistDeepSeekSettings()
+						a.markSettingsOnboardingSeen()
 						a.SettingsModalOpen = false
+						a.SettingsPromptReason = ""
+						a.SettingsTestStatus = ""
 						a.setBanner("设置已保存")
 					}
 				})
 			})
 		})
 	})
+
+	if wasOpen && !a.SettingsModalOpen {
+		a.markSettingsOnboardingSeen()
+		a.SettingsPromptReason = ""
+	}
 }
 
 func (a *App) renderConnectionBadge(c *ui.Context, pal SurfacePalette, configured bool) {

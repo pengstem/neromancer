@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -169,5 +170,33 @@ func TestIngestAndOrganizeReusesExistingTagsAndStripsHashes(t *testing.T) {
 	}
 	if len(decision.Tags) != 2 || decision.Tags[0] != "生活器物" || decision.Tags[1] != "阳台植物" {
 		t.Fatalf("expected sanitized deduplicated tags without '#', got %+v", decision.Tags)
+	}
+}
+
+func TestIsConfigUnusableError(t *testing.T) {
+	if IsConfigUnusableError(nil) {
+		t.Fatalf("expected nil error to be false")
+	}
+	if !IsConfigUnusableError(ErrMissingAPIKey) {
+		t.Fatalf("expected ErrMissingAPIKey to be unusable")
+	}
+	for _, status := range []int{http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound} {
+		err := &APIError{StatusCode: status, Message: "bad config"}
+		if !IsConfigUnusableError(err) {
+			t.Fatalf("expected HTTP %d APIError to be unusable", status)
+		}
+		wrapped := fmt.Errorf("request failed: %w", err)
+		if !IsConfigUnusableError(wrapped) {
+			t.Fatalf("expected wrapped HTTP %d APIError to be unusable", status)
+		}
+	}
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway} {
+		err := &APIError{StatusCode: status, Message: "transient"}
+		if IsConfigUnusableError(err) {
+			t.Fatalf("expected HTTP %d transient APIError NOT to be treated as unusable config", status)
+		}
+	}
+	if IsConfigUnusableError(errors.New("dial tcp: timeout")) {
+		t.Fatalf("expected plain network timeout NOT to be treated as unusable config")
 	}
 }
