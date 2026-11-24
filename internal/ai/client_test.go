@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pengstem/neromancer/internal/config"
 	"github.com/pengstem/neromancer/internal/domain"
 )
 
@@ -198,5 +199,74 @@ func TestIsConfigUnusableError(t *testing.T) {
 	}
 	if IsConfigUnusableError(errors.New("dial tcp: timeout")) {
 		t.Fatalf("expected plain network timeout NOT to be treated as unusable config")
+	}
+}
+
+func TestNormalizeBaseURL(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"https://api.moark.com/v1/chat/completions", "https://api.moark.com"},
+		{"https://api.moark.com/v1/chat/completions/", "https://api.moark.com"},
+		{"https://api.moark.com/v1/", "https://api.moark.com"},
+		{"https://api.moark.com", "https://api.moark.com"},
+		{"  ", config.DefaultDeepSeekBaseURL},
+	}
+	for _, tc := range cases {
+		if got := normalizeBaseURL(tc.in); got != tc.want {
+			t.Fatalf("normalizeBaseURL(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestTranscribeAudioFallbackToOpenAITranscriptions(t *testing.T) {
+	var paths []string
+	var gotModel string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path == "/v1/tools/asr" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Path != "/v1/audio/transcriptions" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		gotModel = r.FormValue("model")
+		file, hdr, err := r.FormFile("file")
+		if err != nil {
+			t.Fatalf("missing form file: %v", err)
+		}
+		_ = file.Close()
+		if !strings.HasSuffix(hdr.Filename, ".wav") {
+			t.Fatalf("expected wav filename, got %s", hdr.Filename)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"text":"模力方舟语音转写成功","language":"auto"}`))
+	}))
+	defer srv.Close()
+
+	wavPath := filepath.Join(t.TempDir(), "spark.wav")
+	if err := os.WriteFile(wavPath, []byte("RIFF\x00\x00\x00\x00WAVEfmt "), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewClient(srv.URL, "sk-test-moark", "deepseek-v4.1-flash")
+	res, err := c.TranscribeAudio(context.Background(), wavPath)
+	if err != nil {
+		t.Fatalf("TranscribeAudio fallback failed: %v", err)
+	}
+	if len(paths) != 2 || paths[0] != "/v1/tools/asr" || paths[1] != "/v1/audio/transcriptions" {
+		t.Fatalf("unexpected call sequence: %v", paths)
+	}
+	if gotModel != defaultOpenAIASRModel {
+		t.Fatalf("expected model %q, got %q", defaultOpenAIASRModel, gotModel)
+	}
+	if res.Text != "模力方舟语音转写成功" {
+		t.Fatalf("unexpected ASR text: %+v", res)
 	}
 }

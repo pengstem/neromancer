@@ -24,7 +24,10 @@ import (
 	"github.com/pengstem/neromancer/internal/domain"
 )
 
-const maxASRBytes = 8 * 1024 * 1024 // DeepSeek /v1/tools/asr max 8 MiB
+const (
+	maxASRBytes           = 8 * 1024 * 1024 // DeepSeek /v1/tools/asr max 8 MiB
+	defaultOpenAIASRModel = "SenseVoiceSmall"
+)
 
 var (
 	// ErrMissingAPIKey indicates the user has not configured a DeepSeek API key yet.
@@ -188,7 +191,8 @@ func (c *Client) TestConnection(ctx context.Context) (string, error) {
 	return fmt.Sprintf("连接成功！当前模型：%s", model), nil
 }
 
-// TranscribeAudio calls POST /v1/tools/asr with a 16-bit PCM WAV or Ogg Opus file (<= 8 MiB).
+// TranscribeAudio calls /v1/tools/asr on DeepSeek or falls back to OpenAI-compatible
+// /v1/audio/transcriptions (e.g. MoArk) with a 16-bit PCM WAV or Ogg Opus file (<= 8 MiB).
 func (c *Client) TranscribeAudio(ctx context.Context, audioPath string) (*ASRResult, error) {
 	baseURL, apiKey, _, err := c.requireAuth()
 	if err != nil {
@@ -202,49 +206,68 @@ func (c *Client) TranscribeAudio(ctx context.Context, audioPath string) (*ASRRes
 		return nil, fmt.Errorf("录音文件太大了（%.1f MB），请控制在 8 MB 以内", float64(info.Size())/(1024*1024))
 	}
 
-	f, err := os.Open(audioPath)
+	audioBytes, err := os.ReadFile(audioPath)
 	if err != nil {
-		return nil, fmt.Errorf("打开录音文件失败: %w", err)
+		return nil, fmt.Errorf("读取录音文件失败: %w", err)
 	}
-	defer f.Close()
+	filename := filepath.Base(audioPath)
 
+	if strings.Contains(strings.ToLower(baseURL), "moark.com") {
+		res, _, err := c.transcribeAudioAt(ctx, baseURL+"/v1/audio/transcriptions", apiKey, filename, audioBytes, defaultOpenAIASRModel)
+		return res, err
+	}
+
+	res, statusCode, err := c.transcribeAudioAt(ctx, baseURL+"/v1/tools/asr", apiKey, filename, audioBytes, "")
+	if err != nil && statusCode == http.StatusNotFound {
+		fallbackRes, _, fallbackErr := c.transcribeAudioAt(ctx, baseURL+"/v1/audio/transcriptions", apiKey, filename, audioBytes, defaultOpenAIASRModel)
+		return fallbackRes, fallbackErr
+	}
+	return res, err
+}
+
+func (c *Client) transcribeAudioAt(ctx context.Context, endpoint, apiKey, filename string, audioBytes []byte, model string) (*ASRResult, int, error) {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
-	fw, err := mw.CreateFormFile("file", filepath.Base(audioPath))
-	if err != nil {
-		return nil, err
+	if strings.TrimSpace(model) != "" {
+		if err := mw.WriteField("model", model); err != nil {
+			return nil, 0, err
+		}
 	}
-	if _, err := io.Copy(fw, f); err != nil {
-		return nil, err
+	fw, err := mw.CreateFormFile("file", filename)
+	if err != nil {
+		return nil, 0, err
+	}
+	if _, err := fw.Write(audioBytes); err != nil {
+		return nil, 0, err
 	}
 	if err := mw.Close(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/tools/asr", &buf)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &buf)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("语音转文字失败: %w", err)
+		return nil, 0, fmt.Errorf("语音转文字失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
 	if resp.StatusCode >= 400 {
-		return nil, formatAPIError(resp.StatusCode, body)
+		return nil, resp.StatusCode, formatAPIError(resp.StatusCode, body)
 	}
 
 	var out ASRResult
 	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("读取语音转写结果失败: %w", err)
+		return nil, resp.StatusCode, fmt.Errorf("读取语音转写结果失败: %w", err)
 	}
 	out.Text = strings.TrimSpace(out.Text)
-	return &out, nil
+	return &out, resp.StatusCode, nil
 }
 
 // IngestAndOrganize asks DeepSeek to deduplicate/merge or create an organized IdeaNode from a RawEvidence.
@@ -453,7 +476,7 @@ func (c *Client) chatJSON(ctx context.Context, systemPrompt string, userContent 
 			{Role: "user", Content: userContent},
 		},
 		ResponseFormat: map[string]any{"type": "json_object"},
-		MaxTokens:      2048,
+		MaxTokens:      4096,
 		Temperature:    0.7,
 	}
 
@@ -588,7 +611,10 @@ func normalizeBaseURL(raw string) string {
 		u = config.DefaultDeepSeekBaseURL
 	}
 	u = strings.TrimRight(u, "/")
+	u = strings.TrimSuffix(u, "/chat/completions")
+	u = strings.TrimRight(u, "/")
 	u = strings.TrimSuffix(u, "/v1")
+	u = strings.TrimRight(u, "/")
 	return u
 }
 

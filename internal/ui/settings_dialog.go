@@ -16,6 +16,9 @@ const (
 )
 
 var deepSeekModelChoices = []string{
+	"deepseek-v4.1-flash",
+	"DeepSeek-V4-Pro",
+	"DeepSeek-V4-Flash",
 	"deepseek-flash",
 	"deepseek-v4-pro",
 	"deepseek-chat",
@@ -61,7 +64,7 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 				ui.Column(c).FillWidth().Gap(6).Children(func() {
 					ui.Text(c, "服务地址").FontSize(FontMeta).FontWeight(600).TextColor(pal.InkSecondary)
 					ui.TextInput(c, &a.SettingsBaseURL).
-						Placeholder("https://api.deepseek.com").
+						Placeholder("https://api.moark.com").
 						Label("服务地址").
 						Background(pal.SoftPanel).
 						FillWidth()
@@ -71,7 +74,7 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 					ui.Text(c, "API Key").FontSize(FontMeta).FontWeight(600).TextColor(pal.InkSecondary)
 					ui.TextInput(c, &a.SettingsAPIKey).
 						Password().
-						Placeholder("sk-...").
+						Placeholder("填写 API Key").
 						Label("API Key").
 						Background(pal.SoftPanel).
 						FillWidth()
@@ -79,11 +82,22 @@ func (a *App) renderSettingsModal(c *ui.Context) {
 
 				ui.Column(c).FillWidth().Gap(6).Children(func() {
 					ui.Text(c, "选用模型").FontSize(FontMeta).FontWeight(600).TextColor(pal.InkSecondary)
-					modelOpts := make([]selectOption, 0, len(deepSeekModelChoices))
+					modelOpts := make([]selectOption, 0, len(deepSeekModelChoices)+1)
+					curModel := strings.TrimSpace(a.SettingsModel)
+					inChoices := false
+					for _, m := range deepSeekModelChoices {
+						if m == curModel {
+							inChoices = true
+							break
+						}
+					}
+					if curModel != "" && !inChoices {
+						modelOpts = append(modelOpts, selectOption{Value: curModel, Label: curModel})
+					}
 					for _, m := range deepSeekModelChoices {
 						lbl := m
-						if m == "deepseek-flash" {
-							lbl = "deepseek-flash（推荐）"
+						if m == "deepseek-v4.1-flash" {
+							lbl = "deepseek-v4.1-flash（推荐）"
 						}
 						modelOpts = append(modelOpts, selectOption{Value: m, Label: lbl})
 					}

@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	DefaultDeepSeekBaseURL = "https://api.deepseek.com"
-	DefaultDeepSeekModel   = "deepseek-flash"
+	DefaultDeepSeekBaseURL = "https://api.moark.com"
+	DefaultDeepSeekModel   = "deepseek-v4.1-flash"
 	DefaultDataDir         = ""
 )
 
