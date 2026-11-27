@@ -82,10 +82,10 @@ type App struct {
 	SleepInsights     []domain.SleepInsight
 
 	// Interactive widget states kept across frames
-	DashboardScroll ui.ScrollState
-	ArchiveScroll   ui.ScrollState
-	DetailScroll    ui.ScrollState
-	MarkdownOpts    markdown.Options
+	DashboardScroll  ui.ScrollState
+	ArchiveScroll    ui.ScrollState
+	DetailScroll     ui.ScrollState
+	MarkdownOpts     markdown.Options
 	Globe            GlobeState
 	SpaceDeck        SpaceDeckState
 	Pulse            PulseViewState
@@ -126,6 +126,7 @@ type App struct {
 	FloatExpanded  bool
 	FloatQuickText string
 	FloatOnToggle  func()
+	WidgetHidden   bool
 
 	// Share state
 	ShareNodeID      string
