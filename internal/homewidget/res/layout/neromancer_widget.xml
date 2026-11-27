@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/neromancer_widget_bg"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="14dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="8dp">
+
+    <TextView
+        android:id="@+id/widget_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:text="记一句"
+        android:textColor="#141519"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_say"
+        android:layout_width="0dp"
+        android:layout_height="36dp"
+        android:layout_marginEnd="6dp"
+        android:layout_weight="1"
+        android:background="@drawable/neromancer_widget_say"
+        android:gravity="center"
+        android:text="说一句"
+        android:textColor="#C84B31"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_write"
+        android:layout_width="0dp"
+        android:layout_height="36dp"
+        android:layout_marginEnd="6dp"
+        android:layout_weight="1"
+        android:background="@drawable/neromancer_widget_write"
+        android:gravity="center"
+        android:text="写一句"
+        android:textColor="#2563EB"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_snap"
+        android:layout_width="0dp"
+        android:layout_height="36dp"
+        android:layout_weight="1"
+        android:background="@drawable/neromancer_widget_snap"
+        android:gravity="center"
+        android:text="拍一张"
+        android:textColor="#B45309"
+        android:textSize="12sp" />
+</LinearLayout>

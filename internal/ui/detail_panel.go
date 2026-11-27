@@ -277,11 +277,20 @@ func (a *App) renderEvidenceModal(c *ui.Context) {
 									ui.Row(c).FillWidth().Gap(10).Padding(8, 10).Radius(RadiusControl).
 										Background(pal.SoftPanel).Border(1, pal.Border.Alpha(0.65)).AlignItems(ui.Center).
 										Children(func() {
-											if PillAction(c, "play_"+item.ID, IconPlay, "播放原声", false).Shrink(0).Clicked() {
-												if err := a.Deps.Media.PlayAudio(item.AudioPath); err != nil {
+											playing := a.Deps.Media != nil && a.Deps.Media.IsPlayingPath(item.AudioPath)
+											playLabel := "播放原声"
+											playIcon := IconPlay
+											if playing {
+												playLabel = "停止播放"
+												playIcon = IconStop
+											}
+											if PillAction(c, "play_"+item.ID, playIcon, playLabel, false).Shrink(0).Clicked() {
+												if playing {
+													a.dismissBanner()
+												} else if err := a.Deps.Media.PlayAudio(item.AudioPath); err != nil {
 													a.setErrorBanner(err.Error())
 												} else {
-													a.setBanner("正在播放当时的录音")
+													a.setBanner(playbackBannerText)
 												}
 											}
 

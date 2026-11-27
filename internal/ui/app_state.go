@@ -82,10 +82,10 @@ type App struct {
 	SleepInsights     []domain.SleepInsight
 
 	// Interactive widget states kept across frames
-	DashboardScroll ui.ScrollState
-	ArchiveScroll   ui.ScrollState
-	DetailScroll    ui.ScrollState
-	MarkdownOpts    markdown.Options
+	DashboardScroll  ui.ScrollState
+	ArchiveScroll    ui.ScrollState
+	DetailScroll     ui.ScrollState
+	MarkdownOpts     markdown.Options
 	Globe            GlobeState
 	SpaceDeck        SpaceDeckState
 	Pulse            PulseViewState
@@ -126,6 +126,7 @@ type App struct {
 	FloatExpanded  bool
 	FloatQuickText string
 	FloatOnToggle  func()
+	WidgetHidden   bool
 
 	// Share state
 	ShareNodeID      string
@@ -139,10 +140,11 @@ type App struct {
 	SettingsPromptReason string
 
 	// Feedback & async indicator
-	BusyTask     string
-	BannerText   string
-	BannerIsErr  bool
-	BannerShowAI bool
+	BusyTask       string
+	BannerText     string
+	BannerIsErr    bool
+	BannerShowAI   bool
+	BannerPlayback bool
 
 	// Decoded image cache for RawEvidence previews
 	imgCache map[string]ui.ImageSource
@@ -195,6 +197,11 @@ func NewApp(deps Deps) (*App, error) {
 
 	if err := a.ReloadVault(); err != nil {
 		return nil, err
+	}
+	if deps.Media != nil {
+		deps.Media.SetPlaybackEnded(func() {
+			a.Dispatch(func() { a.finishPlaybackBanner() })
+		})
 	}
 	return a, nil
 }
@@ -423,8 +430,7 @@ func (a *App) FlushPending() {
 // RunAsync executes a DeepSeek or IO background task while updating BusyTask cleanly.
 func (a *App) RunAsync(label string, work func(ctx context.Context) error) {
 	a.BusyTask = label
-	a.BannerText = ""
-	a.BannerShowAI = false
+	a.dismissBanner()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 70*time.Second)
 		defer cancel()
@@ -453,9 +459,7 @@ func (a *App) openSettingsPrompt(reason, statusMsg string) {
 }
 
 func (a *App) openSettingsForIssue(err error) {
-	a.BannerText = ""
-	a.BannerIsErr = false
-	a.BannerShowAI = false
+	a.dismissBanner()
 	status := ""
 	if err != nil {
 		if errors.Is(err, ai.ErrMissingAPIKey) {
@@ -502,16 +506,53 @@ func (a *App) CheckAIHealthAsync() {
 	}()
 }
 
+const playbackBannerText = "正在播放当时的录音"
+
 func (a *App) setBanner(msg string) {
+	if msg != playbackBannerText {
+		a.stopPlaybackBanner()
+	}
 	a.BannerText = msg
+	a.BannerIsErr = false
+	a.BannerShowAI = false
+	a.BannerPlayback = msg == playbackBannerText
+}
+
+func (a *App) setErrorBanner(msg string) {
+	a.stopPlaybackBanner()
+	a.BannerText = msg
+	a.BannerIsErr = true
+	a.BannerShowAI = strings.Contains(msg, "DeepSeek")
+	a.BannerPlayback = false
+}
+
+// dismissBanner hides the small hint. If that hint is the playback one, the recording stops with it.
+func (a *App) dismissBanner() {
+	a.stopPlaybackBanner()
+	a.BannerText = ""
 	a.BannerIsErr = false
 	a.BannerShowAI = false
 }
 
-func (a *App) setErrorBanner(msg string) {
-	a.BannerText = msg
-	a.BannerIsErr = true
-	a.BannerShowAI = strings.Contains(msg, "DeepSeek")
+func (a *App) stopPlaybackBanner() {
+	if !a.BannerPlayback {
+		return
+	}
+	a.BannerPlayback = false
+	if a.Deps.Media != nil {
+		a.Deps.Media.StopAudio()
+	}
+}
+
+func (a *App) finishPlaybackBanner() {
+	if !a.BannerPlayback {
+		return
+	}
+	a.BannerPlayback = false
+	if a.BannerText == playbackBannerText {
+		a.BannerText = ""
+		a.BannerShowAI = false
+	}
 }
 
 func (a *App) isPhoneLayout(c *ui.Context) bool {
@@ -540,15 +581,15 @@ func (a *App) RootView(c *ui.Context) {
 			}
 		})
 
-		// Non-shifting floating capsule toast overlay
-		a.renderBanner(c, pal)
-
 		// Mobile-friendly bottom sheets & full-screen capture morph layer
 		ui.Box(c).Key("modal_slot_detail").Children(func() { a.renderDetailSheet(c) })
 		a.renderCaptureModal(c)
 		ui.Box(c).Key("modal_slot_evidence").Children(func() { a.renderEvidenceModal(c) })
 		ui.Box(c).Key("modal_slot_settings").Children(func() { a.renderSettingsModal(c) })
 		ui.Box(c).Key("modal_slot_share").Children(func() { a.renderShareModal(c) })
+
+		// After the sheets, so the hint's close button stays tappable.
+		a.renderBanner(c, pal)
 	})
 }
 
@@ -567,16 +608,18 @@ func (a *App) renderBanner(c *ui.Context, pal SurfacePalette) {
 	}
 
 	if a.BusyTask != "" && a.BannerText == "" {
-		posOverlay(ui.Column(c).Key("banner_busy_overlay")).
-			Children(func() {
-				ui.Row(c).Padding(7, 14).Gap(8).AlignItems(ui.Center).MaxWidth(420).
-					Radius(RadiusPill).Background(pal.Card).Border(1, pal.Border).
-					Shadow(0, 6, 18, 0, ui.RGBA(18, 22, 33, 0.08)).
-					Children(func() {
-						ui.Spinner(c).Size(14, 14)
-						ui.Text(c, a.BusyTask).FontSize(FontMeta).FontWeight(500).TextColor(pal.Ink).SingleLine()
-					})
-			})
+		ui.Overlay(c, func() {
+			posOverlay(ui.Column(c).Key("banner_busy_overlay")).
+				Children(func() {
+					ui.Row(c).Padding(7, 14).Gap(8).AlignItems(ui.Center).MaxWidth(420).
+						Radius(RadiusPill).Background(pal.Card).Border(1, pal.Border).
+						Shadow(0, 6, 18, 0, ui.RGBA(18, 22, 33, 0.08)).
+						Children(func() {
+							ui.Spinner(c).Size(14, 14)
+							ui.Text(c, a.BusyTask).FontSize(FontMeta).FontWeight(500).TextColor(pal.Ink).SingleLine()
+						})
+				})
+		})
 		return
 	}
 	if a.BannerText == "" {
@@ -592,25 +635,26 @@ func (a *App) renderBanner(c *ui.Context, pal SurfacePalette) {
 		border = th.Danger.Alpha(0.35)
 		fg = th.Danger
 	}
-	posOverlay(ui.Column(c).Key("banner_toast_overlay")).
-		Children(func() {
-			ui.Row(c).Padding(6, 8, 6, 13).Gap(8).AlignItems(ui.Center).MaxWidth(440).
-				Radius(RadiusPill).Background(pal.Card).Border(1, border).
-				Shadow(0, 6, 18, 0, ui.RGBA(18, 22, 33, 0.09)).
-				Children(func() {
-					ui.Box(c).Size(7, 7).Radius(4).Background(dotCol).Shrink(0)
-					ui.Text(c, a.BannerText).FontSize(FontMeta).FontWeight(500).TextColor(fg).SingleLine()
-					if a.BannerShowAI {
-						if PillAction(c, "banner_ai_cfg", IconSliders, "去设置", true).Clicked() {
-							a.SettingsModalOpen = true
+	ui.Overlay(c, func() {
+		posOverlay(ui.Column(c).Key("banner_toast_overlay")).
+			Children(func() {
+				ui.Row(c).Padding(6, 8, 6, 13).Gap(8).AlignItems(ui.Center).MaxWidth(440).
+					Radius(RadiusPill).Background(pal.Card).Border(1, border).
+					Shadow(0, 6, 18, 0, ui.RGBA(18, 22, 33, 0.09)).
+					Children(func() {
+						ui.Box(c).Size(7, 7).Radius(4).Background(dotCol).Shrink(0)
+						ui.Text(c, a.BannerText).FontSize(FontMeta).FontWeight(500).TextColor(fg).SingleLine()
+						if a.BannerShowAI {
+							if PillAction(c, "banner_ai_cfg", IconSliders, "去设置", true).Clicked() {
+								a.SettingsModalOpen = true
+							}
 						}
-					}
-					if GhostIconAction(c, "banner_close", IconClose, "关闭提示", false).Size(24, 24).Clicked() {
-						a.BannerText = ""
-						a.BannerShowAI = false
-					}
-				})
-		})
+						if GhostIconAction(c, "banner_close", IconClose, "关闭提示", false).Size(24, 24).Clicked() {
+							a.dismissBanner()
+						}
+					})
+			})
+	})
 }
 
 func (a *App) renderInAppQuickOrbBar(c *ui.Context, pal SurfacePalette) {

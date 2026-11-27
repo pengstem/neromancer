@@ -34,6 +34,11 @@ type Manager struct {
 	recOut    string
 	recAt     time.Time
 	nativeRec bool
+
+	player   *audio.Player
+	playKey  string
+	playPath string
+	onEnded  func()
 }
 
 // NewManager creates a media manager rooted at audioDir and imageDir.
@@ -185,17 +190,37 @@ func (m *Manager) IsRecording() bool {
 	return m.nativeRec || m.recCmd != nil
 }
 
-// PlayAudio plays a stored original WAV recording across Android, iOS, Desktop, and Web via mygo/audio.
-// If audioPath is empty (e.g., seeded demo evidence), it generates and plays a soft warm chime WAV.
+// SetPlaybackEnded registers fn, called after the current recording plays to
+// its end. A manual StopAudio does not call it. fn may run off the UI thread.
+func (m *Manager) SetPlaybackEnded(fn func()) {
+	m.mu.Lock()
+	m.onEnded = fn
+	m.mu.Unlock()
+}
+
+// IsPlayingPath reports whether audioPath is the recording currently playing.
+// An empty path matches the demo chime used for seeded voice notes.
+func (m *Manager) IsPlayingPath(audioPath string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.player != nil && m.player.Playing() && m.playKey == strings.TrimSpace(audioPath)
+}
+
+// PlayAudio starts one playback of audioPath. Calling it again while that
+// same recording is already playing does not start a second voice.
+// If audioPath is empty, it plays a short demo chime.
 func (m *Manager) PlayAudio(audioPath string) error {
-	target := strings.TrimSpace(audioPath)
-	if target == "" {
-		var err error
-		target, err = m.ensureDemoChime()
-		if err != nil {
-			return err
-		}
+	key := strings.TrimSpace(audioPath)
+	target, err := m.resolvePlayPath(key)
+	if err != nil {
+		return err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.player != nil && m.player.Playing() && m.playKey == key {
+		return nil
+	}
+	m.stopLocked()
 	data, err := os.ReadFile(target)
 	if err != nil {
 		return fmt.Errorf("读取原始录音失败: %w", err)
@@ -204,8 +229,49 @@ func (m *Manager) PlayAudio(audioPath string) error {
 	if err != nil {
 		return fmt.Errorf("解码录音失败: %w", err)
 	}
-	snd.Play()
+	p := snd.Play()
+	p.OnEnd(func() {
+		m.mu.Lock()
+		current := m.player == p
+		var cb func()
+		if current {
+			m.player = nil
+			m.playKey = ""
+			m.playPath = ""
+			cb = m.onEnded
+		}
+		m.mu.Unlock()
+		if cb != nil {
+			cb()
+		}
+	})
+	m.player = p
+	m.playKey = key
+	m.playPath = target
 	return nil
+}
+
+// StopAudio stops the current recording playback. It is safe when nothing is playing.
+func (m *Manager) StopAudio() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.stopLocked()
+}
+
+func (m *Manager) stopLocked() {
+	if m.player != nil {
+		m.player.Stop()
+		m.player = nil
+	}
+	m.playKey = ""
+	m.playPath = ""
+}
+
+func (m *Manager) resolvePlayPath(key string) (string, error) {
+	if key != "" {
+		return key, nil
+	}
+	return m.ensureDemoChime()
 }
 
 func (m *Manager) ensureDemoChime() (string, error) {
