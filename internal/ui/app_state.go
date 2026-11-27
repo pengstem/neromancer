@@ -530,7 +530,7 @@ func (a *App) RootView(c *ui.Context) {
 
 	ui.Themed(c, NeromancerTheme()).Fill().Children(func() {
 		bgHidden := a.CaptureModalOpen && a.CaptureAnim.Phase == CaptureAnimOpen
-		ui.Column(c).Fill().Background(pal.Canvas).AccessHidden(bgHidden).Children(func() {
+		ui.Column(c).Fill().Background(pal.Canvas).AccessHidden(a.CaptureModalOpen).Children(func() {
 			if !bgHidden {
 				if a.QuickOrbOverlayOpen {
 					a.renderInAppQuickOrbBar(c, pal)

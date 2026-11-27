@@ -102,7 +102,7 @@ func TestCaptureThreeModesEnterDedicatedFormatsWithoutSwitcher(t *testing.T) {
 	app, cleanup := newAuditTestApp(t)
 	defer cleanup()
 
-	tt := newFastTester(app.RootView, 412, 892)
+	tt := ui.NewTester(app.RootView, 412, 892)
 	settleAudit(tt)
 
 	cases := []struct {
@@ -138,6 +138,14 @@ func TestCaptureThreeModesEnterDedicatedFormatsWithoutSwitcher(t *testing.T) {
 		settleAudit(tt)
 		if err := tt.Click(tc.dialLabel); err != nil {
 			t.Fatalf("click %s: %v", tc.dialLabel, err)
+		}
+		tt.Advance(120 * time.Millisecond)
+		tt.Frame()
+		if app.CaptureAnim.Phase != CaptureAnimOpening {
+			t.Fatalf("expected %s to be opening at 120 ms, got %v", tc.dialLabel, app.CaptureAnim.Phase)
+		}
+		if tt.HasText("记下来") || tt.HasText("收起") {
+			t.Fatalf("%s built live editor controls during the opening animation", tc.dialLabel)
 		}
 		settleAudit(tt)
 
@@ -196,14 +204,9 @@ func TestCaptureSmoothLocalToFullscreenAndShrinkIntoTopMindPalace(t *testing.T) 
 	if app.CaptureAnim.Phase != CaptureAnimOpening {
 		t.Fatalf("expected CaptureAnimOpening at 45ms, got %v", app.CaptureAnim.Phase)
 	}
-	// At 45ms, top-left of viewport (24, 24) should still show the underlying Dashboard, not covered by full-screen card yet
-	if img := tt.Image(); img != nil {
-		// Advance to full open (420ms total)
-		for i := 0; i < 10; i++ {
-			tt.Advance(45 * time.Millisecond)
-			tt.Frame()
-		}
-	}
+	// Advance beyond the opening duration and verify the editor is mounted.
+	tt.Advance(captureOpenDur)
+	tt.Frame()
 	if app.CaptureAnim.Phase != CaptureAnimOpen {
 		t.Fatalf("expected CaptureAnimOpen after spring settles, got %v", app.CaptureAnim.Phase)
 	}

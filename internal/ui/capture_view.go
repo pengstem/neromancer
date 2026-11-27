@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	captureOpenDur        = 380 * time.Millisecond
+	captureOpenDur        = 240 * time.Millisecond
 	captureCloseOriginDur = 290 * time.Millisecond
 	captureClosePalaceDur = 760 * time.Millisecond
 	capturePortalPulseDur = 520 * time.Millisecond
@@ -260,6 +260,7 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 	editorAlpha := float32(1.0)
 	orbSeedAlpha := float32(0.0)
 	capsuleAlpha := float32(0.0)
+	openingProgress := float32(0.0)
 	morphing := false
 
 	switch a.CaptureAnim.Phase {
@@ -267,17 +268,17 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 		dt := now.Sub(a.CaptureAnim.PhaseStart)
 		if dt >= captureOpenDur {
 			a.CaptureAnim.Phase = CaptureAnimOpen
+			c.AnimationFrame() // Remove the background on the next root frame.
 		} else {
 			c.AnimationFrame()
-			morphing = true
 			sp := ui.SpringOptions{Duration: captureOpenDur, Bounce: 0}
-			p := clamp01f(float32(sp.Progress(dt)))
+			openingProgress = clamp01f(float32(sp.Progress(dt)))
+			p := openingProgress
 			orig := a.resolveCaptureOriginRect(c, winW, winH, false)
 			orad := min(orig.W, orig.H) * 0.5
 			vRect = lerpRect(orig, fullRect, p)
 			vRad = orad*(1.0-p) + 28.0*4.0*p*(1.0-p)*(1.0-p)
 			scrimAlpha = 0.36 * p
-			editorAlpha = smoothstep32(0.14, 0.72, p)
 			orbSeedAlpha = 1.0 - smoothstep32(0.0, 0.42, p)
 		}
 
@@ -349,8 +350,32 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 
 	interactive := a.CaptureModalOpen
 	root := ui.Box(c).Key("capture_fullscreen_overlay").Absolute().Fill().ZIndex(85)
-	if !interactive {
+	if interactive {
+		root.HandleInput(func(ev ui.InputEvent) bool {
+			if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEscape {
+				mygo.Haptics.Selection()
+				a.dismissCaptureModal()
+				return true
+			}
+			return false
+		})
+	} else {
 		root.PassThrough()
+	}
+
+	if a.CaptureAnim.Phase == CaptureAnimOpening {
+		// Paint only the expanding surface. Scaling, clipping and fading the live
+		// editor here would lay it out and composite it on every opening frame.
+		root.Role(ui.RoleDialog).Label(spec.title).Draw(func(p *ui.Painter, r ui.Rect) {
+			p.Fill(r, ui.RGBA(18, 22, 33, scrimAlpha), 0)
+			p.Fill(vRect, lerpColor(pal.Canvas, pal.Card, orbSeedAlpha), vRad)
+			p.Stroke(vRect, pal.Border.Alpha(0.85*(1-openingProgress)), vRad, 1)
+			if orbSeedAlpha > 0.02 {
+				iconRect := ui.Rect{X: vRect.X + vRect.W/2 - 9, Y: vRect.Y + vRect.H/2 - 9, W: 18, H: 18}
+				p.Icon(spec.icon, iconRect, pal.Ink.Alpha(orbSeedAlpha))
+			}
+		})
+		return
 	}
 
 	root.Children(func() {
@@ -389,15 +414,7 @@ func (a *App) renderCaptureModal(c *ui.Context) {
 				Background(surfaceBg)
 
 			if interactive {
-				panel.Role(ui.RoleDialog).Label(spec.title).
-					HandleInput(func(ev ui.InputEvent) bool {
-						if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEscape {
-							mygo.Haptics.Selection()
-							a.dismissCaptureModal()
-							return true
-						}
-						return false
-					})
+				panel.Role(ui.RoleDialog).Label(spec.title)
 			} else {
 				panel.PassThrough()
 			}

@@ -29,6 +29,89 @@ func TestClientRequiresAPIKey(t *testing.T) {
 	}
 }
 
+type chatTestTransport func(*http.Request) (*http.Response, error)
+
+func (f chatTestTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+func TestGenerateActionPlanMarkdownAndTruncation(t *testing.T) {
+	const plan = "### 工具\n\n- 试一下 `print(\"hello\")`。\n\n### 第一步\n\n- 写一个小例子。\n\n### 第二步\n\n- 整理目录。\n\n### 第三步\n\n- 找朋友试用一次。"
+	type reply struct {
+		reason  string
+		content string
+	}
+	complete := reply{reason: "stop", content: "\n" + plan + "\n"}
+	truncated := reply{reason: "length", content: "### 工具\n\n- 还没写"}
+	for _, tc := range []struct {
+		name    string
+		replies []reply
+		want    string
+		wantErr string
+	}{
+		{name: "complete", replies: []reply{complete}, want: plan},
+		{name: "retry concise", replies: []reply{truncated, complete}, want: plan},
+		{name: "retry also truncated", replies: []reply{truncated, truncated}, wantErr: errChatOutputTruncated.Error()},
+		{name: "empty", replies: []reply{{reason: "stop", content: " \n "}}, wantErr: "AI 这次返回了空内容"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := NewClient("https://api.example.com", "sk-test", "deepseek-chat")
+			calls := 0
+			c.http.Transport = chatTestTransport(func(r *http.Request) (*http.Response, error) {
+				if calls >= len(tc.replies) {
+					return nil, errors.New("unexpected extra request")
+				}
+				var req chatRequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Fatalf("decode plan request: %v", err)
+				}
+				if r.URL.Path != "/v1/chat/completions" || req.ResponseFormat != nil {
+					t.Fatalf("expected Markdown chat request, got path=%q format=%v", r.URL.Path, req.ResponseFormat)
+				}
+				wantPrompt := actionPlanSystemPrompt
+				if calls == 1 {
+					wantPrompt += actionPlanCompactPrompt
+				}
+				if req.Messages[0].Content != wantPrompt || !strings.Contains(req.Messages[1].Content.(string), "做个小工具") {
+					t.Fatalf("unexpected messages in request %d: %+v", calls+1, req.Messages)
+				}
+				rpl := tc.replies[calls]
+				calls++
+				w := httptest.NewRecorder()
+				_, _ = fmt.Fprintf(w, `{"choices":[{"finish_reason":%q,"message":{"content":%q}}]}`, rpl.reason, rpl.content)
+				return w.Result(), nil
+			})
+
+			got, err := c.GenerateActionPlan(context.Background(), domain.IdeaNode{Title: "做个小工具"}, nil)
+			if got != tc.want || calls != len(tc.replies) {
+				t.Fatalf("got plan %q in %d calls, want %q in %d calls (error: %v)", got, calls, tc.want, len(tc.replies), err)
+			}
+			if tc.wantErr == "" && err != nil || tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Fatalf("got error %v, want %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestChatJSONRejectsTruncatedChoiceBeforeParsing(t *testing.T) {
+	c := NewClient("https://api.example.com", "sk-test", "deepseek-chat")
+	c.http.Transport = chatTestTransport(func(r *http.Request) (*http.Response, error) {
+		var req chatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode JSON mode request: %v", err)
+		}
+		if req.ResponseFormat["type"] != "json_object" {
+			t.Fatalf("expected JSON mode, got %v", req.ResponseFormat)
+		}
+		w := httptest.NewRecorder()
+		_, _ = w.WriteString(`{"choices":[{"finish_reason":"length","message":{"content":"{\"spark\":\"还没写"}}]}`)
+		return w.Result(), nil
+	})
+	if _, err := c.SuggestFromTags(context.Background(), nil, nil); !errors.Is(err, errChatOutputTruncated) {
+		t.Fatalf("expected truncation error, got %v", err)
+	}
+}
+
 func TestIngestAndOrganizeMultimodalAndJSONMode(t *testing.T) {
 	var capturedPath string
 	var capturedAuth string

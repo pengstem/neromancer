@@ -32,6 +32,8 @@ const (
 var (
 	// ErrMissingAPIKey indicates the user has not configured a DeepSeek API key yet.
 	ErrMissingAPIKey = errors.New("还没填写 DeepSeek API Key，填一下就能用了")
+
+	errChatOutputTruncated = errors.New("AI 的回复太长，没写完，请再试一次")
 )
 
 // APIError represents an HTTP error response returned by the DeepSeek endpoint.
@@ -355,17 +357,11 @@ func (c *Client) GenerateGuidingQuestions(ctx context.Context, node domain.IdeaN
 // GenerateActionPlan produces a step-by-step actionable Markdown roadmap ("AI 帮忙").
 func (c *Client) GenerateActionPlan(ctx context.Context, node domain.IdeaNode, evidences []domain.RawEvidence) (string, error) {
 	payload := buildNodeContextPrompt(node, evidences)
-	raw, err := c.chatJSON(ctx, actionPlanSystemPrompt, payload)
-	if err != nil {
-		return "", err
+	plan, err := c.chat(ctx, actionPlanSystemPrompt, payload, "")
+	if errors.Is(err, errChatOutputTruncated) && ctx.Err() == nil {
+		return c.chat(ctx, actionPlanSystemPrompt+actionPlanCompactPrompt, payload, "")
 	}
-	var out struct {
-		ActionPlanMD string `json:"action_plan_md"`
-	}
-	if err := decodeJSONFlexible(raw, &out); err != nil {
-		return "", fmt.Errorf("解析可执行方案 JSON 失败: %w", err)
-	}
-	return strings.TrimSpace(out.ActionPlanMD), nil
+	return plan, err
 }
 
 // SuggestFromTags generates a light new inspiration prompt from existing tags on Showcase view.
@@ -464,6 +460,10 @@ type chatResponse struct {
 }
 
 func (c *Client) chatJSON(ctx context.Context, systemPrompt string, userContent any) (string, error) {
+	return c.chat(ctx, systemPrompt, userContent, "json_object")
+}
+
+func (c *Client) chat(ctx context.Context, systemPrompt string, userContent any, responseFormat string) (string, error) {
 	baseURL, apiKey, model, err := c.requireAuth()
 	if err != nil {
 		return "", err
@@ -475,9 +475,11 @@ func (c *Client) chatJSON(ctx context.Context, systemPrompt string, userContent 
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userContent},
 		},
-		ResponseFormat: map[string]any{"type": "json_object"},
-		MaxTokens:      4096,
-		Temperature:    0.7,
+		MaxTokens:   4096,
+		Temperature: 0.7,
+	}
+	if responseFormat != "" {
+		reqBody.ResponseFormat = map[string]any{"type": responseFormat}
 	}
 
 	rawReq, err := json.Marshal(reqBody)
@@ -498,9 +500,12 @@ func (c *Client) chatJSON(ctx context.Context, systemPrompt string, userContent 
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	if resp.StatusCode >= 400 {
 		return "", formatAPIError(resp.StatusCode, body)
+	}
+	if err != nil {
+		return "", fmt.Errorf("读取 AI 回复失败: %w", err)
 	}
 
 	var parsed chatResponse
@@ -511,9 +516,12 @@ func (c *Client) chatJSON(ctx context.Context, systemPrompt string, userContent 
 		return "", errors.New("AI 这次没有返回内容，请再试一次")
 	}
 
-	content := strings.TrimSpace(parsed.Choices[0].Message.Content)
+	choice := parsed.Choices[0]
+	if choice.FinishReason == "length" {
+		return "", errChatOutputTruncated
+	}
+	content := strings.TrimSpace(choice.Message.Content)
 	if content == "" {
-		// DeepSeek JSON mode caveat: invalid JSON output may be replaced with whitespace.
 		return "", errors.New("AI 这次返回了空内容，请再试一次")
 	}
 	return content, nil
