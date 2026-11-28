@@ -158,19 +158,31 @@ func (a *App) ensureGlobeCache(c *ui.Context, terms []service.WordCloudTerm) {
 func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 	terms := a.DashboardDigest.WordCloud
 	phone := a.isPhoneLayout(c)
-	winW, _ := c.Size()
+	winW, winH := c.Size()
 	if winW <= 0 {
 		winW = 412
 	}
+	if winH <= 0 {
+		winH = 892
+	}
+	_, _, bottomSafe, _ := c.SafeArea()
 
 	var stageW float32
 	var stageH float32
 	if phone {
 		stageW = max(float32(240), winW-60)
-		stageH = 264
+		// The globe takes the first screen under the portrait, including the slots
+		// that used to belong to 灵感串联 and 待深化追问.
+		stageH = winH - 220 - bottomSafe
+		if stageH < 420 {
+			stageH = 420
+		}
 	} else {
 		stageW = max(float32(360), min(winW, 760)-84)
-		stageH = 300
+		stageH = winH - 260 - bottomSafe
+		if stageH < 460 {
+			stageH = 460
+		}
 	}
 
 	a.ensureGlobeCache(c, terms)
@@ -189,183 +201,194 @@ func (a *App) renderDashboardWordCloudGlobe(c *ui.Context, pal SurfacePalette) {
 			return
 		}
 
-			cx := stageW * 0.5
-			cy := stageH * 0.5
-			sphereR := min(stageW*0.37, stageH*0.40)
-			hitR := min(stageW*0.44, stageH*0.47)
-			hzLeft := cx - hitR
-			hzTop := cy - hitR
+		cx := stageW * 0.5
+		short := min(stageW, stageH)
+		sphereR := short * 0.48
+		// The card stays put. The spinning globe sits above the stage center,
+		// then drops 50 physical pixels (420dpi emulator) so the blank under
+		// the title is the measured 150px gap plus those 50px.
+		cy := stageH*0.5 - stageH*0.18
+		if minCy := sphereR*1.05 + 12; cy < minCy {
+			cy = minCy
+		}
+		cy += 50 * (160.0 / 420)
+		hitR := sphereR * 1.15
+		hzLeft := cx - hitR
+		hzTop := cy - hitR
 
-			metrics := a.Globe.CachedMetrics
-			projected := a.Globe.ProjectedBuf[:len(terms)]
-			rot := a.Globe.Rot
+		metrics := a.Globe.CachedMetrics
+		projected := a.Globe.ProjectedBuf[:len(terms)]
+		rot := a.Globe.Rot
 
-			for i, term := range terms {
-				cm := &metrics[i]
-				rv := mat3Vec(rot, pts[i])
-				z := rv[2]
-				pScale := 3.4 / (3.4 - z)
-				sx := cx + float32(rv[0]*pScale)*sphereR*1.15
-				sy := cy + float32(rv[1]*pScale)*sphereR*0.92
+		for i, term := range terms {
+			cm := &metrics[i]
+			rv := mat3Vec(rot, pts[i])
+			z := rv[2]
+			pScale := 4.0 / (4.0 - z)
+			sx := cx + float32(rv[0]*pScale)*sphereR
+			sy := cy + float32(rv[1]*pScale)*sphereR
 
-				depth := float32((z + 1.0) * 0.5)
-				rawScale := float32(0.62) + float32(0.50)*depth
-				depthScale := globeScaleBucket(rawScale)
+			depth := float32((z + 1.0) * 0.5)
+			rawScale := float32(0.62) + float32(0.50)*depth
+			depthScale := globeScaleBucket(rawScale)
 
-				var opacity float32
-				switch {
-				case depth < 0.42:
-					opacity = 0.17 + 0.18*(depth/0.42)
-				case depth < 0.72:
-					opacity = 0.35 + 0.40*((depth-0.42)/0.30)
-				default:
-					opacity = 0.75 + 0.25*((depth-0.72)/0.28)
-				}
-				if opacity > 1 {
-					opacity = 1
-				} else if opacity < 0.14 {
-					opacity = 0.14
-				}
-
-				w := cm.BoxW * depthScale
-				h := cm.BoxH * depthScale
-				backface := z < 0.05 || opacity < 0.30
-
-				projected[i] = globeProjectedTerm{
-					Term:       term,
-					BaseVec:    pts[i],
-					RotVec:     rv,
-					StageX:     sx,
-					StageY:     sy,
-					Width:      w,
-					Height:     h,
-					DepthScale: depthScale,
-					Opacity:    opacity,
-					Backface:   backface,
-					ZOrder:     int(math.Round((z + 1.0) * 1000)),
-				}
+			var opacity float32
+			switch {
+			case depth < 0.42:
+				opacity = 0.17 + 0.18*(depth/0.42)
+			case depth < 0.72:
+				opacity = 0.35 + 0.40*((depth-0.42)/0.30)
+			default:
+				opacity = 0.75 + 0.25*((depth-0.72)/0.28)
+			}
+			if opacity > 1 {
+				opacity = 1
+			} else if opacity < 0.14 {
+				opacity = 0.14
 			}
 
-			// Zero-alloc 2D soft collision separation among foreground words + backface ghost-bleed suppression.
-			for pass := 0; pass < 2; pass++ {
-				for i := range projected {
-					pt := &projected[i]
-					if pt.Backface {
-						continue
-					}
-					for j := range projected {
-						if j == i || projected[j].Backface || projected[j].RotVec[2] < pt.RotVec[2] {
-							continue
-						}
-						if projected[j].RotVec[2] == pt.RotVec[2] && j > i {
-							continue
-						}
-						o := &projected[j]
-						dx := pt.StageX - o.StageX
-						dy := pt.StageY - o.StageY
-						minW := (pt.Width + o.Width) * 0.44
-						minH := (pt.Height + o.Height) * 0.46
-						ox := minW - float32(math.Abs(float64(dx)))
-						oy := minH - float32(math.Abs(float64(dy)))
-						if ox > 0 && oy > 0 {
-							dirY := float32(1.0)
-							if dy < 0 || (dy == 0 && i%2 == 0) {
-								dirY = -1.0
-							}
-							pushY := oy * 0.58 * dirY
-							pt.StageY = max(cy-hitR*0.86, min(cy+hitR*0.86, pt.StageY+pushY))
-							dirX := float32(1.0)
-							if dx < 0 {
-								dirX = -1.0
-							}
-							pt.StageX = max(cx-hitR*0.88, min(cx+hitR*0.88, pt.StageX+ox*0.16*dirX))
-						}
-					}
-				}
-			}
+			w := cm.BoxW * depthScale
+			h := cm.BoxH * depthScale
+			// Keep each word fully inside the round stage so the circle stays readable.
+			sx = max(w*0.5+4, min(stageW-w*0.5-4, sx))
+			sy = max(h*0.5+4, min(stageH-h*0.5-4, sy))
+			backface := z < 0.05 || opacity < 0.30
 
-			// Mark foreground words whose center is still occluded by a closer foreground word,
-			// and dim backface words that sit directly behind a foreground word so they never smudge text.
+			projected[i] = globeProjectedTerm{
+				Term:       term,
+				BaseVec:    pts[i],
+				RotVec:     rv,
+				StageX:     sx,
+				StageY:     sy,
+				Width:      w,
+				Height:     h,
+				DepthScale: depthScale,
+				Opacity:    opacity,
+				Backface:   backface,
+				ZOrder:     int(math.Round((z + 1.0) * 1000)),
+			}
+		}
+
+		// Zero-alloc 2D soft collision separation among foreground words + backface ghost-bleed suppression.
+		for pass := 0; pass < 2; pass++ {
 			for i := range projected {
 				pt := &projected[i]
 				if pt.Backface {
-					for j := range projected {
-						if projected[j].Backface {
-							continue
-						}
-						o := &projected[j]
-						if float32(math.Abs(float64(pt.StageX-o.StageX))) < (pt.Width+o.Width)*0.45 &&
-							float32(math.Abs(float64(pt.StageY-o.StageY))) < (pt.Height+o.Height)*0.48 {
-							pt.Opacity *= 0.24
-							break
-						}
-					}
 					continue
 				}
 				for j := range projected {
-					if j == i || projected[j].Backface || projected[j].RotVec[2] <= pt.RotVec[2] {
+					if j == i || projected[j].Backface || projected[j].RotVec[2] < pt.RotVec[2] {
+						continue
+					}
+					if projected[j].RotVec[2] == pt.RotVec[2] && j > i {
 						continue
 					}
 					o := &projected[j]
-					if pt.StageX >= o.StageX-o.Width*0.5 && pt.StageX <= o.StageX+o.Width*0.5 &&
-						pt.StageY >= o.StageY-o.Height*0.5 && pt.StageY <= o.StageY+o.Height*0.5 {
-						pt.Occluded = true
-						break
+					dx := pt.StageX - o.StageX
+					dy := pt.StageY - o.StageY
+					minW := (pt.Width + o.Width) * 0.44
+					minH := (pt.Height + o.Height) * 0.46
+					ox := minW - float32(math.Abs(float64(dx)))
+					oy := minH - float32(math.Abs(float64(dy)))
+					if ox > 0 && oy > 0 {
+						dirY := float32(1.0)
+						if dy < 0 || (dy == 0 && i%2 == 0) {
+							dirY = -1.0
+						}
+						pushY := oy * 0.58 * dirY
+						pt.StageY = max(cy-hitR*0.86, min(cy+hitR*0.86, pt.StageY+pushY))
+						dirX := float32(1.0)
+						if dx < 0 {
+							dirX = -1.0
+						}
+						pt.StageX = max(cx-hitR*0.88, min(cx+hitR*0.88, pt.StageX+ox*0.16*dirX))
 					}
 				}
 			}
+		}
 
-			// Stage wrapper: clipped to isolate repaint damage from outer card shadows, with zero background rings/circles.
-			ui.Box(c).Key("dash_globe_stage").FillWidth().Height(stageH).Clip().
-				Draw(func(p *ui.Painter, r ui.Rect) {
-					if ambientActive && p.Accelerated() {
-						p.AnimationFrameRate(30)
+		// Mark foreground words whose center is still occluded by a closer foreground word,
+		// and dim backface words that sit directly behind a foreground word so they never smudge text.
+		for i := range projected {
+			pt := &projected[i]
+			if pt.Backface {
+				for j := range projected {
+					if projected[j].Backface {
+						continue
 					}
-				}).
-				Children(func() {
-					// Single stationary circular hit-zone owns all pointer/touch dragging so words crossing
-					// z = 0 never drop active touch capture, while left/right margins remain scrollable.
-					hz := ui.Box(c).Key("dash_globe_hitzone").
-						Absolute().Left(hzLeft).Top(hzTop).Size(hitR*2, hitR*2).Radius(hitR).
-						Draggable(&a.Globe.DragDummy, ui.DraggableOptions{
-							Axis:   ui.Horizontal | ui.Vertical,
-							Bounds: &ui.Rect{},
-							Rigid:  true,
-						}).
-						HandleInput(func(ev ui.InputEvent) bool {
-							return a.handleGlobePointer(ev, ev.X+hzLeft, ev.Y+hzTop, cx, cy, hitR, terms, pts, projected)
-						})
+					o := &projected[j]
+					if float32(math.Abs(float64(pt.StageX-o.StageX))) < (pt.Width+o.Width)*0.45 &&
+						float32(math.Abs(float64(pt.StageY-o.StageY))) < (pt.Height+o.Height)*0.48 {
+						pt.Opacity *= 0.24
+						break
+					}
+				}
+				continue
+			}
+			for j := range projected {
+				if j == i || projected[j].Backface || projected[j].RotVec[2] <= pt.RotVec[2] {
+					continue
+				}
+				o := &projected[j]
+				if pt.StageX >= o.StageX-o.Width*0.5 && pt.StageX <= o.StageX+o.Width*0.5 &&
+					pt.StageY >= o.StageY-o.Height*0.5 && pt.StageY <= o.StageY+o.Height*0.5 {
+					pt.Occluded = true
+					break
+				}
+			}
+		}
 
-					// Emit all words in fixed index order with constant layout geometry and font size:
-					// Scale + Translate + ZIndex + TextColor achieve 100% layout-cache & shaped-text reuse.
-					hz.Children(func() {
-						for i := range projected {
-							pt := &projected[i]
-							cm := &metrics[i]
-							fg := resolveGlobeWordColor(pal, cm.OrbPal, pt)
-
-							txt := ui.Text(c, pt.Term.Word).Key("globe_w_" + pt.Term.Word).
-								Absolute().
-								Left(-cm.BoxW * 0.5).Top(-cm.BoxH * 0.5).
-								Width(cm.BoxW).Height(cm.BoxH).
-								Padding(cm.PadY, 0).
-								FontSize(cm.BaseFont).
-								FontWeight(cm.Weight).
-								TextAlign(ui.Center).
-								SingleLine().
-								Scale(pt.DepthScale, pt.DepthScale).
-								Translate(pt.StageX-hzLeft, pt.StageY-hzTop).
-								ZIndex(pt.ZOrder).
-								TextColor(fg)
-							if pt.Backface || pt.Occluded {
-								txt.IgnoreInput(true).PassThrough()
-							} else {
-								txt.Cursor(ui.CursorPointer)
-							}
-						}
+		// Stage wrapper: clipped to isolate repaint damage from outer card shadows, with zero background rings/circles.
+		ui.Box(c).Key("dash_globe_stage").FillWidth().Height(stageH).Clip().
+			Draw(func(p *ui.Painter, r ui.Rect) {
+				if ambientActive && p.Accelerated() {
+					p.AnimationFrameRate(30)
+				}
+			}).
+			Children(func() {
+				// Single stationary circular hit-zone owns taps and drags so a word can be opened
+				// with a tap, and the same ball can be spun with a drag.
+				hz := ui.Box(c).Key("dash_globe_hitzone").
+					Absolute().Left(hzLeft).Top(hzTop).Size(hitR*2, hitR*2).Radius(hitR).
+					Draggable(&a.Globe.DragDummy, ui.DraggableOptions{
+						Axis:   ui.Horizontal | ui.Vertical,
+						Bounds: &ui.Rect{},
+						Rigid:  true,
+					}).
+					HandleInput(func(ev ui.InputEvent) bool {
+						return a.handleGlobePointer(ev, ev.X+hzLeft, ev.Y+hzTop, cx, cy, hitR, terms, pts, projected)
 					})
+
+				// Emit all words in fixed index order with constant layout geometry and font size:
+				// Scale + Translate + ZIndex + TextColor achieve 100% layout-cache & shaped-text reuse.
+				hz.Children(func() {
+					for i := range projected {
+						pt := &projected[i]
+						cm := &metrics[i]
+						fg := resolveGlobeWordColor(pal, cm.OrbPal, pt)
+
+						txt := ui.Text(c, pt.Term.Word).Key("globe_w_"+pt.Term.Word).
+							Absolute().
+							Left(-cm.BoxW*0.5).Top(-cm.BoxH*0.5).
+							Width(cm.BoxW).Height(cm.BoxH).
+							Padding(cm.PadY, 0).
+							FontSize(cm.BaseFont).
+							FontWeight(cm.Weight).
+							TextAlign(ui.Center).
+							SingleLine().
+							Scale(pt.DepthScale, pt.DepthScale).
+							Translate(pt.StageX-hzLeft, pt.StageY-hzTop).
+							ZIndex(pt.ZOrder).
+							TextColor(fg)
+						if pt.Backface || pt.Occluded {
+							txt.IgnoreInput(true).PassThrough()
+						} else {
+							txt.Cursor(ui.CursorPointer)
+						}
+					}
 				})
-		})
+			})
+	})
 }
 
 // globeScaleBucket snaps depth perspective scale onto mygo/ui's octave raster-scale buckets (2^(n/8)),

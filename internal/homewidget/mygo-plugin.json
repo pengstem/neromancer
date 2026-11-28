@@ -1,0 +1,12 @@
+{
+  "mobile": {
+    "id": "homewidget",
+    "android": {
+      "sources": ["android/*.kt"],
+      "class": "CaptureWidgetPlugin",
+      "application": [
+        "<receiver android:name=\"dev.mygo.CaptureWidgetProvider\" android:exported=\"true\" android:label=\"记一句\"><intent-filter><action android:name=\"android.appwidget.action.APPWIDGET_UPDATE\" /></intent-filter><meta-data android:name=\"android.appwidget.provider\" android:resource=\"@xml/neromancer_widget_info\" /></receiver>"
+      ]
+    }
+  }
+}

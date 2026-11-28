@@ -44,8 +44,8 @@ func (a *App) renderDashboardView(c *ui.Context, pullDist, pullThreshold float32
 				inner := func() {
 					ui.Column(c).FillWidth().Padding(4, padX, 96+bottomSafe, padX).Gap(12).Children(func() {
 						a.renderDashboardHeroRow(c, pal, phone)
-						a.renderDashboardSynthesisCard(c, pal)
 						a.renderDashboardWordCloudGlobe(c, pal)
+						a.renderDashboardSynthesisCard(c, pal)
 						a.renderDashboardQuestionsCard(c, pal)
 					})
 				}
